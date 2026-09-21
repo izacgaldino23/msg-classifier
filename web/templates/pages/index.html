@@ -1,0 +1,15 @@
+{{ define "page:title" }}Home{{ end }}
+{{ define "page:content" }}
+<main class="container">
+    <h1>Classificador de Mensagens</h1>
+
+    <form hx-post="/api/message" hx-target="#resultado" hx-swap="innerHTML">
+        <label for="message">Mensagem:</label>
+        <input type="text" id="message" name="message" required>
+        <button type="submit">Enviar</button>
+    </div>
+    
+    <div id="resultado">
+    </div>
+</main>
+{{ end }}
