@@ -5,9 +5,9 @@
 			"type": "choice",
 			"instructions": "Which category does this message belong to",
 			"criteria": {
-				"schedule": "alarms, meetings or future events",
-				"contact":  "contact information, phone numbers, email addresses, or social media handles",
+				"contact":  "contact information, phone numbers, email addresses, or addresses",
 				"finance":  "payment, billing, or financial information",
+				"schedule": "alarms, meetings or future events",
 				"notes":    "notes, reminders, or to-do lists",
 				"other":    "none of other categories"
 			}
