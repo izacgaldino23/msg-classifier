@@ -1,0 +1,10 @@
+{
+	"state": {},
+	"questions": {
+		"adding_or_requiring": {
+			"type": "score",
+			"instructions": "Is this a request to add or require something?",
+			"criteria": ["add", "require", "both", "neither"]
+		}
+	}
+}
