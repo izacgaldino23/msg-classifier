@@ -23,9 +23,9 @@ type (
 		Questions map[string]JevQuestionInterface `json:"questions"`
 	}
 
-	JevState interface {
-		// JevState is a runtime value, not a type constraint.
-	}
+	JevState interface{}
+
+	JevQuestionType string
 
 	JevQuestionInterface interface {
 		GetType() JevQuestionType
@@ -53,30 +53,75 @@ type (
 		False string `json:"false,omitempty"`
 	}
 
-	JevAnswer struct {
-		Type       JevQuestionType   `json:"type"`
-		Noul       string            `json:"noul,omitempty"`
-		Choice     string            `json:"choice,omitempty"`
-		Score      float64           `json:"score,omitempty"`
-		Legend     map[string]string `json:"legend,omitempty"`
-		Confidence float64           `json:"confidence,omitempty"`
+	JevAnswer interface {
+		GetType() JevQuestionType
 	}
-
-	JevQuestionType string
 
 	JevResponse struct {
 		Model   string               `json:"model"`
 		Answers map[string]JevAnswer `json:"answers"`
+	}
+
+	JevAnswerNoul struct {
+		Type JevQuestionType `json:"type"`
+		Noul string          `json:"noul,omitempty"`
+	}
+
+	JevAnswerChoice struct {
+		Type          JevQuestionType    `json:"type"`
+		Choice        string             `json:"choice"`
+		Probabilities map[string]float64 `json:"probabilities"`
+		Confidence    float64            `json:"confidence"`
+	}
+
+	JevAnswerScore struct {
+		Type          JevQuestionType    `json:"type"`
+		Score         float64            `json:"score,omitempty"`
+		Legend        map[string]string  `json:"legend,omitempty"`
+		Probabilities map[string]float64 `json:"probabilities"`
+		Confidence    float64            `json:"confidence"`
 	}
 )
 
 var client = &http.Client{}
 
 func HttpResponseToJevResponse(resp *http.Response) (*JevResponse, error) {
-	jevResp := &JevResponse{}
+	responseMap := make(map[string]any)
 
-	if err := json.NewDecoder(resp.Body).Decode(jevResp); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&responseMap); err != nil {
 		return nil, err
+	}
+
+	jevResp := &JevResponse{Model: responseMap["model"].(string), Answers: make(map[string]JevAnswer)}
+
+	answersMap := responseMap["answers"].(map[string]any)
+	for key, value := range answersMap {
+		answer := value.(map[string]any)
+		jsonBytes, err := json.Marshal(answer)
+		if err != nil {
+			panic(err)
+		}
+
+		switch answer["type"].(string) {
+		case "choice":
+			choice := &JevAnswerChoice{}
+			if err = json.Unmarshal(jsonBytes, choice); err != nil {
+				return nil, err
+			}
+			jevResp.Answers[key] = choice
+		case "score":
+			score := &JevAnswerScore{}
+			if err = json.Unmarshal(jsonBytes, score); err != nil {
+				return nil, err
+			}
+			jevResp.Answers[key] = score
+		case "noul":
+			noul := &JevAnswerNoul{}
+			if err = json.Unmarshal(jsonBytes, noul); err != nil {
+				return nil, err
+			}
+			jevResp.Answers[key] = noul
+		}
 	}
 
 	return jevResp, nil
@@ -263,4 +308,16 @@ func (r *JevQuestionNoul) GetInstructions() string {
 
 func (r *JevQuestionScore) GetInstructions() string {
 	return r.Instructions
+}
+
+func (r *JevAnswerChoice) GetType() JevQuestionType {
+	return ChoiceQuestionType
+}
+
+func (r *JevAnswerNoul) GetType() JevQuestionType {
+	return NoulQuestionType
+}
+
+func (r *JevAnswerScore) GetType() JevQuestionType {
+	return ScoreQuestionType
 }

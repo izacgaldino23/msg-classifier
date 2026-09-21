@@ -23,6 +23,20 @@ type (
 	}
 )
 
+func fromJevResponse(classification *jev.JevAnswerChoice, addingOrRequiring *jev.JevAnswerScore) *ReceiveMessageResponse {
+	return &ReceiveMessageResponse{
+		Category: map[string]any{
+			"choice":     classification.Choice,
+			"confidence": fmt.Sprintf("%.2f", classification.Confidence*100),
+		},
+		Kind: map[string]any{
+			"score":      addingOrRequiring.Score,
+			"confidence": fmt.Sprintf("%.2f", addingOrRequiring.Confidence*100),
+			"legend":     addingOrRequiring.Legend,
+		},
+	}
+}
+
 func NewMsgHandler() *MsgHandler {
 	return &MsgHandler{}
 }
@@ -53,20 +67,11 @@ func (h *MsgHandler) ReceiveMessage(c *gin.Context) {
 	// if user want get, get the data from database
 	// TODO
 
-	response := ReceiveMessageResponse{
-		Category: map[string]any{
-			"choice":     jevResponse.Answers["classification"].Choice,
-			"confidence": fmt.Sprintf("%.2f", jevResponse.Answers["classification"].Confidence*100),
-		},
-		Kind: map[string]any{
-			"score":      jevResponseKind.Answers["adding_or_requiring"].Score,
-			"confidence": fmt.Sprintf("%.2f", jevResponseKind.Answers["adding_or_requiring"].Confidence*100),
-			"legend":     jevResponseKind.Answers["adding_or_requiring"].Legend,
-		},
-	}
+	classification := jevResponse.Answers["classification"].(*jev.JevAnswerChoice)
+	addingOrRequiring := jevResponseKind.Answers["adding_or_requiring"].(*jev.JevAnswerScore)
 
 	// for while, save the response to a file as json
-	c.HTML(http.StatusOK, "resultado", response)
+	c.HTML(http.StatusOK, "resultado", fromJevResponse(classification, addingOrRequiring))
 }
 
 func checkMessageCategory(request *ReceiveMessageRequest) (*jev.JevResponse, error) {
