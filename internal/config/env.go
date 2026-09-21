@@ -21,7 +21,7 @@ func GetEnv() *Env {
 		env = &Env{
 			TypesafeApiUrl: os.Getenv("TYPESAFE_API_URL"),
 			TypesafeModel:  os.Getenv("TYPESAFE_MODEL"),
-			TypesafeToken:  os.Getenv("TYPESAFE_TOKEN"),
+			TypesafeToken:  os.Getenv("TS_API_KEY"),
 		}
 	}
 

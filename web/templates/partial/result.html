@@ -1,7 +1,10 @@
 {{ define "resultado" }}
 <div id="resultado" class="card">
-    <p><strong>Categoria:</strong> {{ .category }}</p>
-    <p><strong>Confiança:</strong> {{ .confidence }}</p>
-    <p><strong>Tipo:</strong> {{ .kind }}</p>
+    <p><strong>Categoria:</strong> {{ index .Category "choice" }}</p>
+    <p><strong>Confiança:</strong> {{ index .Category "confidence" }}%</p>
+    <hr />
+    <p><strong>Score:</strong> {{ index .Kind "score" }}</p>
+    <p><strong>Confiança:</strong> {{ index .Kind "confidence" }}%</p>
+    <p><strong>Legenda:</strong> {{ index .Kind "legend" }}</p>
 </div>
 {{ end }}

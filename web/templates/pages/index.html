@@ -6,8 +6,9 @@
     <form hx-post="/api/message" hx-target="#resultado" hx-swap="innerHTML">
         <label for="message">Mensagem:</label>
         <input type="text" id="message" name="message" required>
+        <input type="text" id="user_id" name="user_id" value="12345">
         <button type="submit">Enviar</button>
-    </div>
+    </form>
     
     <div id="resultado">
     </div>

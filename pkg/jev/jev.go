@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"msg-classifier/internal/config"
 	"net/http"
 	"os"
@@ -17,9 +18,9 @@ const (
 
 type (
 	JevRequest struct {
-		State     JevState `json:"state"`
-		Model     string   `json:"model"`
-		Questions map[string]JevQuestionInterface
+		State     JevState                        `json:"state"`
+		Model     string                          `json:"model"`
+		Questions map[string]JevQuestionInterface `json:"questions"`
 	}
 
 	JevState interface {
@@ -53,11 +54,12 @@ type (
 	}
 
 	JevAnswer struct {
-		Type       JevQuestionType `json:"type"`
-		Noul       string          `json:"noul,omitempty"`
-		Choice     string          `json:"choice,omitempty"`
-		Score      int             `json:"score,omitempty"`
-		Confidence float64         `json:"confidence,omitempty"`
+		Type       JevQuestionType   `json:"type"`
+		Noul       string            `json:"noul,omitempty"`
+		Choice     string            `json:"choice,omitempty"`
+		Score      float64           `json:"score,omitempty"`
+		Legend     map[string]string `json:"legend,omitempty"`
+		Confidence float64           `json:"confidence,omitempty"`
 	}
 
 	JevQuestionType string
@@ -70,20 +72,6 @@ type (
 
 var client = &http.Client{}
 
-func JevRequestFromFile(filePath string) (*JevRequest, error) {
-	return nil, nil
-}
-
-func MapToJevRequest(state JevState, questions map[string]JevQuestionInterface) (*JevRequest, error) {
-	jevReq := &JevRequest{State: state, Questions: questions}
-
-	if err := validateJevRequest(jevReq); err != nil {
-		return nil, err
-	}
-
-	return jevReq, nil
-}
-
 func HttpResponseToJevResponse(resp *http.Response) (*JevResponse, error) {
 	jevResp := &JevResponse{}
 
@@ -95,10 +83,12 @@ func HttpResponseToJevResponse(resp *http.Response) (*JevResponse, error) {
 }
 
 func MakeJevRequest(jevRequest *JevRequest) (*JevResponse, error) {
-	// jevRequest, err := MapToJevRequest(state, questions)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to create JevRequest: %w", err)
-	// }
+	jevRequest.Model = config.GetEnv().TypesafeModel
+
+	err := validateJevRequest(jevRequest)
+	if err != nil {
+		return nil, err
+	}
 
 	bodyData, err := json.Marshal(jevRequest)
 	if err != nil {
@@ -112,7 +102,7 @@ func MakeJevRequest(jevRequest *JevRequest) (*JevResponse, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create request to Typesafe API %w", err)
 	}
-	req.Header.Add("Authentication", "Bearer "+config.GetEnv().TypesafeToken)
+	req.Header.Add("Authorization", "Bearer "+config.GetEnv().TypesafeToken)
 	req.Header.Add("Content-Type", "application/json")
 
 	response, err := client.Do(req)
@@ -121,6 +111,15 @@ func MakeJevRequest(jevRequest *JevRequest) (*JevResponse, error) {
 	}
 
 	if response.StatusCode != http.StatusOK {
+		errorMsg := make([]byte, 256)
+
+		if response.Body != nil {
+			_, err = response.Body.Read(errorMsg)
+			if err != nil {
+				return nil, fmt.Errorf("Failed to read error message from Typesafe API: %w", err)
+			}
+		}
+		log.Printf("Typesafe error: %v", string(errorMsg))
 		return nil, fmt.Errorf("Typesafe API returned an error status: %v", response.Status)
 	}
 
@@ -137,6 +136,8 @@ func MakeJevRequestFromFile(state JevState, filePath string) (*JevResponse, erro
 	if err != nil {
 		return nil, err
 	}
+
+	request.State = state
 
 	return MakeJevRequest(request)
 }
@@ -191,7 +192,7 @@ func validateJevRequest(request *JevRequest) error {
 }
 
 func LoadJevRequestFromFile(filePath string) (*JevRequest, error) {
-	finalPath := "./requests/" + filePath
+	finalPath := "pkg/jev/requests/" + filePath
 	data, err := os.ReadFile(finalPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read JevRequest file %q: %w", finalPath, err)
@@ -235,10 +236,6 @@ func LoadJevRequestFromFile(filePath string) (*JevRequest, error) {
 			return nil, fmt.Errorf("failed to decode question %q in %q: %w", name, finalPath, err)
 		}
 		request.Questions[name] = question
-	}
-
-	if err := validateJevRequest(request); err != nil {
-		return nil, fmt.Errorf("invalid JevRequest in %q: %w", finalPath, err)
 	}
 
 	return request, nil
