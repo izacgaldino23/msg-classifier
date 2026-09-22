@@ -5,7 +5,7 @@
 			"type": "choice",
 			"instructions": "Which category does this message belong to",
 			"criteria": {
-				"contact":  "contact information, phone numbers, email addresses, or addresses",
+				"contact":  "contact information, phone numbers, email addresses",
 				"finance":  "payment, billing, or financial information",
 				"schedule": "alarms, meetings or future events",
 				"notes":    "notes, reminders, or to-do lists",
