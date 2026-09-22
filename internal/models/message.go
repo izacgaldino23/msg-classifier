@@ -29,6 +29,21 @@ type KindFinding struct {
 	Score      float64           `json:"score"`
 	Confidence float64           `json:"confidence"`
 	Legend     map[string]string `json:"legend"`
+	Value      string            `json:"value"`
+}
+
+// Action identifies the use case a classified message is dispatched to.
+type Action string
+
+const (
+	ActionNone       Action = "none"
+	ActionContactAdd Action = "contact_add"
+)
+
+// UseCaseOutcome carries the classification and the dispatched action.
+type UseCaseOutcome struct {
+	Classification *Classification
+	Action         Action
 }
 
 // ToResponse formats confidences as percent strings for display.
@@ -42,6 +57,7 @@ func (cl *Classification) ToResponse() *ReceiveMessageResponse {
 			"score":      cl.Kind.Score,
 			"confidence": fmt.Sprintf("%.2f", cl.Kind.Confidence*100),
 			"legend":     cl.Kind.Legend,
+			"value":      cl.Kind.Value,
 		},
 	}
 }

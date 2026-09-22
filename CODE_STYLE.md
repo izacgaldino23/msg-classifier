@@ -6,7 +6,7 @@ Conventions observed in this codebase. Follow these when writing new code.
 
 | Item | Convention | Examples |
 |---|---|---|
-| Files & directories | `snake_case` | `message_controller.go`, `request_kind.json`, `web/templates/partial/` |
+| Files & directories | `snake_case` | `message_controller.go`, `classification.json`, `web/templates/partial/` |
 | Go packages | Single lowercase word | `controllers`, `services`, `models`, `views`, `config`, `jev` |
 | Exported types | PascalCase, domain prefix | `JevRequest`, `JevAnswerChoice`, `MessageController`, `ClassificationService`, `ReceiveMessageRequest` |
 | Exported functions | PascalCase, `New*` constructors | `NewMessageController()`, `NewClassificationService()`, `NewClient()`, `GetEnv()` |
@@ -85,6 +85,12 @@ type jevClient interface {
 ```
 
 - Use sentinel errors (e.g., `ErrUpstream`) wrapped with `%w` so controllers can map statuses with `errors.Is`.
+
+### Category dispatch
+- Category-specific use cases implement the `CategoryHandler` interface: `Handle(request, classification) (*models.UseCaseOutcome, error)`.
+- A `Dispatcher` holds a `map[string]CategoryHandler` keyed by `Category.Choice`; misses fall back to an `ActionNone` outcome.
+- Adding a category = new service implementing `CategoryHandler` + one wiring line in `main.go` — no dispatcher edits.
+- Use cases return a `models.UseCaseOutcome` (`Classification` + `Action`); `ActionNone` / `ActionContactAdd` are the current actions. Future use-case results (extracted data, DB confirmation) flow back through the outcome without signature changes.
 
 ### Views
 - Template names are constants in `internal/views/render.go` — never string literals at call sites.

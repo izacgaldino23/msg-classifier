@@ -14,10 +14,11 @@ import (
 // MessageController handles POST /api/message. HTTP concerns only.
 type MessageController struct {
 	classifier *services.ClassificationService
+	dispatcher *services.Dispatcher
 }
 
-func NewMessageController(classifier *services.ClassificationService) *MessageController {
-	return &MessageController{classifier: classifier}
+func NewMessageController(classifier *services.ClassificationService, dispatcher *services.Dispatcher) *MessageController {
+	return &MessageController{classifier: classifier, dispatcher: dispatcher}
 }
 
 // ReceiveMessage handles POST /api/message.
@@ -31,18 +32,24 @@ func (ctrl *MessageController) ReceiveMessage(c *gin.Context) {
 
 	classification, err := ctrl.classifier.Classify(request)
 	if err != nil {
-		if errors.Is(err, services.ErrUpstream) {
-			views.RenderError(c, http.StatusBadGateway, err.Error())
-			return
-		}
-		views.RenderError(c, http.StatusInternalServerError, err.Error())
+		renderServiceError(c, err)
 		return
 	}
 
-	// Verify if user want save or get data
-	// if user want save, save the data to database
-	// if user want get, get the data from database
-	// TODO
+	outcome, err := ctrl.dispatcher.Dispatch(request, classification)
+	if err != nil {
+		renderServiceError(c, err)
+		return
+	}
 
-	views.RenderResult(c, classification)
+	views.RenderResult(c, outcome.Classification)
+}
+
+// renderServiceError maps a service error to the error partial.
+func renderServiceError(c *gin.Context, err error) {
+	if errors.Is(err, services.ErrUpstream) {
+		views.RenderError(c, http.StatusBadGateway, err.Error())
+		return
+	}
+	views.RenderError(c, http.StatusInternalServerError, err.Error())
 }

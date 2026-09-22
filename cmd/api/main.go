@@ -30,13 +30,18 @@ func main() {
 		c.Next()
 	})
 
-	// Composition root: config → jev client → service → controllers → routes.
+	// Composition root: config → jev client → services → dispatcher → controllers → routes.
 	env := config.GetEnv()
 	jevClient := jev.NewClient(env.TypesafeApiUrl, env.TypesafeToken, env.TypesafeModel)
 	classifier := services.NewClassificationService(jevClient)
 
+	contactService := services.NewContactService()
+	dispatcher := services.NewDispatcher(map[string]services.CategoryHandler{
+		"contact": contactService,
+	})
+
 	webController := controllers.NewWebController()
-	messageController := controllers.NewMessageController(classifier)
+	messageController := controllers.NewMessageController(classifier, dispatcher)
 
 	router.GET("/", webController.Home)
 

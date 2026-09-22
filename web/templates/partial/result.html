@@ -3,8 +3,7 @@
     <p><strong>Categoria:</strong> {{ index .Category "choice" }}</p>
     <p><strong>Confiança:</strong> {{ index .Category "confidence" }}%</p>
     <hr />
-    <p><strong>Score:</strong> {{ index .Kind "score" }}</p>
+    <p><strong>Ação:</strong> {{ index .Kind "value" }}</p>
     <p><strong>Confiança:</strong> {{ index .Kind "confidence" }}%</p>
-    <p><strong>Legenda:</strong> {{ index .Kind "legend" }}</p>
 </div>
 {{ end }}
