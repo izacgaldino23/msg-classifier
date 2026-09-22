@@ -3,7 +3,6 @@ package services
 import (
 	"errors"
 	"fmt"
-	"math"
 
 	"msg-classifier/internal/models"
 	"msg-classifier/pkg/jev"
@@ -43,12 +42,7 @@ func (s *ClassificationService) Classify(request *models.ReceiveMessageRequest) 
 		return nil, fmt.Errorf("%w: %w", ErrUpstream, err)
 	}
 
-	kind, err := answerAsScore(categoryResp, "adding_or_requiring")
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrUpstream, err)
-	}
-
-	value, err := resolveKind(kind)
+	kind, err := answerAsChoice(categoryResp, "adding_or_requiring")
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrUpstream, err)
 	}
@@ -59,10 +53,8 @@ func (s *ClassificationService) Classify(request *models.ReceiveMessageRequest) 
 			Confidence: category.Confidence,
 		},
 		Kind: models.KindFinding{
-			Score:      kind.Score,
+			Choice:     kind.Choice,
 			Confidence: kind.Confidence,
-			Legend:     kind.Legend,
-			Value:      value,
 		},
 	}, nil
 }
@@ -73,19 +65,6 @@ func (s *ClassificationService) makeRequest(state jev.JevState, template string)
 		return nil, fmt.Errorf("%w: failed to call jev with template %q: %w", ErrUpstream, template, err)
 	}
 	return resp, nil
-}
-
-// resolveKind maps the score answer's proximity index to its legend value.
-func resolveKind(score *jev.JevAnswerScore) (string, error) {
-	if len(score.Legend) == 0 {
-		return "", fmt.Errorf("empty legend in score answer")
-	}
-	index := int(math.Round(score.Score))
-	value, ok := score.Legend[fmt.Sprintf("%d", index)]
-	if !ok {
-		return "", fmt.Errorf("score %v rounds to index %d, missing from legend", score.Score, index)
-	}
-	return value, nil
 }
 
 // answerAsChoice extracts a choice answer with a checked assertion.
@@ -99,17 +78,4 @@ func answerAsChoice(resp *jev.JevResponse, key string) (*jev.JevAnswerChoice, er
 		return nil, fmt.Errorf("answer %q has type %T, want *jev.JevAnswerChoice", key, answer)
 	}
 	return choice, nil
-}
-
-// answerAsScore extracts a score answer with a checked assertion.
-func answerAsScore(resp *jev.JevResponse, key string) (*jev.JevAnswerScore, error) {
-	answer, ok := resp.Answers[key]
-	if !ok {
-		return nil, fmt.Errorf("missing answer %q in jev response", key)
-	}
-	score, ok := answer.(*jev.JevAnswerScore)
-	if !ok {
-		return nil, fmt.Errorf("answer %q has type %T, want *jev.JevAnswerScore", key, answer)
-	}
-	return score, nil
 }

@@ -13,9 +13,13 @@
 			}
 		},
 		"adding_or_requiring": {
-			"type": "score",
-			"instructions": "Is this a request to add or require something?",
-			"criteria": ["add", "require", "both"]
+			"type": "choice",
+			"instructions": "Does the user want to store new information or retrieve existing information?",
+			"criteria": {
+				"add":    "the user provides data to store (name, phone, email, address), even without verbs like save or add — providing raw data itself implies storing it",
+				"require": "the user asks for existing information, such as someone's phone number, a balance, or a saved note",
+				"both":   "the message both provides new data to store and asks for existing information"
+			}
 		}
 	}
 }

@@ -10,7 +10,7 @@ Conventions observed in this codebase. Follow these when writing new code.
 | Go packages | Single lowercase word | `controllers`, `services`, `models`, `views`, `config`, `jev` |
 | Exported types | PascalCase, domain prefix | `JevRequest`, `JevAnswerChoice`, `MessageController`, `ClassificationService`, `ReceiveMessageRequest` |
 | Exported functions | PascalCase, `New*` constructors | `NewMessageController()`, `NewClassificationService()`, `NewClient()`, `GetEnv()` |
-| Unexported functions | camelCase | `answerAsChoice()`, `answerAsScore()`, `isHxRequest()`, `validateJevRequest()` |
+| Unexported functions | camelCase | `answerAsChoice()`, `makeRequest()`, `isHxRequest()`, `validateJevRequest()` |
 | Constants | Exported PascalCase, grouped in `const` blocks | `ChoiceQuestionType`, `ScoreQuestionType`, `BaseTemplate`, `SourcePath` |
 | Variables | Short, lowercase, idiomatic Go | `c` (gin.Context), `ctrl` (controller), `router`, `tmpl`, `env` |
 | Struct fields | PascalCase with JSON tags | `UserID string \`json:"user_id" form:"user_id"\`` |

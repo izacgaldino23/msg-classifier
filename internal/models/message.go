@@ -26,10 +26,8 @@ type CategoryFinding struct {
 }
 
 type KindFinding struct {
-	Score      float64           `json:"score"`
-	Confidence float64           `json:"confidence"`
-	Legend     map[string]string `json:"legend"`
-	Value      string            `json:"value"`
+	Choice     string  `json:"choice"`
+	Confidence float64 `json:"confidence"`
 }
 
 // Action identifies the use case a classified message is dispatched to.
@@ -54,10 +52,8 @@ func (cl *Classification) ToResponse() *ReceiveMessageResponse {
 			"confidence": fmt.Sprintf("%.2f", cl.Category.Confidence*100),
 		},
 		Kind: map[string]any{
-			"score":      cl.Kind.Score,
+			"choice":     cl.Kind.Choice,
 			"confidence": fmt.Sprintf("%.2f", cl.Kind.Confidence*100),
-			"legend":     cl.Kind.Legend,
-			"value":      cl.Kind.Value,
 		},
 	}
 }

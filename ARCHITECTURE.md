@@ -2,7 +2,7 @@
 
 ## Overview
 
-A Go web application that classifies user messages into categories (contact, finance, schedule, notes, other) and determines whether a message is a request to add or require something. Classification is performed by the **TypeSafe System One API** (Jev model) via one AI request per message (a single template with a choice question and a score question). After classification, a **Dispatcher** routes the message to a category-specific use case; the contact **add** path is the first implemented flow (extraction and persistence are future work inside the use case). The frontend is a server-rendered htmx page (no JS build step).
+A Go web application that classifies user messages into categories (contact, finance, schedule, notes, other) and determines whether a message is a request to add or require something. Classification is performed by the **TypeSafe System One API** (Jev model) via one AI request per message (a single template with two choice questions). After classification, a **Dispatcher** routes the message to a category-specific use case; the contact **add** path is the first implemented flow (extraction and persistence are future work inside the use case). The frontend is a server-rendered htmx page (no JS build step).
 
 The codebase follows a **semantic MVC pattern** on an idiomatic Go layout:
 
@@ -39,7 +39,7 @@ msg-classifier/
 │   ├── models/                  # M — data structures
 │   │   └── message.go           # ReceiveMessageRequest/Response DTOs + Classification domain struct + UseCaseOutcome/Action
 │   ├── services/                # M — business rules
-│   │   ├── classification.go    # ClassificationService (single Jev call, checked answer mapping, kind resolution)
+│   │   ├── classification.go    # ClassificationService (single Jev call, checked answer mapping)
 │   │   ├── dispatcher.go        # Dispatcher (category → handler registry) + CategoryHandler interface
 │   │   └── contact.go           # ContactService (contact add stub; get path TODO)
 │   └── views/                   # V — render helpers
@@ -49,7 +49,7 @@ msg-classifier/
 │   └── jev/
 │       ├── jev.go               # TypeSafe Jev API client (config-injected, panic-free, embedded templates)
 │       └── requests/            # JSON prompt templates (embedded via go:embed)
-│           └── classification.json  # choice "classification" + score "adding_or_requiring" questions
+│           └── classification.json  # two choice questions: "classification" + "adding_or_requiring"
 ├── web/
 │   └── templates/
 │       ├── layouts/base.html    # "base" layout (sakura.css + htmx CDN + response-targets)
@@ -81,7 +81,7 @@ msg-classifier/
 - `MessageController.ReceiveMessage`: binds `ReceiveMessageRequest` (failure → 400 error partial) → calls `ClassificationService.Classify` → calls `Dispatcher.Dispatch` → maps errors via `renderServiceError` (`errors.Is(err, services.ErrUpstream)` → 502, else 500) → renders result or error partial. No business logic, no Jev types, no template name literals.
 
 ### 4. Classification Service — `internal/services/classification.go`
-- `ClassificationService.Classify`: builds Jev state `{user, message}`, makes **one** Jev call (`classification.json`, which contains both the `classification` choice question and the `adding_or_requiring` score question), extracts answers with checked assertions (`answerAsChoice` / `answerAsScore`), resolves the kind via `resolveKind` (round score → legend index → value), returns a domain `Classification`.
+- `ClassificationService.Classify`: builds Jev state `{user, message}`, makes **one** Jev call (`classification.json`, which contains both the `classification` and the `adding_or_requiring` choice questions), extracts answers with checked assertions (`answerAsChoice`), returns a domain `Classification`.
 - `ErrUpstream` sentinel marks failures originating from the Jev/TypeSafe API or its responses; controllers map it to HTTP 502.
 - The `jevClient` interface (defined at the service boundary) makes the service unit-testable without HTTP.
 
@@ -96,7 +96,7 @@ msg-classifier/
 
 ### 7. Models — `internal/models/message.go`
 - `ReceiveMessageRequest` / `ReceiveMessageResponse` DTOs.
-- `Classification` domain struct (`CategoryFinding` / `KindFinding` with raw numeric confidences; `KindFinding.Value` carries the resolved kind: `"add"` / `"require"` / `"both"`).
+- `Classification` domain struct (`CategoryFinding` / `KindFinding` with raw numeric confidences; `KindFinding.Choice` carries the kind: `"add"` / `"require"` / `"both"`).
 - `UseCaseOutcome` (`Classification` + `Action`) with `ActionNone` / `ActionContactAdd` constants — the seam where future use-case results (extracted contact, DB confirmation) flow back without signature changes.
 - `Classification.ToResponse()` formats confidences as `%.2f` percent strings for display (successor of the former `fromJevResponse`).
 
@@ -113,7 +113,7 @@ msg-classifier/
 - `validateJevRequest`: validates state, model, questions, and per-type criteria/true-false fields.
 
 ### 10. Jev Request Templates — `pkg/jev/requests/*.json`
-- `classification.json`: one `choice` question `"classification"` with 5 criteria (contact, finance, schedule, notes, other) and one `score` question `"adding_or_requiring"` with criteria `["add", "require", "both"]` (the criteria order defines the legend indices used by kind resolution).
+- `classification.json`: two `choice` questions — `"classification"` with 5 criteria (contact, finance, schedule, notes, other) and `"adding_or_requiring"` with descriptive criteria (add, require, both).
 
 ### 11. HTML Templates — `web/templates/`
 - `base.html`: `base` layout, loads sakura.css + htmx 2.0.10 + response-targets extension from CDNs; `hx-ext="response-targets"` + `hx-target-error="#resultado"` on `<body>` route 4xx/5xx responses into the result container.
@@ -130,9 +130,8 @@ Browser (htmx form)
 gin router ──► MessageController.ReceiveMessage
   │  Bind → ReceiveMessageRequest (fail → 400 error partial)
   ├─► ClassificationService.Classify
-  │     ├─► jev client ──► POST api.typesafe.ai/v1/systemone (classification.json) ──► choice + score answers
+  │     ├─► jev client ──► POST api.typesafe.ai/v1/systemone (classification.json) ──► two choice answers
   │     ├─► checked extraction → Category + Kind (fail → ErrUpstream → 502 error partial)
-  │     └─► resolveKind: round(Score) → Legend[index] → KindFinding.Value
   ├─► Dispatcher.Dispatch
   │     ├─► contact + add/both → ContactService.Add → outcome ActionContactAdd
   │     ├─► contact + require   → outcome ActionNone (get path TODO)
@@ -148,7 +147,7 @@ One TypeSafe API call is made per request (category + request kind in a single t
 | Failure | Status | Response |
 |---|---|---|
 | Request bind failure | 400 | `error` partial |
-| Jev/TypeSafe API or response failure (`ErrUpstream`), incl. kind resolution failure | 502 | `error` partial |
+| Jev/TypeSafe API or response failure (`ErrUpstream`) | 502 | `error` partial |
 | Any other service failure | 500 | `error` partial |
 | Success | 200 | `resultado` partial |
 
