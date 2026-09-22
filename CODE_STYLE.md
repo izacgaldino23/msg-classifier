@@ -6,39 +6,45 @@ Conventions observed in this codebase. Follow these when writing new code.
 
 | Item | Convention | Examples |
 |---|---|---|
-| Files & directories | `snake_case` | `msg_handler.go`, `request_kind.json`, `web/templates/partial/` |
-| Go packages | Single lowercase word | `handlers`, `config`, `jev`, `pkg` |
-| Exported types | PascalCase, domain prefix | `JevRequest`, `JevAnswerChoice`, `MsgHandler`, `ReceiveMessageRequest` |
-| Exported functions | PascalCase, `New*` constructors | `NewMsgHandler()`, `NewWebHandler()`, `MakeJevRequest()`, `GetEnv()` |
-| Unexported functions | camelCase | `fromJevResponse()`, `checkMessageCategory()`, `validateJevRequest()` |
-| Constants | Exported PascalCase, grouped in `const` blocks | `ChoiceQuestionType`, `ScoreQuestionType`, `SourcePath` |
-| Variables | Short, lowercase, idiomatic Go | `c` (gin.Context), `h` (handler), `router`, `tmpl`, `jevResponse` |
+| Files & directories | `snake_case` | `message_controller.go`, `request_kind.json`, `web/templates/partial/` |
+| Go packages | Single lowercase word | `controllers`, `services`, `models`, `views`, `config`, `jev` |
+| Exported types | PascalCase, domain prefix | `JevRequest`, `JevAnswerChoice`, `MessageController`, `ClassificationService`, `ReceiveMessageRequest` |
+| Exported functions | PascalCase, `New*` constructors | `NewMessageController()`, `NewClassificationService()`, `NewClient()`, `GetEnv()` |
+| Unexported functions | camelCase | `answerAsChoice()`, `answerAsScore()`, `isHxRequest()`, `validateJevRequest()` |
+| Constants | Exported PascalCase, grouped in `const` blocks | `ChoiceQuestionType`, `ScoreQuestionType`, `BaseTemplate`, `SourcePath` |
+| Variables | Short, lowercase, idiomatic Go | `c` (gin.Context), `ctrl` (controller), `router`, `tmpl`, `env` |
 | Struct fields | PascalCase with JSON tags | `UserID string \`json:"user_id" form:"user_id"\`` |
 | JSON / form tags | `snake_case` | `json:"message"`, `form:"user_id"`, `json:"criteria"` |
 | HTTP routes | lowercase | `/`, `/api/message` |
-| Template names | lowercase, `:`-namespaced blocks | `base`, `page:title`, `page:content`, `resultado` |
+| Template names | lowercase, `:`-namespaced blocks | `base`, `page:title`, `page:content`, `resultado`, `error` |
 | Env variables | `SCREAMING_SNAKE_CASE` | `TYPESAFE_API_URL`, `TYPESAFE_MODEL`, `TS_API_KEY` |
 | Error strings | lowercase, wrapped with `%w` | `"failed to decode question %q in %q: %w"` |
 
 ## File Organization
 
-- **`cmd/`** — executable entry points only (`cmd/api/main.go`). Thin bootstrap: router, middleware, route registration.
-- **`internal/`** — private application code: `config/` (env singleton), `handlers/` (HTTP handlers).
-- **`pkg/`** — reusable packages: `pkg/request.go` (response helper), `pkg/jev/` (API client + `requests/` JSON templates).
+- **`cmd/`** — executable entry points only (`cmd/api/main.go`). Composition root: dependency wiring + route registration.
+- **`internal/`** — private application code, layered MVC:
+  - `config/` — env singleton (single godotenv load site)
+  - `controllers/` — HTTP concerns only (bind → service → render → status)
+  - `models/` — DTOs and domain structs
+  - `services/` — business rules and orchestration
+  - `views/` — template name constants + render helpers
+- **`pkg/`** — reusable packages: `pkg/request.go` (response helper), `pkg/jev/` (API client + embedded `requests/` JSON templates).
 - **`web/templates/`** — HTML templates split into `layouts/`, `pages/`, `partial/`.
-- Handlers are structs with `New*` constructors; methods take `c *gin.Context`.
-- Request/response DTOs are grouped in a `type (...)` block at the top of the handler file.
+- Controllers and services are structs with `New*` constructors; controller methods take `c *gin.Context`.
+- DTOs live in `internal/models`, not in controller files.
 
 ## Import Style
 
-- Standard library first, then third-party, then internal module imports, separated by blank lines:
+- Standard library first, then internal module imports, then third-party, separated by blank lines:
 
 ```go
 import (
+	"errors"
 	"fmt"
-	"msg-classifier/pkg"
+
+	"msg-classifier/internal/models"
 	"msg-classifier/pkg/jev"
-	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
@@ -48,60 +54,79 @@ import (
 
 ## Code Patterns
 
-### Handlers
+### Controllers
 ```go
-type MsgHandler struct{}
-
-func NewMsgHandler() *MsgHandler {
-	return &MsgHandler{}
+type MessageController struct {
+	classifier *services.ClassificationService
 }
 
-func (h *MsgHandler) ReceiveMessage(c *gin.Context) {
-	// bind → validate → call helpers → respond
+func NewMessageController(classifier *services.ClassificationService) *MessageController {
+	return &MessageController{classifier: classifier}
+}
+
+func (ctrl *MessageController) ReceiveMessage(c *gin.Context) {
+	request := &models.ReceiveMessageRequest{}
+	if err := c.Bind(request); err != nil {
+		views.RenderError(c, http.StatusBadRequest, "invalid request")
+		return
+	}
+	// call service → map errors → render via views
 }
 ```
 
+### Services
+- Business logic lives in `internal/services`, never in controllers.
+- Dependencies are injected via constructor; define a small interface at the service boundary for testability:
+
+```go
+type jevClient interface {
+	MakeJevRequestFromFile(state jev.JevState, fileName string) (*jev.JevResponse, error)
+}
+```
+
+- Use sentinel errors (e.g., `ErrUpstream`) wrapped with `%w` so controllers can map statuses with `errors.Is`.
+
+### Views
+- Template names are constants in `internal/views/render.go` — never string literals at call sites.
+- Render through `views.RenderPage` / `views.RenderResult` / `views.RenderError`, not raw `c.HTML`.
+
 ### JSON responses
-Use `pkg.ReturnJson(c, status, body)` — wraps 2xx in `{"data": ...}`, everything else in `{"error": ...}`.
+Use `pkg.ReturnJson(c, status, body)` — wraps 2xx in `{"data": ...}`, everything else in `{"error": ...}`. Currently unused by htmx routes (they render HTML partials); kept for future JSON endpoints.
 
 ### Jev domain types
 All TypeSafe-related types are prefixed `Jev` and implement the `JevQuestionInterface` / `JevAnswer` interfaces with `GetType()` / `GetInstructions()` methods.
 
 ### Config access
-Never read `os.Getenv` directly outside `internal/config/env.go` — use `config.GetEnv().TypesafeModel` etc.
-
-### Template rendering
-- Full page: `c.HTML(http.StatusOK, "base", nil)`
-- HTMX partial: `c.HTML(http.StatusOK, "page:content", nil)` or `c.HTML(http.StatusOK, "resultado", data)`
+Never read `os.Getenv` directly outside `internal/config/env.go`. Config is read once at the composition root (`cmd/api/main.go`) and injected into constructors (`jev.NewClient(env.TypesafeApiUrl, env.TypesafeToken, env.TypesafeModel)`).
 
 ## Error Handling
 
-- Return errors up the stack; handlers convert them to HTTP responses via `pkg.ReturnJson`.
-- Wrap errors with context: `fmt.Errorf("failed to decode question %q in %q: %w", name, finalPath, err)`.
+- Return errors up the stack; controllers convert them to HTTP responses.
+- Wrap errors with context: `fmt.Errorf("failed to decode question %q in %q: %w", name, fileName, err)`.
 - Error strings should be **lowercase** (Go convention).
-- Known deviations to avoid in new code:
-  - Capitalized error strings in `pkg/jev/jev.go` (`"Failed to marshal..."`, `"Failed to create request..."`, etc.) — do not repeat this pattern.
-  - `panic(err)` on JSON marshal failure in `HttpResponseToJevResponse` (`jev.go:113`) — prefer returning the error.
-  - Unchecked type assertions (`responseMap["model"].(string)`, `Answers["classification"].(*jev.JevAnswerChoice)`) — these panic on malformed data.
+- Use sentinel errors for status mapping: `errors.Is(err, services.ErrUpstream)` → 502, anything else → 500, bind failure → 400.
+- **Never panic in the request path.** Check every type assertion (`value, ok := ...`); missing or mistyped data becomes a descriptive error.
+- All responses to htmx targets are HTML partials (result or error) — do not mix JSON errors into htmx routes.
 
 ## Logging
 
-- `log` package only (`log.Fatalf` in `init()`, `log.Printf` for API errors).
+- `log` package only (`log.Printf` for API errors).
 - No structured logging, no log levels, no logger abstraction.
 
 ## Testing
 
 - **No tests exist yet.** Go convention applies: `*_test.go` files alongside source, `func TestXxx(t *testing.T)`.
-- No test framework or mocking library is configured.
+- No test framework or mocking library is configured. The service boundary interfaces (`jevClient`) exist so services can be tested without HTTP.
 
 ## Do's and Don'ts
 
 **Do:**
 - Use `snake_case` for files, `PascalCase` for exports, `camelCase` for unexported functions.
 - Prefix TypeSafe domain types with `Jev`.
-- Use `New*` constructors for handlers.
-- Use `pkg.ReturnJson` for API responses.
-- Access config through `config.GetEnv()`.
+- Use `New*` constructors for controllers and services.
+- Keep controllers thin: bind → service → render. No business logic, no Jev types, no template literals in controllers.
+- Render through `internal/views` helpers.
+- Access config through `config.GetEnv()` at the composition root and inject it.
 - Wrap errors with `%w` and lowercase messages.
 - Add JSON tags (`snake_case`) to all struct fields that cross the wire.
 - Use `omitempty` on optional JSON fields.

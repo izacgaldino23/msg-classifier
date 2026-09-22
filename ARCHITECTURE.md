@@ -4,13 +4,20 @@
 
 A Go web application that classifies user messages into categories (contact, finance, schedule, notes, other) and determines whether a message is a request to add or require something. Classification is performed by the **TypeSafe System One API** (Jev model) via two AI requests per message. The frontend is a server-rendered htmx page (no JS build step).
 
+The codebase follows a **semantic MVC pattern** on an idiomatic Go layout:
+
+- **Model** — `internal/models` (data structures) + `internal/services` (business rules)
+- **View** — `web/templates` (HTML) + `internal/views` (render helpers)
+- **Controller** — `internal/controllers` (HTTP concerns only)
+- **Infrastructure** — `pkg/jev` (reusable TypeSafe API client)
+
 ## Tech Stack
 
 | Layer | Technology |
 |---|---|
 | Language | Go 1.25.4 |
 | Web framework | [gin-gonic/gin](https://github.com/gin-gonic/gin) v1.12.0 |
-| HTMX | [donseba/go-htmx](https://github.com/donseba/go-htmx) v1.13.1 + htmx.org 2.0.10 (CDN) |
+| HTMX | [donseba/go-htmx](https://github.com/donseba/go-htmx) v1.13.1 + htmx.org 2.0.10 (CDN) + response-targets extension |
 | Env loading | [joho/godotenv](https://github.com/joho/godotenv) v1.5.1 |
 | AI API | TypeSafe System One (`https://api.typesafe.ai/v1/systemone`, model `jev-latest`) |
 | Templating | Go `html/template` (ParseGlob) |
@@ -22,25 +29,33 @@ A Go web application that classifies user messages into categories (contact, fin
 msg-classifier/
 ├── cmd/
 │   └── api/
-│       └── main.go              # Sole entry point: server bootstrap + route registration
+│       └── main.go              # Composition root: config → jev client → service → controllers → routes
 ├── internal/                    # Private application code (not importable externally)
 │   ├── config/
-│   │   └── env.go               # Env singleton (TYPESAFE_API_URL, TYPESAFE_MODEL, TS_API_KEY)
-│   └── handlers/
-│       ├── msg_handler.go       # POST /api/message handler + Jev orchestration
-│       └── web_handler.go       # GET / handler (htmx-aware page render)
+│   │   └── env.go               # Env singleton (TYPESAFE_API_URL, TYPESAFE_MODEL, TS_API_KEY) — single godotenv load site
+│   ├── controllers/             # C — HTTP concerns only (bind → service → render → status)
+│   │   ├── web_controller.go    # GET / handler (delegates page/partial switch to views)
+│   │   └── message_controller.go# POST /api/message handler (bind → Classify → render)
+│   ├── models/                  # M — data structures
+│   │   └── message.go           # ReceiveMessageRequest/Response DTOs + Classification domain struct
+│   ├── services/                # M — business rules
+│   │   └── classification.go    # ClassificationService (two sequential Jev calls, checked answer mapping)
+│   └── views/                   # V — render helpers
+│       └── render.go            # Template name constants + RenderPage/RenderResult/RenderError
 ├── pkg/                         # Reusable packages
 │   ├── request.go               # ReturnJson helper ({"data": ...} / {"error": ...})
 │   └── jev/
-│       ├── jev.go               # TypeSafe Jev API client + request/response types
-│       └── requests/            # JSON prompt templates
+│       ├── jev.go               # TypeSafe Jev API client (config-injected, panic-free, embedded templates)
+│       └── requests/            # JSON prompt templates (embedded via go:embed)
 │           ├── classification.json
 │           └── request_kind.json
 ├── web/
 │   └── templates/
-│       ├── layouts/base.html    # "base" layout (sakura.css + htmx CDN)
+│       ├── layouts/base.html    # "base" layout (sakura.css + htmx CDN + response-targets)
 │       ├── pages/index.html     # "page:title" / "page:content" blocks (form)
-│       └── partial/result.html  # "resultado" partial (classification output)
+│       └── partial/
+│           ├── result.html      # "resultado" partial (classification output)
+│           └── error.html       # "error" partial (error card for htmx swap targets)
 ├── go.mod / go.sum              # Module "msg-classifier", Go 1.25.4
 ├── local.env                    # Env vars (not committed secrets)
 ├── .vscode/launch.json          # Go debug config for cmd/api/main.go
@@ -49,42 +64,53 @@ msg-classifier/
 
 ## Core Components
 
-### 1. Server Bootstrap — `cmd/api/main.go`
-- `init()` loads `local.env` via godotenv (`log.Fatalf` on failure).
-- `main()` builds a `gin.Default()` router, parses `web/templates/**/*.html` (`template.Must`), installs an htmx middleware that stores an `*htmx.Handler` in the Gin context under key `"htmx"`.
-- `AddHandlers(router)` registers routes:
-  - `GET /` → `webHandler.Home`
-  - `POST /api/message` → `messageHandler.ReceiveMessage`
+### 1. Composition Root — `cmd/api/main.go`
+- `main()` builds a `gin.Default()` router, parses `web/templates/**/*.html` (`template.Must`), installs an htmx middleware that stores an `*htmx.Handler` in the Gin context under key `"htmx"` (single htmx instance).
+- Wires dependencies: `config.GetEnv()` (single godotenv load site) → `jev.NewClient(url, token, model)` → `services.NewClassificationService(client)` → controllers.
+- Registers routes:
+  - `GET /` → `webController.Home`
+  - `POST /api/message` → `messageController.ReceiveMessage`
 - Server runs on `:8080`.
 
 ### 2. Config Singleton — `internal/config/env.go`
-- `GetEnv()` lazily loads `local.env` and reads `TYPESAFE_API_URL`, `TYPESAFE_MODEL`, `TS_API_KEY` into an `Env` struct. Cached in a package-level `var env *Env`.
+- `GetEnv()` lazily loads `local.env` and reads `TYPESAFE_API_URL`, `TYPESAFE_MODEL`, `TS_API_KEY` into an `Env` struct. Cached in a package-level `var env *Env`. This is the **only** place godotenv is loaded and `os.Getenv` is called.
 
-### 3. Web Handler — `internal/handlers/web_handler.go`
-- `Home`: reads the htmx handler from context. If `IsHxRequest()`, renders only the `page:content` block; otherwise renders the full `base` layout.
+### 3. Controllers — `internal/controllers/`
+- `WebController.Home`: delegates to `views.RenderPage` — the htmx page/partial switch lives in the view layer.
+- `MessageController.ReceiveMessage`: binds `ReceiveMessageRequest` (failure → 400 error partial) → calls `ClassificationService.Classify` → maps errors via `errors.Is(err, services.ErrUpstream)` (502) or 500 → renders result or error partial. No business logic, no Jev types, no template name literals.
 
-### 4. Message Handler — `internal/handlers/msg_handler.go`
-- `ReceiveMessage`: binds JSON/form body into `ReceiveMessageRequest{Message, UserID}` → calls `checkMessageCategory` → calls `checkRequestKind` → type-asserts the two answers → renders the `resultado` template.
-- `checkMessageCategory` / `checkRequestKind`: call `jev.MakeJevRequestFromFile` with state `{user, message}` and the respective JSON template.
-- `fromJevResponse`: maps Jev answers to `ReceiveMessageResponse{Category, Kind}` (confidence formatted as `%.2f` percent string).
-- TODO at `msg_handler.go:69-72`: DB save/get logic not yet implemented.
+### 4. Classification Service — `internal/services/classification.go`
+- `ClassificationService.Classify`: builds Jev state `{user, message}`, makes two **sequential** Jev calls (`classification.json` + `request_kind.json`), extracts answers with checked assertions (`answerAsChoice` / `answerAsScore`), returns a domain `Classification`.
+- `ErrUpstream` sentinel marks failures originating from the Jev/TypeSafe API or its responses; controllers map it to HTTP 502.
+- The `jevClient` interface (defined at the service boundary) makes the service unit-testable without HTTP.
+- TODO at `classification.go:52-55`: DB save/get logic not yet implemented.
 
-### 5. Jev API Client — `pkg/jev/jev.go`
-- Defines the Jev type system: `JevRequest`, `JevState`, `JevQuestion*` (choice/score/noul), `JevAnswer*` (choice/score/noul), all prefixed `Jev`.
-- `MakeJevRequest`: sets model from config, validates, POSTs JSON to `TYPESAFE_API_URL` with `Authorization: Bearer <TS_API_KEY>`, parses response.
-- `MakeJevRequestFromFile`: loads a JSON template from `pkg/jev/requests/`, injects state, delegates to `MakeJevRequest`.
-- `LoadJevRequestFromFile`: polymorphically decodes questions by `type` field.
-- `HttpResponseToJevResponse`: decodes API answers by `type` into typed structs.
+### 5. Models — `internal/models/message.go`
+- `ReceiveMessageRequest` / `ReceiveMessageResponse` DTOs.
+- `Classification` domain struct (`CategoryFinding` / `KindFinding` with raw numeric confidences).
+- `Classification.ToResponse()` formats confidences as `%.2f` percent strings for display (successor of the former `fromJevResponse`).
+
+### 6. Views — `internal/views/render.go`
+- Template name constants (`base`, `page:content`, `resultado`, `error`) — no string literals at call sites.
+- `RenderPage`: renders `page:content` for htmx requests, full `base` otherwise; falls back to the full page on missing/mistyped htmx context (no panic).
+- `RenderResult` / `RenderError`: render the result or error partial; errors carry proper HTTP status so htmx swaps the error card into `#resultado`.
+
+### 7. Jev API Client — `pkg/jev/jev.go`
+- `Client` struct with `NewClient(apiURL, token, model)` — all configuration injected, no `internal/config` import (genuinely reusable).
+- `MakeJevRequest`: sets model, validates, POSTs JSON with `Authorization: Bearer <token>`, parses response. 30s HTTP timeout; response body closed on all paths.
+- `MakeJevRequestFromFile` / `LoadJevRequestFromFile`: load prompt templates from the embedded `requests/*.json` (via `go:embed` — no CWD-relative path dependency), inject state, delegate.
+- `HttpResponseToJevResponse`: decodes answers by `type` into typed structs; **never panics** — every assertion is checked, unknown answer types return an explicit error.
 - `validateJevRequest`: validates state, model, questions, and per-type criteria/true-false fields.
 
-### 6. Jev Request Templates — `pkg/jev/requests/*.json`
+### 8. Jev Request Templates — `pkg/jev/requests/*.json`
 - `classification.json`: one `choice` question `"classification"` with 5 criteria (contact, finance, schedule, notes, other).
 - `request_kind.json`: one `score` question `"adding_or_requiring"` with criteria `["add", "require", "both"]`.
 
-### 7. HTML Templates — `web/templates/`
-- `base.html`: `base` layout, loads sakura.css + htmx 2.0.10 from CDNs.
+### 9. HTML Templates — `web/templates/`
+- `base.html`: `base` layout, loads sakura.css + htmx 2.0.10 + response-targets extension from CDNs; `hx-ext="response-targets"` + `hx-target-error="#resultado"` on `<body>` route 4xx/5xx responses into the result container.
 - `index.html`: form posting via `hx-post="/api/message"` targeting `#resultado` with `hx-swap="innerHTML"`.
 - `result.html`: `resultado` partial rendering category/confidence/score/legend.
+- `error.html`: `error` partial rendering an error card (used for 400/502/500 responses).
 
 ## Data Flow
 
@@ -92,17 +118,28 @@ msg-classifier/
 Browser (htmx form)
   │  POST /api/message  (message, user_id)
   ▼
-gin router ──► MsgHandler.ReceiveMessage
-  │  Bind → ReceiveMessageRequest
-  ├─► checkMessageCategory ──► MakeJevRequestFromFile(classification.json)
-  │      └─► POST api.typesafe.ai/v1/systemone ──► JevResponse (choice answer)
-  ├─► checkRequestKind ──► MakeJevRequestFromFile(request_kind.json)
-  │      └─► POST api.typesafe.ai/v1/systemone ──► JevResponse (score answer)
-  ├─► fromJevResponse → ReceiveMessageResponse{Category, Kind}
-  └─► c.HTML(200, "resultado", ...) ──► htmx swaps #resultado innerHTML
+gin router ──► MessageController.ReceiveMessage
+  │  Bind → ReceiveMessageRequest (fail → 400 error partial)
+  ├─► ClassificationService.Classify
+  │     ├─► jev client ──► POST api.typesafe.ai/v1/systemone (classification.json) ──► choice answer
+  │     ├─► jev client ──► POST api.typesafe.ai/v1/systemone (request_kind.json) ──► score answer
+  │     └─► checked extraction → Classification (fail → ErrUpstream → 502 error partial)
+  ├─► Classification.ToResponse() → ReceiveMessageResponse
+  └─► views.RenderResult ──► c.HTML(200, "resultado", ...) ──► htmx swaps #resultado innerHTML
 ```
 
 Two sequential TypeSafe API calls are made per request (category + request kind). The server is **stateless** — no database is used yet (DB save/get is a TODO).
+
+## Error Handling
+
+| Failure | Status | Response |
+|---|---|---|
+| Request bind failure | 400 | `error` partial |
+| Jev/TypeSafe API or response failure (`ErrUpstream`) | 502 | `error` partial |
+| Any other service failure | 500 | `error` partial |
+| Success | 200 | `resultado` partial |
+
+All responses to htmx targets are HTML partials — no JSON on this route. The response-targets extension makes htmx swap 4xx/5xx responses into `#resultado`. No panics exist in the request path.
 
 ## External Integrations
 
@@ -110,15 +147,16 @@ Two sequential TypeSafe API calls are made per request (category + request kind)
 |---|---|---|
 | TypeSafe System One API | Message classification (Jev model) | `TYPESAFE_API_URL`, `TYPESAFE_MODEL`, `TS_API_KEY` |
 | htmx.org 2.0.10 (CDN) | Client-side partial page updates | — |
+| htmx-ext-response-targets (CDN) | Swap 4xx/5xx responses into `#resultado` | — |
 | sakura.css (CDN) | Styling | — |
 
 ## Configuration
 
 | Variable | Source | Used by |
 |---|---|---|
-| `TYPESAFE_API_URL` | `local.env` | `pkg/jev/jev.go` (POST target) |
-| `TYPESAFE_MODEL` | `local.env` | `pkg/jev/jev.go` (model field) |
-| `TS_API_KEY` | environment (not in `local.env`) | `pkg/jev/jev.go` (Bearer token) |
+| `TYPESAFE_API_URL` | `local.env` | `cmd/api/main.go` → `jev.NewClient` (POST target) |
+| `TYPESAFE_MODEL` | `local.env` | `cmd/api/main.go` → `jev.NewClient` (model field) |
+| `TS_API_KEY` | environment (not in `local.env`) | `cmd/api/main.go` → `jev.NewClient` (Bearer token) |
 
 > Note: `TS_API_KEY` is read by `internal/config/env.go` but not defined in `local.env` — it must be set in the environment or the Authorization header will be `Bearer ` (empty).
 
@@ -137,4 +175,4 @@ go build ./cmd/api
 
 - No Dockerfile, Makefile, or CI pipeline exists yet.
 - No tests exist yet (no `_test.go` files).
-- `.gitignore` only ignores `**/*_bin.exe`.
+- `.gitignore` ignores `**/*_bin.exe` and `thoughts/`.
