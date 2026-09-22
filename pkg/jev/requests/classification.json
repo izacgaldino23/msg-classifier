@@ -16,8 +16,8 @@
 			"type": "choice",
 			"instructions": "Does the user want to store new information or retrieve existing information?",
 			"criteria": {
-				"add":    "the user provides data to store (name, phone, email, address), even without verbs like save or add — providing raw data itself implies storing it",
-				"require": "the user asks for existing information, such as someone's phone number, a balance, or a saved note",
+				"add":    "the user wants to store new information: the message contains the actual data (a phone number, email, or address, amount of money, or a note for example), even without verbs like save or add",
+				"require": "the user wants to retrieve existing information: the message asks for or mentions data whose value is not in the message, such as someone's number, a balance, or a saved note",
 				"both":   "the message both provides new data to store and asks for existing information"
 			}
 		}
