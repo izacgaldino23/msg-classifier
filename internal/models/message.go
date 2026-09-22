@@ -37,9 +37,12 @@ type KindFinding struct {
 type Action string
 
 const (
-	ActionNone          Action = "none"
-	ActionContactAdd    Action = "contact_add"
-	ActionContactNoData Action = "contact_no_data"
+	ActionNone             Action = "none"
+	ActionContactAdd       Action = "contact_add"
+	ActionContactNoData    Action = "contact_no_data"
+	ActionContactFound     Action = "contact_found"
+	ActionContactNotFound  Action = "contact_not_found"
+	ActionContactDuplicate Action = "contact_duplicate"
 )
 
 // UseCaseOutcome carries the classification, the dispatched action, and any use-case result.
@@ -48,6 +51,7 @@ type UseCaseOutcome struct {
 	Action         Action
 	Contact        *Contact
 	Segments       []SegmentScore
+	SearchTerm     string
 }
 
 // ToResponse formats confidences as percent strings for display.
@@ -68,6 +72,7 @@ func (cl *Classification) ToResponse() *ReceiveMessageResponse {
 type Contact struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
 	Name      string    `json:"name"`
+	NameNorm  string    `gorm:"column:name_norm" json:"name_norm"`
 	Phone     *string   `json:"phone"`
 	Email     *string   `json:"email"`
 	CreatedAt time.Time `json:"created_at"`

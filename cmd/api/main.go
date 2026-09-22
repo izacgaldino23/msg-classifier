@@ -49,6 +49,9 @@ func main() {
 	classifier := services.NewClassificationService(jevClient)
 	extractor := services.NewContactExtractor(jevClient)
 	contactService := services.NewContactService(extractor, db)
+	if err := contactService.BackfillNameNorm(); err != nil {
+		log.Fatalf("failed to backfill name_norm: %v", err)
+	}
 	dispatcher := services.NewDispatcher(map[string]services.CategoryHandler{
 		"contact": contactService,
 	})

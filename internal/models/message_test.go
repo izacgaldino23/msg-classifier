@@ -59,3 +59,35 @@ func TestUseCaseOutcomeCarriesSegments(t *testing.T) {
 		t.Errorf("outcome.Segments = %v, want the segment trace", outcome.Segments)
 	}
 }
+
+func TestContactNameNormField(t *testing.T) {
+	f, ok := reflect.TypeOf(Contact{}).FieldByName("NameNorm")
+	if !ok {
+		t.Fatal("field NameNorm missing")
+	}
+	if f.Type.Kind() != reflect.String {
+		t.Errorf("field NameNorm type = %v, want string", f.Type.Kind())
+	}
+	if f.Tag.Get("json") != "name_norm" {
+		t.Errorf("NameNorm json tag = %q, want %q", f.Tag.Get("json"), "name_norm")
+	}
+}
+
+func TestContactSearchActionConstants(t *testing.T) {
+	if ActionContactFound != "contact_found" {
+		t.Errorf("ActionContactFound = %q, want %q", ActionContactFound, "contact_found")
+	}
+	if ActionContactNotFound != "contact_not_found" {
+		t.Errorf("ActionContactNotFound = %q, want %q", ActionContactNotFound, "contact_not_found")
+	}
+	if ActionContactDuplicate != "contact_duplicate" {
+		t.Errorf("ActionContactDuplicate = %q, want %q", ActionContactDuplicate, "contact_duplicate")
+	}
+}
+
+func TestUseCaseOutcomeCarriesSearchTerm(t *testing.T) {
+	outcome := &UseCaseOutcome{Action: ActionContactNotFound, SearchTerm: "fulano tal"}
+	if outcome.SearchTerm != "fulano tal" {
+		t.Errorf("outcome.SearchTerm = %q, want %q", outcome.SearchTerm, "fulano tal")
+	}
+}

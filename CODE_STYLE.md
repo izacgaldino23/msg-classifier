@@ -90,7 +90,7 @@ type jevClient interface {
 - Category-specific use cases implement the `CategoryHandler` interface: `Handle(request, classification) (*models.UseCaseOutcome, error)`.
 - A `Dispatcher` holds a `map[string]CategoryHandler` keyed by `Category.Choice`; misses fall back to an `ActionNone` outcome.
 - Adding a category = new service implementing `CategoryHandler` + one wiring line in `main.go` — no dispatcher edits.
-- Use cases return a `models.UseCaseOutcome` (`Classification` + `Action`); `ActionNone` / `ActionContactAdd` are the current actions. Future use-case results (extracted data, DB confirmation) flow back through the outcome without signature changes.
+- Use cases return a `models.UseCaseOutcome` (`Classification` + `Action`); actions: `ActionNone`, `ActionContactAdd`, `ActionContactNoData`, `ActionContactFound`, `ActionContactNotFound`, `ActionContactDuplicate`. Future use-case results (extracted data, DB confirmation) flow back through the outcome without signature changes.
 
 ### Views
 - Template names are constants in `internal/views/render.go` — never string literals at call sites.

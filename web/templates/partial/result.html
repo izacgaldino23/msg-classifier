@@ -1,24 +1,34 @@
 {{ define "resultado" }}
-<div id="resultado" class="card">
-    <p><strong>Categoria:</strong> {{ index .Category "choice" }}</p>
-    <p><strong>Confiança:</strong> {{ index .Category "confidence" }}%</p>
-    <hr />
-    <p><strong>Ação:</strong> {{ index .Kind "choice" }}</p>
-    <p><strong>Confiança:</strong> {{ index .Kind "confidence" }}%</p>
-    {{ if eq .Action "contact_add" }}
-        <hr />
-        <p><strong>Contato salvo · ID {{ .Contact.ID }}</strong></p>
-        {{ if .Contact.Name }}<p><strong>Nome:</strong> {{ .Contact.Name }}</p>{{ end }}
-        {{ if .Contact.Phone }}<p><strong>Telefone:</strong> {{ .Contact.Phone }}</p>{{ end }}
-        {{ if .Contact.Email }}<p><strong>Email:</strong> {{ .Contact.Email }}</p>{{ end }}
-        {{ if .Segments }}
-            <p><strong>Extração:</strong>
-            {{ range $i, $seg := .Segments }}{{ if $i }} · {{ end }}{{ $seg.Text }} {{ printf "%.2f" $seg.Score }}{{ if $seg.Included }} ✓{{ else }} ✗{{ end }}{{ end }}
-            </p>
-        {{ end }}
-    {{ else if eq .Action "contact_no_data" }}
-        <hr />
-        <p><strong>Nenhum dado de contato encontrado na mensagem.</strong></p>
-    {{ end }}
-</div>
+<article id="resultado">
+	<header>
+		<p><strong>Categoria:</strong> {{ index .Category "choice" }} · <strong>Confiança:</strong> {{ index .Category "confidence" }}%</p>
+		<p><strong>Ação:</strong> {{ index .Kind "choice" }} · <strong>Confiança:</strong> {{ index .Kind "confidence" }}%</p>
+	</header>
+	{{ if eq .Action "contact_add" }}
+		<p><strong>Contato salvo · ID {{ .Contact.ID }}</strong></p>
+		{{ if .Contact.Name }}<p><strong>Nome:</strong> {{ .Contact.Name }}</p>{{ end }}
+		{{ if .Contact.Phone }}<p><strong>Telefone:</strong> {{ .Contact.Phone }}</p>{{ end }}
+		{{ if .Contact.Email }}<p><strong>Email:</strong> {{ .Contact.Email }}</p>{{ end }}
+	{{ else if eq .Action "contact_found" }}
+		<p><strong>Contato encontrado</strong></p>
+		{{ if .Contact.Name }}<p><strong>Nome:</strong> {{ .Contact.Name }}</p>{{ end }}
+		{{ if .Contact.Phone }}<p><strong>Telefone:</strong> {{ .Contact.Phone }}</p>{{ end }}
+		{{ if .Contact.Email }}<p><strong>Email:</strong> {{ .Contact.Email }}</p>{{ end }}
+	{{ else if eq .Action "contact_not_found" }}
+		<p><strong>Nenhum contato encontrado para '{{ .SearchTerm }}'</strong></p>
+	{{ else if eq .Action "contact_duplicate" }}
+		<p><strong>Contato já existe: {{ .Contact.Name }}</strong></p>
+		{{ if .Contact.Phone }}<p><strong>Telefone:</strong> {{ .Contact.Phone }}</p>{{ end }}
+		{{ if .Contact.Email }}<p><strong>Email:</strong> {{ .Contact.Email }}</p>{{ end }}
+	{{ else if eq .Action "contact_no_data" }}
+		<p><strong>Nenhum dado de contato encontrado na mensagem.</strong></p>
+	{{ end }}
+	{{ if .Segments }}
+	<footer>
+		<small><strong>Extração:</strong>
+		{{ range $i, $seg := .Segments }}{{ if $i }} · {{ end }}{{ $seg.Text }} {{ printf "%.2f" $seg.Score }}{{ if $seg.Included }} ✓{{ else }} ✗{{ end }}{{ end }}
+		</small>
+	</footer>
+	{{ end }}
+</article>
 {{ end }}

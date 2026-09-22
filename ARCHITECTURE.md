@@ -2,7 +2,7 @@
 
 ## Overview
 
-A Go web application that classifies user messages into categories (contact, finance, schedule, notes, other) and determines whether a message is a request to add or require something. Classification is performed by the **TypeSafe System One API** (Jev model) via one AI request per message (a single template with two choice questions). After classification, a **Dispatcher** routes the message to a category-specific use case; the contact **add** path is the first implemented flow (regex extraction of phone/email, Jev Noul name extraction, and SQLite persistence via Gorm). The frontend is a server-rendered htmx page (no JS build step).
+A Go web application that classifies user messages into categories (contact, finance, schedule, notes, other) and determines whether a message is a request to add or require something. Classification is performed by the **TypeSafe System One API** (Jev model) via one AI request per message (a single template with two choice questions). After classification, a **Dispatcher** routes the message to a category-specific use case; the contact flow implements both the **add** path (regex extraction of phone/email, Jev Noul name extraction, duplicate detection on save, and SQLite persistence via Gorm) and the **require** path (search by phone/email/name). The frontend is a server-rendered htmx page styled with Pico.css (no JS build step).
 
 The codebase follows a **semantic MVC pattern** on an idiomatic Go layout:
 
@@ -21,7 +21,7 @@ The codebase follows a **semantic MVC pattern** on an idiomatic Go layout:
 | Env loading | [joho/godotenv](https://github.com/joho/godotenv) v1.5.1 |
 | AI API | TypeSafe System One (`https://api.typesafe.ai/v1/systemone`, model `jev-latest`) |
 | Templating | Go `html/template` (ParseGlob) |
-| CSS | sakura.css (CDN) |
+| CSS | Pico.css v2 (CDN, dark theme) |
 | Database | SQLite via [glebarez/sqlite](https://github.com/glebarez/sqlite) (pure-Go, zero CGO) |
 | ORM | [gorm.io/gorm](https://gorm.io) |
 
@@ -43,7 +43,9 @@ msg-classifier/
 │   ├── services/                # M — business rules
 │   │   ├── classification.go    # ClassificationService (single Jev call, checked answer mapping)
 │   │   ├── dispatcher.go        # Dispatcher (category → handler registry) + CategoryHandler interface
-│   │   ├── contact.go           # ContactService (extract → persist via Gorm; get path TODO)
+│   │   ├── contact.go           # ContactService (add + duplicate check + NameNorm backfill; require routing)
+│   │   ├── contact_get.go       # ContactService.Get (require flow: phone → email → name search)
+│   │   ├── normalize.go         # normalizeName (lowercase + NFD diacritics strip + whitespace collapse)
 │   │   ├── extraction.go        # ContactExtractor (regex phone/email + Jev Noul name fan-out)
 │   └── views/                   # V — render helpers
 │       └── render.go            # Template name constants + RenderPage/RenderResult/RenderError
@@ -92,8 +94,8 @@ msg-classifier/
 - `CategoryHandler` interface: `Handle(request, classification) (*models.UseCaseOutcome, error)` — the seam for category-specific use cases.
 - `Dispatcher` holds a `map[string]CategoryHandler` keyed by `Category.Choice`; `Dispatch` looks up the handler, falling back to an `ActionNone` outcome on a miss. Adding a category = new service implementing `CategoryHandler` + one wiring line in `main.go`.
 
-### 6. Contact Service — `internal/services/contact.go`
-- `ContactService` implements `CategoryHandler` for the `contact` category. Constructor takes a `*ContactExtractor` and a `*gorm.DB`. Kind `add`/`both` → `Add`: extract phone/email → neither found → `ActionContactNoData` outcome; else extract name → Gorm insert → `ActionContactAdd` outcome carrying the saved contact and the segment trace (`outcome.Segments`). Kind `require` → `ActionNone` outcome (get path TODO).
+### 6. Contact Service — `internal/services/contact.go` + `contact_get.go`
+- `ContactService` implements `CategoryHandler` for the `contact` category. Constructor takes a `*ContactExtractor` and a `*gorm.DB`. `Handle` routes `require` → `Get`, everything else → `Add`. `Add` extracts phone/email → neither found → `ActionContactNoData` outcome; a duplicate check (phone, then email) runs **before** name extraction — a match returns `ActionContactDuplicate` + the existing contact (no Jev call); otherwise name extraction runs and Gorm inserts the contact (populating `NameNorm`) → `ActionContactAdd` outcome carrying the saved contact and the segment trace (`outcome.Segments`). `Get` (require flow) searches with phone → email → name priority; phone/email searches skip Jev entirely; name search uses `LIKE %term%` on `name_norm`; `SearchTerm` is set on the outcome and not-found is an outcome, not an error. `BackfillNameNorm()` recomputes `NameNorm` for pre-migration rows at startup.
 
 ### 6b. Contact Extractor — `internal/services/extraction.go`
 - `ContactExtractor` extracts phone (BR regex, normalized to 10/11 digits) and email (first match + span) deterministically, and the name via one dynamic Jev request with a Noul question per whitespace segment (`segment_0..N`). `ExtractName` returns a `NameResult` — the joined name plus a per-segment trace (`SegmentScore`: text, noul score, `Included` = score > 0.5, the single threshold site the join and the UI both derive from). Depends on a minimal `jevRequester` interface (`MakeJevRequest`) so tests mock the Jev call.
@@ -101,8 +103,8 @@ msg-classifier/
 ### 7. Models — `internal/models/message.go`
 - `ReceiveMessageRequest` / `ReceiveMessageResponse` DTOs.
 - `Classification` domain struct (`CategoryFinding` / `KindFinding` with raw numeric confidences; `KindFinding.Choice` carries the kind: `"add"` / `"require"` / `"both"`).
-- `UseCaseOutcome` (`Classification` + `Action`) with `ActionNone` / `ActionContactAdd` constants — the seam where future use-case results (extracted contact, DB confirmation) flow back without signature changes.
-- `Contact` Gorm entity (ID, Name, Phone/Email nullable, timestamps); `SegmentScore` (text, noul score, included flag); `UseCaseOutcome` carries `Contact` and `Segments` (nil unless name extraction ran); actions are `ActionNone` / `ActionContactAdd` / `ActionContactNoData`.
+- `UseCaseOutcome` (`Classification` + `Action` + `SearchTerm`) — the seam where use-case results (extracted contact, DB confirmation, search term) flow back without signature changes.
+- `Contact` Gorm entity (ID, Name, `NameNorm` column, Phone/Email nullable, timestamps); `SegmentScore` (text, noul score, included flag); `UseCaseOutcome` carries `Contact` and `Segments` (nil unless name extraction ran); actions are `ActionNone` / `ActionContactAdd` / `ActionContactNoData` / `ActionContactFound` / `ActionContactNotFound` / `ActionContactDuplicate`.
 - `Classification.ToResponse()` formats confidences as `%.2f` percent strings for display (successor of the former `fromJevResponse`).
 
 ### 8. Views — `internal/views/render.go`
@@ -121,10 +123,10 @@ msg-classifier/
 - `classification.json`: two `choice` questions — `"classification"` with 5 criteria (contact, finance, schedule, notes, other) and `"adding_or_requiring"` with descriptive criteria (add, require, both).
 
 ### 11. HTML Templates — `web/templates/`
-- `base.html`: `base` layout, loads sakura.css + htmx 2.0.10 + response-targets extension from CDNs; `hx-ext="response-targets"` + `hx-target-error="#resultado"` on `<body>` route 4xx/5xx responses into the result container.
+- `base.html`: `base` layout, loads Pico.css v2 (dark theme via `data-theme="dark"`) + htmx 2.0.10 + response-targets extension from CDNs; `hx-ext="response-targets"` + `hx-target-error="#resultado"` on `<body>` route 4xx/5xx responses into the result container.
 - `index.html`: form posting via `hx-post="/api/message"` targeting `#resultado` with `hx-swap="innerHTML"`.
-- `result.html`: `resultado` partial — classification block always visible, plus an action-specific block (saved contact with ID/fields and the per-segment extraction trace, or the no-data message).
-- `error.html`: `error` partial rendering an error card (used for 400/502/500 responses).
+- `result.html`: `resultado` partial — a Pico `<article>` with the classification block in `<header>`, plus branches for add/found/not-found/duplicate/no-data and the per-segment extraction trace in `<footer><small>`.
+- `error.html`: `error` partial rendering a Pico `<article>` error card (used for 400/502/500 responses).
 
 ## Data Flow
 
@@ -145,13 +147,19 @@ gin router ──► MessageController.ReceiveMessage
   │     │     ├─► name = segments with noul > 0.5, joined in order (trace kept)
   │     │     ├─► Gorm insert Contact (SQLite)
   │     │     └─► outcome ActionContactAdd + saved contact + segment trace
-  │     ├─► contact + require   → outcome ActionNone (get path TODO)
+  │     ├─► contact + require   → ContactService.Get
+  │     │     ├─► ExtractPhone → search phone = ? (no Jev)
+  │     │     ├─► else ExtractEmail → search LOWER(email) = LOWER(?) (no Jev)
+  │     │     ├─► else ExtractName → normalizeName → search name_norm LIKE %term%
+  │     │     ├─► found → outcome ActionContactFound + contact + SearchTerm
+  │     │     ├─► not found → outcome ActionContactNotFound + SearchTerm
+  │     │     └─► nothing extractable → outcome ActionContactNoData
   │     └─► other category      → outcome ActionNone
   ├─► outcome.Classification.ToResponse() → ReceiveMessageResponse
   └─► views.RenderResult ──► c.HTML(200, "resultado", ...) ──► htmx swaps #resultado innerHTML
 ```
 
-Up to two TypeSafe API calls are made per request: the classification call, and (for contact add with extractable data) the name fan-out call. Contacts are persisted to a local SQLite database (`DB_PATH`, default `contacts.db`); the get path is a TODO in the contact service. The result partial always shows the classification block and adds an action-specific block (saved contact with ID, fields, and the per-segment extraction trace, or the no-data message).
+Up to two TypeSafe API calls are made per request: the classification call, and (for contact add with extractable data, or a require-by-name search) the name fan-out call. Contacts are persisted to a local SQLite database (`DB_PATH`, default `contacts.db`); the require flow searches by phone/email/name and duplicate saves are detected before name extraction. The result partial always shows the classification block and adds an action-specific block (saved contact with ID, fields, the per-segment extraction trace, found/not-found/duplicate messages, or the no-data message).
 
 ## Error Handling
 
@@ -161,6 +169,8 @@ Up to two TypeSafe API calls are made per request: the classification call, and 
 | Jev/TypeSafe API or response failure (`ErrUpstream`) | 502 | `error` partial |
 | Any other service failure | 500 | `error` partial |
 | No phone/email extractable | 200 | `resultado` partial (no-data branch) |
+| Contact not found | 200 | `resultado` partial (not-found branch) |
+| Duplicate contact on save | 200 | `resultado` partial (duplicate branch) |
 | Database failure | 500 | `error` partial |
 | Success | 200 | `resultado` partial |
 
@@ -173,7 +183,7 @@ All responses to htmx targets are HTML partials — no JSON on this route. The r
 | TypeSafe System One API | Message classification (Jev model) | `TYPESAFE_API_URL`, `TYPESAFE_MODEL`, `TS_API_KEY` |
 | htmx.org 2.0.10 (CDN) | Client-side partial page updates | — |
 | htmx-ext-response-targets (CDN) | Swap 4xx/5xx responses into `#resultado` | — |
-| sakura.css (CDN) | Styling | — |
+| Pico.css v2 (CDN, dark theme) | Styling | — |
 | SQLite (glebarez/sqlite) | Contact persistence | DB_PATH |
 
 ## Configuration

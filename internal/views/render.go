@@ -24,11 +24,12 @@ type ErrorData struct {
 
 // ResultData is the view model for the "resultado" partial.
 type ResultData struct {
-	Category map[string]any
-	Kind     map[string]any
-	Action   models.Action
-	Contact  *models.Contact
-	Segments []models.SegmentScore
+	Category   map[string]any
+	Kind       map[string]any
+	Action     models.Action
+	Contact    *models.Contact
+	Segments   []models.SegmentScore
+	SearchTerm string
 }
 
 // RenderPage renders the full page, or only page:content for htmx requests.
@@ -42,7 +43,7 @@ func RenderPage(c *gin.Context) {
 
 // RenderResult renders the "resultado" partial (HTTP 200) from the use case outcome.
 func RenderResult(c *gin.Context, outcome *models.UseCaseOutcome) {
-	data := ResultData{Action: outcome.Action, Contact: outcome.Contact, Segments: outcome.Segments}
+	data := ResultData{Action: outcome.Action, Contact: outcome.Contact, Segments: outcome.Segments, SearchTerm: outcome.SearchTerm}
 	if outcome.Classification != nil {
 		response := outcome.Classification.ToResponse()
 		data.Category = response.Category

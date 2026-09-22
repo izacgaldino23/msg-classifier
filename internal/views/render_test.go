@@ -99,3 +99,77 @@ func TestRenderResultClassificationOnly(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderResultContactFound(t *testing.T) {
+	c, w := newTestContext()
+
+	outcome := &models.UseCaseOutcome{
+		Classification: &models.Classification{
+			Category: models.CategoryFinding{Choice: "contact", Confidence: 0.9},
+			Kind:     models.KindFinding{Choice: "require", Confidence: 0.8},
+		},
+		Action:     models.ActionContactFound,
+		Contact:    &models.Contact{Name: "Fulano Tal", Phone: strPtr("9292929290")},
+		SearchTerm: "9292929290",
+	}
+
+	RenderResult(c, outcome)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := w.Body.String()
+	for _, want := range []string{"contact", "require", "Contato encontrado", "Fulano Tal", "9292929290"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body missing %q: %s", want, body)
+		}
+	}
+}
+
+func TestRenderResultContactNotFound(t *testing.T) {
+	c, w := newTestContext()
+
+	outcome := &models.UseCaseOutcome{
+		Classification: &models.Classification{
+			Category: models.CategoryFinding{Choice: "contact", Confidence: 0.9},
+			Kind:     models.KindFinding{Choice: "require", Confidence: 0.8},
+		},
+		Action:     models.ActionContactNotFound,
+		SearchTerm: "fulano tal",
+	}
+
+	RenderResult(c, outcome)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "Nenhum contato encontrado para 'fulano tal'") {
+		t.Errorf("body missing not-found message with SearchTerm: %s", body)
+	}
+}
+
+func TestRenderResultContactDuplicate(t *testing.T) {
+	c, w := newTestContext()
+
+	outcome := &models.UseCaseOutcome{
+		Classification: &models.Classification{
+			Category: models.CategoryFinding{Choice: "contact", Confidence: 0.9},
+			Kind:     models.KindFinding{Choice: "add", Confidence: 0.8},
+		},
+		Action:  models.ActionContactDuplicate,
+		Contact: &models.Contact{Name: "Fulano", Phone: strPtr("9292929290")},
+	}
+
+	RenderResult(c, outcome)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := w.Body.String()
+	for _, want := range []string{"Contato já existe: Fulano", "9292929290"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body missing %q: %s", want, body)
+		}
+	}
+}
