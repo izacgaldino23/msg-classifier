@@ -37,11 +37,6 @@ func (s *ClassificationService) Classify(request *models.ReceiveMessageRequest) 
 		return nil, err
 	}
 
-	kindResp, err := s.makeRequest(state, "request_kind.json")
-	if err != nil {
-		return nil, err
-	}
-
 	// Verify if user want save or get data
 	// if user want save, save the data to database
 	// if user want get, get the data from database
@@ -52,7 +47,7 @@ func (s *ClassificationService) Classify(request *models.ReceiveMessageRequest) 
 		return nil, fmt.Errorf("%w: %w", ErrUpstream, err)
 	}
 
-	kind, err := answerAsScore(kindResp, "adding_or_requiring")
+	kind, err := answerAsScore(categoryResp, "adding_or_requiring")
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrUpstream, err)
 	}

@@ -11,6 +11,11 @@
 				"notes":    "notes, reminders, or to-do lists",
 				"other":    "none of other categories"
 			}
+		},
+		"adding_or_requiring": {
+			"type": "score",
+			"instructions": "Is this a request to add or require something?",
+			"criteria": ["add", "require", "both"]
 		}
 	}
 }
