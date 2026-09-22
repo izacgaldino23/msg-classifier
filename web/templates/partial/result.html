@@ -5,5 +5,20 @@
     <hr />
     <p><strong>Ação:</strong> {{ index .Kind "choice" }}</p>
     <p><strong>Confiança:</strong> {{ index .Kind "confidence" }}%</p>
+    {{ if eq .Action "contact_add" }}
+        <hr />
+        <p><strong>Contato salvo · ID {{ .Contact.ID }}</strong></p>
+        {{ if .Contact.Name }}<p><strong>Nome:</strong> {{ .Contact.Name }}</p>{{ end }}
+        {{ if .Contact.Phone }}<p><strong>Telefone:</strong> {{ .Contact.Phone }}</p>{{ end }}
+        {{ if .Contact.Email }}<p><strong>Email:</strong> {{ .Contact.Email }}</p>{{ end }}
+        {{ if .Segments }}
+            <p><strong>Extração:</strong>
+            {{ range $i, $seg := .Segments }}{{ if $i }} · {{ end }}{{ $seg.Text }} {{ printf "%.2f" $seg.Score }}{{ if $seg.Included }} ✓{{ else }} ✗{{ end }}{{ end }}
+            </p>
+        {{ end }}
+    {{ else if eq .Action "contact_no_data" }}
+        <hr />
+        <p><strong>Nenhum dado de contato encontrado na mensagem.</strong></p>
+    {{ end }}
 </div>
 {{ end }}

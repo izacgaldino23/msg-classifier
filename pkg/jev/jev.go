@@ -55,10 +55,14 @@ type (
 		Criteria []string `json:"criteria"`
 	}
 
+	JevNoulCriteria struct {
+		True  string `json:"true"`
+		False string `json:"false"`
+	}
+
 	JevQuestionNoul struct {
 		JevQuestion
-		True  string `json:"true,omitempty"`
-		False string `json:"false,omitempty"`
+		Criteria JevNoulCriteria `json:"criteria"`
 	}
 
 	JevAnswer interface {
@@ -72,7 +76,7 @@ type (
 
 	JevAnswerNoul struct {
 		Type JevQuestionType `json:"type"`
-		Noul string          `json:"noul,omitempty"`
+		Noul float64         `json:"noul,omitempty"`
 	}
 
 	JevAnswerChoice struct {
@@ -259,7 +263,7 @@ func validateJevRequest(request *JevRequest) error {
 				return fmt.Errorf("criteria are required for choice question %q", name)
 			}
 		case *JevQuestionNoul:
-			if q.True == "" || q.False == "" {
+			if q.Criteria.True == "" || q.Criteria.False == "" {
 				return fmt.Errorf("true and false are required for noul question %q", name)
 			}
 		case *JevQuestionScore:

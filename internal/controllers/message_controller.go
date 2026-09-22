@@ -42,7 +42,7 @@ func (ctrl *MessageController) ReceiveMessage(c *gin.Context) {
 		return
 	}
 
-	views.RenderResult(c, outcome.Classification)
+	views.RenderResult(c, outcome)
 }
 
 // renderServiceError maps a service error to the error partial.

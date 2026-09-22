@@ -22,6 +22,15 @@ type ErrorData struct {
 	Message string `json:"message"`
 }
 
+// ResultData is the view model for the "resultado" partial.
+type ResultData struct {
+	Category map[string]any
+	Kind     map[string]any
+	Action   models.Action
+	Contact  *models.Contact
+	Segments []models.SegmentScore
+}
+
 // RenderPage renders the full page, or only page:content for htmx requests.
 func RenderPage(c *gin.Context) {
 	if isHxRequest(c) {
@@ -31,9 +40,15 @@ func RenderPage(c *gin.Context) {
 	c.HTML(http.StatusOK, BaseTemplate, nil)
 }
 
-// RenderResult renders the "resultado" partial (HTTP 200).
-func RenderResult(c *gin.Context, classification *models.Classification) {
-	c.HTML(http.StatusOK, ResultTemplate, classification.ToResponse())
+// RenderResult renders the "resultado" partial (HTTP 200) from the use case outcome.
+func RenderResult(c *gin.Context, outcome *models.UseCaseOutcome) {
+	data := ResultData{Action: outcome.Action, Contact: outcome.Contact, Segments: outcome.Segments}
+	if outcome.Classification != nil {
+		response := outcome.Classification.ToResponse()
+		data.Category = response.Category
+		data.Kind = response.Kind
+	}
+	c.HTML(http.StatusOK, ResultTemplate, data)
 }
 
 // RenderError renders the "error" partial with the given HTTP status.

@@ -2,14 +2,18 @@ package main
 
 import (
 	"html/template"
+	"log"
 
 	"msg-classifier/internal/config"
 	"msg-classifier/internal/controllers"
+	"msg-classifier/internal/models"
 	"msg-classifier/internal/services"
 	"msg-classifier/pkg/jev"
 
 	"github.com/donseba/go-htmx"
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
+	"gorm.io/gorm"
 )
 
 const (
@@ -33,9 +37,18 @@ func main() {
 	// Composition root: config → jev client → services → dispatcher → controllers → routes.
 	env := config.GetEnv()
 	jevClient := jev.NewClient(env.TypesafeApiUrl, env.TypesafeToken, env.TypesafeModel)
-	classifier := services.NewClassificationService(jevClient)
 
-	contactService := services.NewContactService()
+	db, err := gorm.Open(sqlite.Open(env.DBPath), &gorm.Config{})
+	if err != nil {
+		log.Fatalf("failed to open database %q: %v", env.DBPath, err)
+	}
+	if err := db.AutoMigrate(&models.Contact{}); err != nil {
+		log.Fatalf("failed to migrate database: %v", err)
+	}
+
+	classifier := services.NewClassificationService(jevClient)
+	extractor := services.NewContactExtractor(jevClient)
+	contactService := services.NewContactService(extractor, db)
 	dispatcher := services.NewDispatcher(map[string]services.CategoryHandler{
 		"contact": contactService,
 	})

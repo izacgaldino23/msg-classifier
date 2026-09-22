@@ -2,7 +2,7 @@
 
 ## Overview
 
-A Go web application that classifies user messages into categories (contact, finance, schedule, notes, other) and determines whether a message is a request to add or require something. Classification is performed by the **TypeSafe System One API** (Jev model) via one AI request per message (a single template with two choice questions). After classification, a **Dispatcher** routes the message to a category-specific use case; the contact **add** path is the first implemented flow (extraction and persistence are future work inside the use case). The frontend is a server-rendered htmx page (no JS build step).
+A Go web application that classifies user messages into categories (contact, finance, schedule, notes, other) and determines whether a message is a request to add or require something. Classification is performed by the **TypeSafe System One API** (Jev model) via one AI request per message (a single template with two choice questions). After classification, a **Dispatcher** routes the message to a category-specific use case; the contact **add** path is the first implemented flow (regex extraction of phone/email, Jev Noul name extraction, and SQLite persistence via Gorm). The frontend is a server-rendered htmx page (no JS build step).
 
 The codebase follows a **semantic MVC pattern** on an idiomatic Go layout:
 
@@ -22,6 +22,8 @@ The codebase follows a **semantic MVC pattern** on an idiomatic Go layout:
 | AI API | TypeSafe System One (`https://api.typesafe.ai/v1/systemone`, model `jev-latest`) |
 | Templating | Go `html/template` (ParseGlob) |
 | CSS | sakura.css (CDN) |
+| Database | SQLite via [glebarez/sqlite](https://github.com/glebarez/sqlite) (pure-Go, zero CGO) |
+| ORM | [gorm.io/gorm](https://gorm.io) |
 
 ## Directory Structure
 
@@ -32,16 +34,17 @@ msg-classifier/
 │       └── main.go              # Composition root: config → jev client → services → dispatcher → controllers → routes
 ├── internal/                    # Private application code (not importable externally)
 │   ├── config/
-│   │   └── env.go               # Env singleton (TYPESAFE_API_URL, TYPESAFE_MODEL, TS_API_KEY) — single godotenv load site
+│   │   └── env.go               # Env singleton (TYPESAFE_API_URL, TYPESAFE_MODEL, TS_API_KEY, DB_PATH) — single godotenv load site
 │   ├── controllers/             # C — HTTP concerns only (bind → service → render → status)
 │   │   ├── web_controller.go    # GET / handler (delegates page/partial switch to views)
 │   │   └── message_controller.go# POST /api/message handler (bind → Classify → Dispatch → render)
 │   ├── models/                  # M — data structures
-│   │   └── message.go           # ReceiveMessageRequest/Response DTOs + Classification domain struct + UseCaseOutcome/Action
+│   │   └── message.go           # ReceiveMessageRequest/Response DTOs + Classification domain struct + UseCaseOutcome/Action + Contact entity + SegmentScore
 │   ├── services/                # M — business rules
 │   │   ├── classification.go    # ClassificationService (single Jev call, checked answer mapping)
 │   │   ├── dispatcher.go        # Dispatcher (category → handler registry) + CategoryHandler interface
-│   │   └── contact.go           # ContactService (contact add stub; get path TODO)
+│   │   ├── contact.go           # ContactService (extract → persist via Gorm; get path TODO)
+│   │   ├── extraction.go        # ContactExtractor (regex phone/email + Jev Noul name fan-out)
 │   └── views/                   # V — render helpers
 │       └── render.go            # Template name constants + RenderPage/RenderResult/RenderError
 ├── pkg/                         # Reusable packages
@@ -55,7 +58,7 @@ msg-classifier/
 │       ├── layouts/base.html    # "base" layout (sakura.css + htmx CDN + response-targets)
 │       ├── pages/index.html     # "page:title" / "page:content" blocks (form)
 │       └── partial/
-│           ├── result.html      # "resultado" partial (classification output)
+│           ├── result.html      # "resultado" partial (classification + action-specific process trace)
 │           └── error.html       # "error" partial (error card for htmx swap targets)
 ├── go.mod / go.sum              # Module "msg-classifier", Go 1.25.4
 ├── local.env                    # Env vars (not committed secrets)
@@ -74,7 +77,7 @@ msg-classifier/
 - Server runs on `:8080`.
 
 ### 2. Config Singleton — `internal/config/env.go`
-- `GetEnv()` lazily loads `local.env` and reads `TYPESAFE_API_URL`, `TYPESAFE_MODEL`, `TS_API_KEY` into an `Env` struct. Cached in a package-level `var env *Env`. This is the **only** place godotenv is loaded and `os.Getenv` is called.
+- `GetEnv()` lazily loads `local.env` and reads `TYPESAFE_API_URL`, `TYPESAFE_MODEL`, `TS_API_KEY`, and `DB_PATH` (default `contacts.db`) into an `Env` struct. Cached in a package-level `var env *Env`. This is the **only** place godotenv is loaded and `os.Getenv` is called.
 
 ### 3. Controllers — `internal/controllers/`
 - `WebController.Home`: delegates to `views.RenderPage` — the htmx page/partial switch lives in the view layer.
@@ -90,14 +93,16 @@ msg-classifier/
 - `Dispatcher` holds a `map[string]CategoryHandler` keyed by `Category.Choice`; `Dispatch` looks up the handler, falling back to an `ActionNone` outcome on a miss. Adding a category = new service implementing `CategoryHandler` + one wiring line in `main.go`.
 
 ### 6. Contact Service — `internal/services/contact.go`
-- `ContactService` implements `CategoryHandler` for the `contact` category.
-- Kind `add`/`both` → `Add` stub returning an `ActionContactAdd` outcome (extraction/DB TODO lives here).
-- Kind `require` → `ActionNone` outcome (get path TODO).
+- `ContactService` implements `CategoryHandler` for the `contact` category. Constructor takes a `*ContactExtractor` and a `*gorm.DB`. Kind `add`/`both` → `Add`: extract phone/email → neither found → `ActionContactNoData` outcome; else extract name → Gorm insert → `ActionContactAdd` outcome carrying the saved contact and the segment trace (`outcome.Segments`). Kind `require` → `ActionNone` outcome (get path TODO).
+
+### 6b. Contact Extractor — `internal/services/extraction.go`
+- `ContactExtractor` extracts phone (BR regex, normalized to 10/11 digits) and email (first match + span) deterministically, and the name via one dynamic Jev request with a Noul question per whitespace segment (`segment_0..N`). `ExtractName` returns a `NameResult` — the joined name plus a per-segment trace (`SegmentScore`: text, noul score, `Included` = score > 0.5, the single threshold site the join and the UI both derive from). Depends on a minimal `jevRequester` interface (`MakeJevRequest`) so tests mock the Jev call.
 
 ### 7. Models — `internal/models/message.go`
 - `ReceiveMessageRequest` / `ReceiveMessageResponse` DTOs.
 - `Classification` domain struct (`CategoryFinding` / `KindFinding` with raw numeric confidences; `KindFinding.Choice` carries the kind: `"add"` / `"require"` / `"both"`).
 - `UseCaseOutcome` (`Classification` + `Action`) with `ActionNone` / `ActionContactAdd` constants — the seam where future use-case results (extracted contact, DB confirmation) flow back without signature changes.
+- `Contact` Gorm entity (ID, Name, Phone/Email nullable, timestamps); `SegmentScore` (text, noul score, included flag); `UseCaseOutcome` carries `Contact` and `Segments` (nil unless name extraction ran); actions are `ActionNone` / `ActionContactAdd` / `ActionContactNoData`.
 - `Classification.ToResponse()` formats confidences as `%.2f` percent strings for display (successor of the former `fromJevResponse`).
 
 ### 8. Views — `internal/views/render.go`
@@ -118,7 +123,7 @@ msg-classifier/
 ### 11. HTML Templates — `web/templates/`
 - `base.html`: `base` layout, loads sakura.css + htmx 2.0.10 + response-targets extension from CDNs; `hx-ext="response-targets"` + `hx-target-error="#resultado"` on `<body>` route 4xx/5xx responses into the result container.
 - `index.html`: form posting via `hx-post="/api/message"` targeting `#resultado` with `hx-swap="innerHTML"`.
-- `result.html`: `resultado` partial rendering category/confidence/action.
+- `result.html`: `resultado` partial — classification block always visible, plus an action-specific block (saved contact with ID/fields and the per-segment extraction trace, or the no-data message).
 - `error.html`: `error` partial rendering an error card (used for 400/502/500 responses).
 
 ## Data Flow
@@ -133,14 +138,20 @@ gin router ──► MessageController.ReceiveMessage
   │     ├─► jev client ──► POST api.typesafe.ai/v1/systemone (classification.json) ──► two choice answers
   │     ├─► checked extraction → Category + Kind (fail → ErrUpstream → 502 error partial)
   ├─► Dispatcher.Dispatch
-  │     ├─► contact + add/both → ContactService.Add → outcome ActionContactAdd
+  │     ├─► contact + add/both → ContactService.Add
+  │     │     ├─► ExtractPhone / ExtractEmail (regex)
+  │     │     ├─► neither → outcome ActionContactNoData (200, friendly partial)
+  │     │     ├─► remainder → segments → Jev call #2 (dynamic Noul fan-out)
+  │     │     ├─► name = segments with noul > 0.5, joined in order (trace kept)
+  │     │     ├─► Gorm insert Contact (SQLite)
+  │     │     └─► outcome ActionContactAdd + saved contact + segment trace
   │     ├─► contact + require   → outcome ActionNone (get path TODO)
   │     └─► other category      → outcome ActionNone
   ├─► outcome.Classification.ToResponse() → ReceiveMessageResponse
   └─► views.RenderResult ──► c.HTML(200, "resultado", ...) ──► htmx swaps #resultado innerHTML
 ```
 
-One TypeSafe API call is made per request (category + request kind in a single template). The server is **stateless** — no database is used yet (DB save/get is a TODO in the contact service).
+Up to two TypeSafe API calls are made per request: the classification call, and (for contact add with extractable data) the name fan-out call. Contacts are persisted to a local SQLite database (`DB_PATH`, default `contacts.db`); the get path is a TODO in the contact service. The result partial always shows the classification block and adds an action-specific block (saved contact with ID, fields, and the per-segment extraction trace, or the no-data message).
 
 ## Error Handling
 
@@ -149,6 +160,8 @@ One TypeSafe API call is made per request (category + request kind in a single t
 | Request bind failure | 400 | `error` partial |
 | Jev/TypeSafe API or response failure (`ErrUpstream`) | 502 | `error` partial |
 | Any other service failure | 500 | `error` partial |
+| No phone/email extractable | 200 | `resultado` partial (no-data branch) |
+| Database failure | 500 | `error` partial |
 | Success | 200 | `resultado` partial |
 
 All responses to htmx targets are HTML partials — no JSON on this route. The response-targets extension makes htmx swap 4xx/5xx responses into `#resultado`. No panics exist in the request path.
@@ -161,6 +174,7 @@ All responses to htmx targets are HTML partials — no JSON on this route. The r
 | htmx.org 2.0.10 (CDN) | Client-side partial page updates | — |
 | htmx-ext-response-targets (CDN) | Swap 4xx/5xx responses into `#resultado` | — |
 | sakura.css (CDN) | Styling | — |
+| SQLite (glebarez/sqlite) | Contact persistence | DB_PATH |
 
 ## Configuration
 
@@ -169,6 +183,7 @@ All responses to htmx targets are HTML partials — no JSON on this route. The r
 | `TYPESAFE_API_URL` | `local.env` | `cmd/api/main.go` → `jev.NewClient` (POST target) |
 | `TYPESAFE_MODEL` | `local.env` | `cmd/api/main.go` → `jev.NewClient` (model field) |
 | `TS_API_KEY` | environment (not in `local.env`) | `cmd/api/main.go` → `jev.NewClient` (Bearer token) |
+| DB_PATH | local.env (default contacts.db) | cmd/api/main.go → gorm.Open |
 
 > Note: `TS_API_KEY` is read by `internal/config/env.go` but not defined in `local.env` — it must be set in the environment or the Authorization header will be `Bearer ` (empty).
 
@@ -186,5 +201,5 @@ go build ./cmd/api
 ```
 
 - No Dockerfile, Makefile, or CI pipeline exists yet.
-- No tests exist yet (no `_test.go` files).
+- Tests exist for `pkg/jev`, `internal/models`, `internal/config`, `internal/services`, and `internal/views` (run with `go test ./...`).
 - `.gitignore` ignores `**/*_bin.exe` and `thoughts/`.

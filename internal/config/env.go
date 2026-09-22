@@ -10,6 +10,7 @@ type Env struct {
 	TypesafeApiUrl string
 	TypesafeModel  string
 	TypesafeToken  string
+	DBPath         string
 }
 
 var env *Env
@@ -22,8 +23,16 @@ func GetEnv() *Env {
 			TypesafeApiUrl: os.Getenv("TYPESAFE_API_URL"),
 			TypesafeModel:  os.Getenv("TYPESAFE_MODEL"),
 			TypesafeToken:  os.Getenv("TS_API_KEY"),
+			DBPath:         envOr("DB_PATH", "contacts.db"),
 		}
 	}
 
 	return env
+}
+
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }
