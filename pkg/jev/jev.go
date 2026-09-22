@@ -2,13 +2,23 @@ package jev
 
 import (
 	"bytes"
+	"embed"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
-	"msg-classifier/internal/config"
 	"net/http"
-	"os"
+	"time"
 )
+
+// requests/*.json prompt templates are embedded so the package has no
+// CWD-relative path dependency.
+//
+//go:embed requests/*.json
+var requestTemplates embed.FS
+
+// httpTimeout bounds every Typesafe API call.
+const httpTimeout = 30 * time.Second
 
 const (
 	ChoiceQuestionType JevQuestionType = "choice"
@@ -83,108 +93,144 @@ type (
 	}
 )
 
-var client = &http.Client{}
+// Client calls the TypeSafe Jev API. All configuration is injected via
+// NewClient, so this package no longer imports internal/config and is
+// genuinely reusable.
+type Client struct {
+	apiURL string
+	token  string
+	model  string
+	http   *http.Client
+}
 
+// NewClient builds a Jev client with constructor-injected configuration.
+func NewClient(apiURL, token, model string) *Client {
+	return &Client{
+		apiURL: apiURL,
+		token:  token,
+		model:  model,
+		http:   &http.Client{Timeout: httpTimeout},
+	}
+}
+
+// HttpResponseToJevResponse decodes a Typesafe API body into a JevResponse.
+// It never panics: every type assertion is checked and every failure is
+// returned as a descriptive error, including unknown answer types.
 func HttpResponseToJevResponse(resp *http.Response) (*JevResponse, error) {
 	responseMap := make(map[string]any)
 
 	if err := json.NewDecoder(resp.Body).Decode(&responseMap); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to decode typesafe response body: %w", err)
 	}
 
-	jevResp := &JevResponse{Model: responseMap["model"].(string), Answers: make(map[string]JevAnswer)}
+	model, ok := responseMap["model"].(string)
+	if !ok {
+		return nil, fmt.Errorf("typesafe response field %q is missing or not a string", "model")
+	}
 
-	answersMap := responseMap["answers"].(map[string]any)
-	for key, value := range answersMap {
-		answer := value.(map[string]any)
-		jsonBytes, err := json.Marshal(answer)
-		if err != nil {
-			panic(err)
+	rawAnswers, ok := responseMap["answers"].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("typesafe response field %q is missing or not an object", "answers")
+	}
+
+	jevResp := &JevResponse{Model: model, Answers: make(map[string]JevAnswer, len(rawAnswers))}
+	for key, value := range rawAnswers {
+		answer, ok := value.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("answer %q is not a JSON object", key)
 		}
 
-		switch answer["type"].(string) {
-		case "choice":
+		answerType, ok := answer["type"].(string)
+		if !ok {
+			return nil, fmt.Errorf("answer %q is missing a string %q field", key, "type")
+		}
+
+		jsonBytes, err := json.Marshal(answer)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal answer %q: %w", key, err)
+		}
+
+		switch answerType {
+		case string(ChoiceQuestionType):
 			choice := &JevAnswerChoice{}
-			if err = json.Unmarshal(jsonBytes, choice); err != nil {
-				return nil, err
+			if err := json.Unmarshal(jsonBytes, choice); err != nil {
+				return nil, fmt.Errorf("failed to decode choice answer %q: %w", key, err)
 			}
 			jevResp.Answers[key] = choice
-		case "score":
+		case string(ScoreQuestionType):
 			score := &JevAnswerScore{}
-			if err = json.Unmarshal(jsonBytes, score); err != nil {
-				return nil, err
+			if err := json.Unmarshal(jsonBytes, score); err != nil {
+				return nil, fmt.Errorf("failed to decode score answer %q: %w", key, err)
 			}
 			jevResp.Answers[key] = score
-		case "noul":
+		case string(NoulQuestionType):
 			noul := &JevAnswerNoul{}
-			if err = json.Unmarshal(jsonBytes, noul); err != nil {
-				return nil, err
+			if err := json.Unmarshal(jsonBytes, noul); err != nil {
+				return nil, fmt.Errorf("failed to decode noul answer %q: %w", key, err)
 			}
 			jevResp.Answers[key] = noul
+		default:
+			return nil, fmt.Errorf("unsupported answer type %q for answer %q", answerType, key)
 		}
 	}
 
 	return jevResp, nil
 }
 
-func MakeJevRequest(jevRequest *JevRequest) (*JevResponse, error) {
-	jevRequest.Model = config.GetEnv().TypesafeModel
+// MakeJevRequest validates and POSTs a JevRequest to the Typesafe API.
+func (c *Client) MakeJevRequest(jevRequest *JevRequest) (*JevResponse, error) {
+	jevRequest.Model = c.model
 
-	err := validateJevRequest(jevRequest)
-	if err != nil {
+	if err := validateJevRequest(jevRequest); err != nil {
 		return nil, err
 	}
 
 	bodyData, err := json.Marshal(jevRequest)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to marshal JevRequest to JSON: %w", err)
+		return nil, fmt.Errorf("failed to marshal jev request to json: %w", err)
 	}
 
 	payload := bytes.NewBuffer(bodyData)
 
-	// Post to typesafe API
-	req, err := http.NewRequest("POST", config.GetEnv().TypesafeApiUrl, payload)
+	req, err := http.NewRequest(http.MethodPost, c.apiURL, payload)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to create request to Typesafe API %w", err)
+		return nil, fmt.Errorf("failed to create request to typesafe api: %w", err)
 	}
-	req.Header.Add("Authorization", "Bearer "+config.GetEnv().TypesafeToken)
+	req.Header.Add("Authorization", "Bearer "+c.token)
 	req.Header.Add("Content-Type", "application/json")
 
-	response, err := client.Do(req)
+	response, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to send request to Typesafe API %w", err)
+		return nil, fmt.Errorf("failed to send request to typesafe api: %w", err)
 	}
+	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
-		errorMsg := make([]byte, 256)
-
-		if response.Body != nil {
-			_, err = response.Body.Read(errorMsg)
-			if err != nil {
-				return nil, fmt.Errorf("Failed to read error message from Typesafe API: %w", err)
-			}
-		}
-		log.Printf("Typesafe error: %v", string(errorMsg))
-		return nil, fmt.Errorf("Typesafe API returned an error status: %v", response.Status)
+		// Best-effort read of the upstream error body for logging only.
+		body, _ := io.ReadAll(io.LimitReader(response.Body, 512))
+		log.Printf("Typesafe error: %v", string(body))
+		return nil, fmt.Errorf("typesafe api returned an error status: %v", response.Status)
 	}
 
 	jevResponse, err := HttpResponseToJevResponse(response)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to parse response from Typesafe API to JevResponse: %w", err)
+		return nil, fmt.Errorf("failed to parse response from typesafe api to jevresponse: %w", err)
 	}
 
 	return jevResponse, nil
 }
 
-func MakeJevRequestFromFile(state JevState, filePath string) (*JevResponse, error) {
-	request, err := LoadJevRequestFromFile(filePath)
+// MakeJevRequestFromFile loads an embedded prompt template, injects state,
+// and delegates to MakeJevRequest.
+func (c *Client) MakeJevRequestFromFile(state JevState, fileName string) (*JevResponse, error) {
+	request, err := LoadJevRequestFromFile(fileName)
 	if err != nil {
 		return nil, err
 	}
 
 	request.State = state
 
-	return MakeJevRequest(request)
+	return c.MakeJevRequest(request)
 }
 
 func validateJevRequest(request *JevRequest) error {
@@ -212,23 +258,23 @@ func validateJevRequest(request *JevRequest) error {
 		return fmt.Errorf("questions are required")
 	}
 
-	for i, question := range request.Questions {
+	for name, question := range request.Questions {
 		if question.GetType() == "" || question.GetInstructions() == "" {
-			return fmt.Errorf("instructions are required for question at index %v", i)
+			return fmt.Errorf("instructions are required for question %q", name)
 		}
 
 		switch q := question.(type) {
 		case *JevQuestionChoice:
 			if len(q.Criteria) == 0 {
-				return fmt.Errorf("criteria are required for choice question at index %v", i)
+				return fmt.Errorf("criteria are required for choice question %q", name)
 			}
 		case *JevQuestionNoul:
 			if q.True == "" || q.False == "" {
-				return fmt.Errorf("true and false are required for score question at index %v", i)
+				return fmt.Errorf("true and false are required for noul question %q", name)
 			}
 		case *JevQuestionScore:
 			if len(q.Criteria) == 0 {
-				return fmt.Errorf("criteria are required for choice question at index %v", i)
+				return fmt.Errorf("criteria are required for score question %q", name)
 			}
 		}
 	}
@@ -236,11 +282,12 @@ func validateJevRequest(request *JevRequest) error {
 	return nil
 }
 
-func LoadJevRequestFromFile(filePath string) (*JevRequest, error) {
-	finalPath := "pkg/jev/requests/" + filePath
-	data, err := os.ReadFile(finalPath)
+// LoadJevRequestFromFile reads and polymorphically decodes a prompt template
+// embedded from requests/*.json.
+func LoadJevRequestFromFile(fileName string) (*JevRequest, error) {
+	data, err := requestTemplates.ReadFile("requests/" + fileName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read JevRequest file %q: %w", finalPath, err)
+		return nil, fmt.Errorf("failed to read embedded jevrequest template %q: %w", fileName, err)
 	}
 
 	var rawRequest struct {
@@ -249,7 +296,7 @@ func LoadJevRequestFromFile(filePath string) (*JevRequest, error) {
 		Questions map[string]json.RawMessage `json:"questions"`
 	}
 	if err := json.Unmarshal(data, &rawRequest); err != nil {
-		return nil, fmt.Errorf("failed to decode JevRequest file %q: %w", finalPath, err)
+		return nil, fmt.Errorf("failed to decode jevrequest template %q: %w", fileName, err)
 	}
 
 	request := &JevRequest{
@@ -262,7 +309,7 @@ func LoadJevRequestFromFile(filePath string) (*JevRequest, error) {
 			Type JevQuestionType `json:"type"`
 		}
 		if err := json.Unmarshal(rawQuestion, &questionType); err != nil {
-			return nil, fmt.Errorf("failed to decode question %q in %q: %w", name, finalPath, err)
+			return nil, fmt.Errorf("failed to decode question %q in %q: %w", name, fileName, err)
 		}
 
 		var question JevQuestionInterface
@@ -274,11 +321,11 @@ func LoadJevRequestFromFile(filePath string) (*JevRequest, error) {
 		case NoulQuestionType:
 			question = &JevQuestionNoul{}
 		default:
-			return nil, fmt.Errorf("unsupported question type %q for question %q in %q", questionType.Type, name, finalPath)
+			return nil, fmt.Errorf("unsupported question type %q for question %q in %q", questionType.Type, name, fileName)
 		}
 
 		if err := json.Unmarshal(rawQuestion, question); err != nil {
-			return nil, fmt.Errorf("failed to decode question %q in %q: %w", name, finalPath, err)
+			return nil, fmt.Errorf("failed to decode question %q in %q: %w", name, fileName, err)
 		}
 		request.Questions[name] = question
 	}

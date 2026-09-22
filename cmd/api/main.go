@@ -2,24 +2,19 @@ package main
 
 import (
 	"html/template"
-	"log"
-	"msg-classifier/internal/handlers"
+
+	"msg-classifier/internal/config"
+	"msg-classifier/internal/controllers"
+	"msg-classifier/internal/services"
+	"msg-classifier/pkg/jev"
 
 	"github.com/donseba/go-htmx"
 	"github.com/gin-gonic/gin"
-	"github.com/joho/godotenv"
 )
 
 const (
 	SourcePath = "web/templates"
 )
-
-func init() {
-	err := godotenv.Load("local.env")
-	if err != nil {
-		log.Fatalf("Error loading .env file %v", err)
-	}
-}
 
 func main() {
 	router := gin.Default()
@@ -27,25 +22,28 @@ func main() {
 	tmpl := template.Must(template.ParseGlob(SourcePath + "/**/*.html"))
 	router.SetHTMLTemplate(tmpl)
 
+	// Single htmx instance: created once, used by the middleware. Controllers
+	// reach the per-request *htmx.Handler through the context (key "htmx").
 	h := htmx.New()
 
 	router.Use(func(c *gin.Context) {
-		ctx := h.NewHandler(c.Writer, c.Request)
-		c.Set("htmx", ctx)
+		c.Set("htmx", h.NewHandler(c.Writer, c.Request))
 		c.Next()
 	})
 
-	AddHandlers(router)
+	// Composition root wiring: config → jev client → service → controllers → routes.
+	// config.GetEnv() is the single godotenv load site (duplicate init removed).
+	env := config.GetEnv()
+	jevClient := jev.NewClient(env.TypesafeApiUrl, env.TypesafeToken, env.TypesafeModel)
+	classifier := services.NewClassificationService(jevClient)
 
-	_ = router.Run(":8080")
-}
+	webController := controllers.NewWebController()
+	messageController := controllers.NewMessageController(classifier)
 
-func AddHandlers(router *gin.Engine) {
-	messageHandler := handlers.NewMsgHandler()
-	webHandler := handlers.NewWebHandler(htmx.New())
-
-	router.GET("/", webHandler.Home)
+	router.GET("/", webController.Home)
 
 	api := router.Group("/api")
-	api.POST("/message", messageHandler.ReceiveMessage)
+	api.POST("/message", messageController.ReceiveMessage)
+
+	_ = router.Run(":8080")
 }
