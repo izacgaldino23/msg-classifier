@@ -8,31 +8,24 @@ import (
 	"msg-classifier/pkg/jev"
 )
 
-// ErrUpstream marks failures that originate from the Jev/TypeSafe API or its
-// responses. Controllers map it to HTTP 502; any other error maps to 500.
+// ErrUpstream marks Jev/TypeSafe API failures; controllers map it to HTTP 502.
 var ErrUpstream = errors.New("upstream classification failed")
 
-// jevClient is the service boundary for the Jev client. It is defined here
-// (not imported as a concrete type in method signatures) so the service can
-// be unit-tested later without HTTP.
+// jevClient is the service boundary, allowing unit tests without HTTP.
 type jevClient interface {
 	MakeJevRequestFromFile(state jev.JevState, fileName string) (*jev.JevResponse, error)
 }
 
-// ClassificationService orchestrates the two sequential Jev calls that
-// classify a single message.
+// ClassificationService orchestrates the two Jev calls per message.
 type ClassificationService struct {
 	jev jevClient
 }
 
-// NewClassificationService wires an injected Jev client into the service.
 func NewClassificationService(client jevClient) *ClassificationService {
 	return &ClassificationService{jev: client}
 }
 
-// Classify runs the category and request-kind classifications and maps the
-// answers into a domain Classification. It never panics: missing or
-// mistyped answers become descriptive errors.
+// Classify runs both Jev classifications and maps answers into a Classification.
 func (s *ClassificationService) Classify(request *models.ReceiveMessageRequest) (*models.Classification, error) {
 	state := jev.JevState(map[string]any{
 		"user":    request.UserID, // TODO: change this userId to user name
@@ -77,8 +70,6 @@ func (s *ClassificationService) Classify(request *models.ReceiveMessageRequest) 
 	}, nil
 }
 
-// makeRequest calls the Jev client with the given prompt template, wrapping
-// any failure in ErrUpstream.
 func (s *ClassificationService) makeRequest(state jev.JevState, template string) (*jev.JevResponse, error) {
 	resp, err := s.jev.MakeJevRequestFromFile(state, template)
 	if err != nil {
@@ -87,8 +78,7 @@ func (s *ClassificationService) makeRequest(state jev.JevState, template string)
 	return resp, nil
 }
 
-// answerAsChoice performs a checked extraction of a choice answer —
-// replaces the former unchecked assertion on Answers["classification"].
+// answerAsChoice extracts a choice answer with a checked assertion.
 func answerAsChoice(resp *jev.JevResponse, key string) (*jev.JevAnswerChoice, error) {
 	answer, ok := resp.Answers[key]
 	if !ok {
@@ -101,8 +91,7 @@ func answerAsChoice(resp *jev.JevResponse, key string) (*jev.JevAnswerChoice, er
 	return choice, nil
 }
 
-// answerAsScore performs a checked extraction of a score answer —
-// replaces the former unchecked assertion on Answers["adding_or_requiring"].
+// answerAsScore extracts a score answer with a checked assertion.
 func answerAsScore(resp *jev.JevResponse, key string) (*jev.JevAnswerScore, error) {
 	answer, ok := resp.Answers[key]
 	if !ok {

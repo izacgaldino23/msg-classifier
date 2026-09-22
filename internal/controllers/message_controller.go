@@ -11,14 +11,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// MessageController handles message classification requests. HTTP concerns
-// only: bind → service → render. No business logic, no Jev types, no
-// template name literals.
+// MessageController handles POST /api/message. HTTP concerns only.
 type MessageController struct {
 	classifier *services.ClassificationService
 }
 
-// NewMessageController wires the classification service into the controller.
 func NewMessageController(classifier *services.ClassificationService) *MessageController {
 	return &MessageController{classifier: classifier}
 }

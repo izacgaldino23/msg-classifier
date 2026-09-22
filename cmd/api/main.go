@@ -22,8 +22,7 @@ func main() {
 	tmpl := template.Must(template.ParseGlob(SourcePath + "/**/*.html"))
 	router.SetHTMLTemplate(tmpl)
 
-	// Single htmx instance: created once, used by the middleware. Controllers
-	// reach the per-request *htmx.Handler through the context (key "htmx").
+	// Single htmx instance; controllers read it from the context per request.
 	h := htmx.New()
 
 	router.Use(func(c *gin.Context) {
@@ -31,8 +30,7 @@ func main() {
 		c.Next()
 	})
 
-	// Composition root wiring: config → jev client → service → controllers → routes.
-	// config.GetEnv() is the single godotenv load site (duplicate init removed).
+	// Composition root: config → jev client → service → controllers → routes.
 	env := config.GetEnv()
 	jevClient := jev.NewClient(env.TypesafeApiUrl, env.TypesafeToken, env.TypesafeModel)
 	classifier := services.NewClassificationService(jevClient)

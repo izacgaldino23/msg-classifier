@@ -6,11 +6,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// WebController serves HTML page routes. HTTP concerns only — the
-// page/partial switch lives in the view layer.
+// WebController serves HTML page routes.
 type WebController struct{}
 
-// NewWebController returns a WebController.
 func NewWebController() *WebController {
 	return &WebController{}
 }

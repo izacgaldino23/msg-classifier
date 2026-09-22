@@ -8,37 +8,30 @@ type ReceiveMessageRequest struct {
 	UserID  string `json:"user_id" form:"user_id"`
 }
 
-// ReceiveMessageResponse is the view model rendered by the "resultado" partial.
-// Confidence values are pre-formatted as percent strings for display.
+// ReceiveMessageResponse is the view model for the "resultado" partial.
 type ReceiveMessageResponse struct {
 	Category map[string]any `json:"category"`
 	Kind     map[string]any `json:"kind"`
 }
 
-// Classification is the domain result produced by services.ClassificationService.
-// It carries raw numeric confidences (0..1); presentation formatting happens
-// in ToResponse.
+// Classification is the domain result with raw numeric confidences.
 type Classification struct {
 	Category CategoryFinding `json:"category"`
 	Kind     KindFinding     `json:"kind"`
 }
 
-// CategoryFinding is the category classification outcome (choice + confidence).
 type CategoryFinding struct {
 	Choice     string  `json:"choice"`
 	Confidence float64 `json:"confidence"`
 }
 
-// KindFinding is the request-kind outcome (score + confidence + legend).
 type KindFinding struct {
 	Score      float64           `json:"score"`
 	Confidence float64           `json:"confidence"`
 	Legend     map[string]string `json:"legend"`
 }
 
-// ToResponse maps a Classification into the template-ready response shape,
-// formatting confidence as a percent string (successor of the former
-// fromJevResponse helper).
+// ToResponse formats confidences as percent strings for display.
 func (cl *Classification) ToResponse() *ReceiveMessageResponse {
 	return &ReceiveMessageResponse{
 		Category: map[string]any{

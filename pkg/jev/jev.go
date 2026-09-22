@@ -11,13 +11,11 @@ import (
 	"time"
 )
 
-// requests/*.json prompt templates are embedded so the package has no
-// CWD-relative path dependency.
+// requests/*.json are embedded to avoid CWD-relative paths.
 //
 //go:embed requests/*.json
 var requestTemplates embed.FS
 
-// httpTimeout bounds every Typesafe API call.
 const httpTimeout = 30 * time.Second
 
 const (
@@ -93,9 +91,7 @@ type (
 	}
 )
 
-// Client calls the TypeSafe Jev API. All configuration is injected via
-// NewClient, so this package no longer imports internal/config and is
-// genuinely reusable.
+// Client calls the TypeSafe Jev API with injected configuration.
 type Client struct {
 	apiURL string
 	token  string
@@ -103,7 +99,6 @@ type Client struct {
 	http   *http.Client
 }
 
-// NewClient builds a Jev client with constructor-injected configuration.
 func NewClient(apiURL, token, model string) *Client {
 	return &Client{
 		apiURL: apiURL,
@@ -114,8 +109,6 @@ func NewClient(apiURL, token, model string) *Client {
 }
 
 // HttpResponseToJevResponse decodes a Typesafe API body into a JevResponse.
-// It never panics: every type assertion is checked and every failure is
-// returned as a descriptive error, including unknown answer types.
 func HttpResponseToJevResponse(resp *http.Response) (*JevResponse, error) {
 	responseMap := make(map[string]any)
 
@@ -234,9 +227,6 @@ func (c *Client) MakeJevRequestFromFile(state JevState, fileName string) (*JevRe
 }
 
 func validateJevRequest(request *JevRequest) error {
-	// if state is string, check if it is empty
-	// else, if state is map, check if it is empty
-	// else, if state is other type, return error
 	switch v := request.State.(type) {
 	case string:
 		if v == "" {
