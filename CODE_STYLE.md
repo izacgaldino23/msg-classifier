@@ -32,6 +32,7 @@ Conventions observed in this codebase. Follow these when writing new code.
   - `views/` — template name constants + render helpers
 - **`pkg/`** — reusable packages: `pkg/request.go` (response helper), `pkg/jev/` (API client + embedded `requests/` JSON templates).
 - **`web/templates/`** — HTML templates split into `layouts/`, `pages/`, `partial/`.
+- **`scripts/sql/`** — SQL seed files (`seed_prompts.sql` wipes and re-seeds `jev_prompts`).
 - Controllers and services are structs with `New*` constructors; controller methods take `c *gin.Context`.
 - DTOs live in `internal/models`, not in controller files.
 
@@ -96,6 +97,13 @@ type jevClient interface {
 ### Views
 - Template names are constants in `internal/views/render.go` — never string literals at call sites.
 - Render through `views.RenderPage` / `views.RenderResult` / `views.RenderError`, not raw `c.HTML`.
+- Template name constants in `internal/views/render.go` include the harness partials: `prompt_table`, `evaluation_results`, `export_result`.
+
+### Validation harness (/prompts)
+- `PromptService` reuses the production Jev paths (`ClassificationService.Classify`, `ContactExtractor.ExtractName`) — no new request-building code.
+- Per-prompt Jev failures are captured in the row (obtained = error string, match = false); evaluation continues.
+- CSV exports go to `exports/` (created on demand) via `encoding/csv` (stdlib).
+- Form DTOs (`PromptForm`, `EvaluateForm`) live in `internal/models`; `[]uint` form slices bind repeated `ids` values.
 
 ### JSON responses
 Use `pkg.ReturnJson(c, status, body)` — wraps 2xx in `{"data": ...}`, everything else in `{"error": ...}`. Currently unused by htmx routes (they render HTML partials); kept for future JSON endpoints.
