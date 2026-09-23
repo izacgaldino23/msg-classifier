@@ -5,8 +5,7 @@ import (
 	"fmt"
 
 	"msg-classifier/internal/models"
-
-	"gorm.io/gorm"
+	"msg-classifier/internal/repository"
 )
 
 // Get searches for an existing contact by phone, email, or name (require flow).
@@ -14,12 +13,14 @@ import (
 func (s *ContactService) Get(request *models.ReceiveMessageRequest, classification *models.Classification) (*models.UseCaseOutcome, error) {
 	phone, _, hasPhone := s.extractor.ExtractPhone(request.Message)
 	if hasPhone {
-		return s.searchByField(classification, "phone = ?", phone, phone, nil)
+		contact, err := s.repo.FindByPhone(phone)
+		return s.searchResult(classification, contact, err, phone, nil)
 	}
 
 	email, _, hasEmail := s.extractor.ExtractEmail(request.Message)
 	if hasEmail {
-		return s.searchByField(classification, "LOWER(email) = LOWER(?)", email, email, nil)
+		contact, err := s.repo.FindByEmail(email)
+		return s.searchResult(classification, contact, err, email, nil)
 	}
 
 	nameResult, err := s.extractor.ExtractName(request.Message, nil)
@@ -30,19 +31,18 @@ func (s *ContactService) Get(request *models.ReceiveMessageRequest, classificati
 	if term == "" {
 		return &models.UseCaseOutcome{Classification: classification, Action: models.ActionContactNoData}, nil
 	}
-	return s.searchByField(classification, "name_norm LIKE ?", "%"+term+"%", term, nameResult.Segments)
+	contact, err := s.repo.FindByName(term)
+	return s.searchResult(classification, contact, err, term, nameResult.Segments)
 }
 
-// searchByField runs the query and maps the result to found/not-found.
-// gorm.ErrRecordNotFound is a "not found" outcome, not an error.
-func (s *ContactService) searchByField(classification *models.Classification, query string, arg string, searchTerm string, segments []models.SegmentScore) (*models.UseCaseOutcome, error) {
-	var contact models.Contact
-	err := s.db.Where(query, arg).Order("id").First(&contact).Error
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+// searchResult maps a repo lookup to a found/not-found outcome.
+// repository.ErrNotFound is a "not found" outcome, not an error.
+func (s *ContactService) searchResult(classification *models.Classification, contact *models.Contact, err error, searchTerm string, segments []models.SegmentScore) (*models.UseCaseOutcome, error) {
+	if err != nil && !errors.Is(err, repository.ErrNotFound) {
 		return nil, fmt.Errorf("failed to search contact: %w", err)
 	}
-	if err == nil {
-		return &models.UseCaseOutcome{Classification: classification, Action: models.ActionContactFound, Contact: &contact, SearchTerm: searchTerm, Segments: segments}, nil
+	if contact != nil {
+		return &models.UseCaseOutcome{Classification: classification, Action: models.ActionContactFound, Contact: contact, SearchTerm: searchTerm, Segments: segments}, nil
 	}
 	return &models.UseCaseOutcome{Classification: classification, Action: models.ActionContactNotFound, SearchTerm: searchTerm, Segments: segments}, nil
 }
