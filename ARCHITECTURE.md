@@ -54,7 +54,7 @@ msg-classifier/
 │   │   ├── message_controller.go# POST /api/message handler (bind → Classify → Dispatch → render)
 │   │   └── prompt_controller.go # /prompts routes (Page, Table, Add, Evaluate, Export)
 │   └── views/                   # V — render helpers
-│       └── render.go            # Template name constants + RenderPage/RenderResult/RenderError + prompt partial helpers
+│       └── render.go            # Template name constants + RenderPage/RenderResult/RenderError + prompt partial helpers + PagesRenderer (per-page template sets)
 ├── pkg/                         # Reusable packages
 │   ├── request.go               # ReturnJson helper ({"data": ...} / {"error": ...})
 │   └── jev/
@@ -94,6 +94,7 @@ msg-classifier/
   - `POST /prompts` → `promptController.Add`
   - `POST /prompts/evaluate` → `promptController.Evaluate`
   - `POST /prompts/export` → `promptController.Export`
+- Template render: shared set for `layouts/`+`partial/`, cloned per page (`index`, `prompts`) via `views.PagesRenderer`; partials render from the shared set.
 - Server runs on `:8080`.
 
 ### 2. Config Singleton — `internal/config/env.go`

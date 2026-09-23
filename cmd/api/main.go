@@ -9,6 +9,7 @@ import (
 	"msg-classifier/internal/models"
 	"msg-classifier/internal/repository"
 	"msg-classifier/internal/services"
+	"msg-classifier/internal/views"
 	"msg-classifier/pkg/jev"
 
 	"github.com/donseba/go-htmx"
@@ -24,8 +25,18 @@ const (
 func main() {
 	router := gin.Default()
 
-	tmpl := template.Must(template.ParseGlob(SourcePath + "/**/*.html"))
-	router.SetHTMLTemplate(tmpl)
+	// Templates: layouts+partials are shared; each page gets its own clone so
+	// pages never collide on page:title/page:content block names.
+	tmpl := template.Must(template.ParseGlob(SourcePath + "/layouts/*.html"))
+	tmpl = template.Must(tmpl.ParseGlob(SourcePath + "/partial/*.html"))
+	pagesRenderer, err := views.NewPagesRenderer(tmpl, map[string]string{
+		views.HomePage:    SourcePath + "/pages/index.html",
+		views.PromptsPage: SourcePath + "/pages/prompts.html",
+	})
+	if err != nil {
+		log.Fatalf("failed to build page templates: %v", err)
+	}
+	router.HTMLRender = pagesRenderer
 
 	// Single htmx instance; controllers read it from the context per request.
 	h := htmx.New()

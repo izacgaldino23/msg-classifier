@@ -21,6 +21,13 @@ const (
 	ExportResultTemplate      = "export_result"
 )
 
+const (
+	HomePage           = "home"
+	HomePageContent    = "home:content"
+	PromptsPage        = "prompts"
+	PromptsPageContent = "prompts:content"
+)
+
 // ErrorData is the view model for the "error" partial.
 type ErrorData struct {
 	Message string `json:"message"`
@@ -36,13 +43,13 @@ type ResultData struct {
 	SearchTerm string
 }
 
-// RenderPage renders the full page, or only page:content for htmx requests.
-func RenderPage(c *gin.Context) {
+// RenderPage renders the full page, or only its content for htmx requests.
+func RenderPage(c *gin.Context, page, content string) {
 	if isHxRequest(c) {
-		c.HTML(http.StatusOK, PageContentTemplate, nil)
+		c.HTML(http.StatusOK, content, nil)
 		return
 	}
-	c.HTML(http.StatusOK, BaseTemplate, nil)
+	c.HTML(http.StatusOK, page, nil)
 }
 
 // RenderResult renders the "resultado" partial (HTTP 200) from the use case outcome.

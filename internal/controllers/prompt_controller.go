@@ -22,7 +22,7 @@ func NewPromptController(service *services.PromptService) *PromptController {
 
 // Page handles GET /prompts.
 func (ctrl *PromptController) Page(c *gin.Context) {
-	views.RenderPage(c)
+	views.RenderPage(c, views.PromptsPage, views.PromptsPageContent)
 }
 
 // Table handles GET /prompts/table?flow=... — renders the prompt table partial.

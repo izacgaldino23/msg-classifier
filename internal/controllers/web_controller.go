@@ -15,5 +15,5 @@ func NewWebController() *WebController {
 
 // Home handles GET /.
 func (ctrl *WebController) Home(c *gin.Context) {
-	views.RenderPage(c)
+	views.RenderPage(c, views.HomePage, views.HomePageContent)
 }

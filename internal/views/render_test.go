@@ -18,7 +18,16 @@ func newTestContext() (*gin.Context, *httptest.ResponseRecorder) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	c, engine := gin.CreateTestContext(w)
-	engine.SetHTMLTemplate(template.Must(template.ParseGlob("../../web/templates/**/*.html")))
+	shared := template.Must(template.ParseGlob("../../web/templates/layouts/*.html"))
+	shared = template.Must(shared.ParseGlob("../../web/templates/partial/*.html"))
+	pr, err := NewPagesRenderer(shared, map[string]string{
+		HomePage:    "../../web/templates/pages/index.html",
+		PromptsPage: "../../web/templates/pages/prompts.html",
+	})
+	if err != nil {
+		panic("failed to build pages renderer: " + err.Error())
+	}
+	engine.HTMLRender = pr
 	return c, w
 }
 
@@ -252,5 +261,43 @@ func TestRenderExportResult(t *testing.T) {
 	body := w.Body.String()
 	if !strings.Contains(body, "exports/classification-20260923-101530.csv") {
 		t.Errorf("body missing export path: %s", body)
+	}
+}
+
+func TestRenderHomePage(t *testing.T) {
+	c, w := newTestContext()
+
+	RenderPage(c, HomePage, HomePageContent)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := w.Body.String()
+	for _, want := range []string{"Classificador de Mensagens", `hx-post="/api/message"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("home page missing %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, `hx-get="/prompts/table"`) {
+		t.Errorf("home page leaked prompts content: %s", body)
+	}
+}
+
+func TestRenderPromptsPage(t *testing.T) {
+	c, w := newTestContext()
+
+	RenderPage(c, PromptsPage, PromptsPageContent)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := w.Body.String()
+	for _, want := range []string{"Validação Jev", `hx-get="/prompts/table"`, "Adicionar exemplo"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("prompts page missing %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, "Classificador de Mensagens") {
+		t.Errorf("prompts page leaked home content: %s", body)
 	}
 }
