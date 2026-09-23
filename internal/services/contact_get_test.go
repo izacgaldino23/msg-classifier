@@ -2,10 +2,13 @@ package services
 
 import (
 	"errors"
-	"strings"
 	"testing"
 
 	"msg-classifier/internal/models"
+	"msg-classifier/internal/repository"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestContactServiceGetByPhone(t *testing.T) {
@@ -13,47 +16,28 @@ func TestContactServiceGetByPhone(t *testing.T) {
 	db.Create(&models.Contact{Name: "Fulano Tal", Phone: strPtr("9292929290")})
 
 	mock := &mockJevRequester{}
-	service := NewContactService(NewContactExtractor(mock), db)
+	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
 
 	outcome, err := service.Get(&models.ReceiveMessageRequest{Message: "09292929290"}, &models.Classification{})
-	if err != nil {
-		t.Fatalf("Get() error = %v", err)
-	}
-	if outcome.Action != models.ActionContactFound {
-		t.Errorf("Action = %q, want %q", outcome.Action, models.ActionContactFound)
-	}
-	if outcome.Contact == nil || outcome.Contact.Name != "Fulano Tal" {
-		t.Errorf("Contact = %+v, want Fulano Tal", outcome.Contact)
-	}
-	if outcome.SearchTerm != "9292929290" {
-		t.Errorf("SearchTerm = %q, want %q", outcome.SearchTerm, "9292929290")
-	}
-	if outcome.Segments != nil {
-		t.Errorf("Segments = %v, want nil for phone search", outcome.Segments)
-	}
-	if mock.got != nil {
-		t.Error("MakeJevRequest should not be called for phone search")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, models.ActionContactFound, outcome.Action)
+	require.NotNil(t, outcome.Contact)
+	assert.Equal(t, "Fulano Tal", outcome.Contact.Name)
+	assert.Equal(t, "9292929290", outcome.SearchTerm)
+	assert.Nil(t, outcome.Segments, "no segments for phone search")
+	assert.Nil(t, mock.got, "MakeJevRequest should not be called for phone search")
 }
 
 func TestContactServiceGetByPhoneNotFound(t *testing.T) {
 	db := newTestDB(t)
 	mock := &mockJevRequester{}
-	service := NewContactService(NewContactExtractor(mock), db)
+	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
 
 	outcome, err := service.Get(&models.ReceiveMessageRequest{Message: "09292929290"}, &models.Classification{})
-	if err != nil {
-		t.Fatalf("Get() error = %v", err)
-	}
-	if outcome.Action != models.ActionContactNotFound {
-		t.Errorf("Action = %q, want %q", outcome.Action, models.ActionContactNotFound)
-	}
-	if outcome.Contact != nil {
-		t.Errorf("Contact = %v, want nil", outcome.Contact)
-	}
-	if outcome.SearchTerm != "9292929290" {
-		t.Errorf("SearchTerm = %q, want %q", outcome.SearchTerm, "9292929290")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, models.ActionContactNotFound, outcome.Action)
+	assert.Nil(t, outcome.Contact)
+	assert.Equal(t, "9292929290", outcome.SearchTerm)
 }
 
 func TestContactServiceGetByEmail(t *testing.T) {
@@ -61,41 +45,26 @@ func TestContactServiceGetByEmail(t *testing.T) {
 	db.Create(&models.Contact{Name: "Fulano", Email: strPtr("X@Y.COM")})
 
 	mock := &mockJevRequester{}
-	service := NewContactService(NewContactExtractor(mock), db)
+	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
 
 	outcome, err := service.Get(&models.ReceiveMessageRequest{Message: "email x@y.com"}, &models.Classification{})
-	if err != nil {
-		t.Fatalf("Get() error = %v", err)
-	}
-	if outcome.Action != models.ActionContactFound {
-		t.Errorf("Action = %q, want %q", outcome.Action, models.ActionContactFound)
-	}
-	if outcome.Contact == nil || outcome.Contact.Name != "Fulano" {
-		t.Errorf("Contact = %+v, want Fulano", outcome.Contact)
-	}
-	if outcome.SearchTerm != "x@y.com" {
-		t.Errorf("SearchTerm = %q, want %q", outcome.SearchTerm, "x@y.com")
-	}
-	if mock.got != nil {
-		t.Error("MakeJevRequest should not be called for email search")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, models.ActionContactFound, outcome.Action)
+	require.NotNil(t, outcome.Contact)
+	assert.Equal(t, "Fulano", outcome.Contact.Name)
+	assert.Equal(t, "x@y.com", outcome.SearchTerm)
+	assert.Nil(t, mock.got, "MakeJevRequest should not be called for email search")
 }
 
 func TestContactServiceGetByEmailNotFound(t *testing.T) {
 	db := newTestDB(t)
 	mock := &mockJevRequester{}
-	service := NewContactService(NewContactExtractor(mock), db)
+	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
 
 	outcome, err := service.Get(&models.ReceiveMessageRequest{Message: "email x@y.com"}, &models.Classification{})
-	if err != nil {
-		t.Fatalf("Get() error = %v", err)
-	}
-	if outcome.Action != models.ActionContactNotFound {
-		t.Errorf("Action = %q, want %q", outcome.Action, models.ActionContactNotFound)
-	}
-	if outcome.SearchTerm != "x@y.com" {
-		t.Errorf("SearchTerm = %q, want %q", outcome.SearchTerm, "x@y.com")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, models.ActionContactNotFound, outcome.Action)
+	assert.Equal(t, "x@y.com", outcome.SearchTerm)
 }
 
 func TestContactServiceGetByName(t *testing.T) {
@@ -103,24 +72,15 @@ func TestContactServiceGetByName(t *testing.T) {
 	db.Create(&models.Contact{Name: "Fulano Tal", NameNorm: "fulano tal"})
 
 	mock := &mockJevRequester{resp: noulResponse(0.1, 0.1, 0.99, 0.1, 0.99)}
-	service := NewContactService(NewContactExtractor(mock), db)
+	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
 
 	outcome, err := service.Get(&models.ReceiveMessageRequest{Message: "Número de fulano de tal"}, &models.Classification{})
-	if err != nil {
-		t.Fatalf("Get() error = %v", err)
-	}
-	if outcome.Action != models.ActionContactFound {
-		t.Errorf("Action = %q, want %q", outcome.Action, models.ActionContactFound)
-	}
-	if outcome.Contact == nil || outcome.Contact.Name != "Fulano Tal" {
-		t.Errorf("Contact = %+v, want Fulano Tal", outcome.Contact)
-	}
-	if outcome.SearchTerm != "fulano tal" {
-		t.Errorf("SearchTerm = %q, want %q", outcome.SearchTerm, "fulano tal")
-	}
-	if len(outcome.Segments) != 5 {
-		t.Errorf("Segments len = %d, want 5 (trace kept)", len(outcome.Segments))
-	}
+	require.NoError(t, err)
+	assert.Equal(t, models.ActionContactFound, outcome.Action)
+	require.NotNil(t, outcome.Contact)
+	assert.Equal(t, "Fulano Tal", outcome.Contact.Name)
+	assert.Equal(t, "fulano tal", outcome.SearchTerm)
+	assert.Len(t, outcome.Segments, 5, "trace kept")
 }
 
 func TestContactServiceGetByNameNotFound(t *testing.T) {
@@ -128,66 +88,44 @@ func TestContactServiceGetByNameNotFound(t *testing.T) {
 	db.Create(&models.Contact{Name: "Fulano Tal", NameNorm: "fulano tal"})
 
 	mock := &mockJevRequester{resp: noulResponse(0.99, 0.99, 0.99, 0.99, 0.99)}
-	service := NewContactService(NewContactExtractor(mock), db)
+	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
 
 	outcome, err := service.Get(&models.ReceiveMessageRequest{Message: "Número de fulano de tal"}, &models.Classification{})
-	if err != nil {
-		t.Fatalf("Get() error = %v", err)
-	}
-	if outcome.Action != models.ActionContactNotFound {
-		t.Errorf("Action = %q, want %q", outcome.Action, models.ActionContactNotFound)
-	}
-	if outcome.SearchTerm != "numero de fulano de tal" {
-		t.Errorf("SearchTerm = %q, want %q", outcome.SearchTerm, "numero de fulano de tal")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, models.ActionContactNotFound, outcome.Action)
+	assert.Equal(t, "numero de fulano de tal", outcome.SearchTerm)
 }
 
 func TestContactServiceGetNoData(t *testing.T) {
 	db := newTestDB(t)
 	mock := &mockJevRequester{resp: noulResponse(0.1, 0.1)}
-	service := NewContactService(NewContactExtractor(mock), db)
+	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
 
 	outcome, err := service.Get(&models.ReceiveMessageRequest{Message: "qualquer coisa"}, &models.Classification{})
-	if err != nil {
-		t.Fatalf("Get() error = %v", err)
-	}
-	if outcome.Action != models.ActionContactNoData {
-		t.Errorf("Action = %q, want %q", outcome.Action, models.ActionContactNoData)
-	}
-	if outcome.SearchTerm != "" {
-		t.Errorf("SearchTerm = %q, want empty", outcome.SearchTerm)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, models.ActionContactNoData, outcome.Action)
+	assert.Equal(t, "", outcome.SearchTerm)
 }
 
 func TestContactServiceGetJevFailure(t *testing.T) {
 	db := newTestDB(t)
 	mock := &mockJevRequester{err: errors.New("boom")}
-	service := NewContactService(NewContactExtractor(mock), db)
+	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
 
 	_, err := service.Get(&models.ReceiveMessageRequest{Message: "Número de fulano de tal"}, &models.Classification{})
-	if !errors.Is(err, ErrUpstream) {
-		t.Errorf("Get() error = %v, want wrapped ErrUpstream", err)
-	}
+	assert.ErrorIs(t, err, ErrUpstream)
 }
 
 func TestContactServiceGetDBFailure(t *testing.T) {
 	db := newTestDB(t)
 	sqlDB, err := db.DB()
-	if err != nil {
-		t.Fatalf("db.DB() error = %v", err)
-	}
-	if err := sqlDB.Close(); err != nil {
-		t.Fatalf("sqlDB.Close() error = %v", err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, sqlDB.Close())
 
 	mock := &mockJevRequester{}
-	service := NewContactService(NewContactExtractor(mock), db)
+	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
 
 	_, err = service.Get(&models.ReceiveMessageRequest{Message: "09292929290"}, &models.Classification{})
-	if err == nil {
-		t.Fatal("Get() = nil, want db error")
-	}
-	if !strings.Contains(err.Error(), "failed to search contact") {
-		t.Errorf("Get() error = %v, want wrapped search context", err)
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to search contact")
 }
