@@ -2,177 +2,134 @@ package services
 
 import (
 	"errors"
-	"strings"
 	"testing"
 
 	"msg-classifier/internal/models"
+	"msg-classifier/internal/repository"
 
 	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
 
 func newTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("gorm.Open() error = %v", err)
-	}
+	require.NoError(t, err, "gorm.Open()")
 	sqlDB, err := db.DB()
-	if err != nil {
-		t.Fatalf("db.DB() error = %v", err)
-	}
+	require.NoError(t, err, "db.DB()")
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&models.Contact{}); err != nil {
-		t.Fatalf("AutoMigrate() error = %v", err)
-	}
+	require.NoError(t, db.AutoMigrate(&models.Contact{}), "AutoMigrate()")
 	return db
+}
+
+func TestNormalizeName(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"empty", "", ""},
+		{"whitespace only", "   ", ""},
+		{"case", "FULANO", "fulano"},
+		{"accent", "João", "joao"},
+		{"cedilla", "José da Conceição", "jose da conceicao"},
+		{"mixed accents", "MARIA CLÁUDIA", "maria claudia"},
+		{"collapse whitespace", "  Fulano   de  Tal ", "fulano de tal"},
+		{"tabs and newlines", "Fulano\tde\nTal", "fulano de tal"},
+		{"already normalized", "fulano de tal", "fulano de tal"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, normalizeName(tt.in))
+		})
+	}
 }
 
 func TestContactServiceAddPersistsContact(t *testing.T) {
 	db := newTestDB(t)
 	mock := &mockJevRequester{resp: noulResponse(0.99, 0.1, 0.98)}
-	service := NewContactService(NewContactExtractor(mock), db)
+	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
 
 	outcome, err := service.Add(&models.ReceiveMessageRequest{Message: "09292929290 Fulano de Tal"}, &models.Classification{})
-	if err != nil {
-		t.Fatalf("Add() error = %v", err)
-	}
-	if outcome.Action != models.ActionContactAdd {
-		t.Errorf("Action = %q, want %q", outcome.Action, models.ActionContactAdd)
-	}
-	if outcome.Contact == nil {
-		t.Fatal("Contact is nil")
-	}
-	if outcome.Contact.Name != "Fulano Tal" {
-		t.Errorf("Name = %q, want %q", outcome.Contact.Name, "Fulano Tal")
-	}
-	if outcome.Contact.NameNorm != "fulano tal" {
-		t.Errorf("NameNorm = %q, want %q", outcome.Contact.NameNorm, "fulano tal")
-	}
-	if outcome.Contact.Phone == nil || *outcome.Contact.Phone != "9292929290" {
-		t.Errorf("Phone = %v, want %q", outcome.Contact.Phone, "9292929290")
-	}
-	if outcome.Contact.Email != nil {
-		t.Errorf("Email = %v, want nil", *outcome.Contact.Email)
-	}
-	if outcome.Contact.ID == 0 {
-		t.Error("Contact.ID = 0, want persisted id")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, models.ActionContactAdd, outcome.Action)
+	require.NotNil(t, outcome.Contact)
+	assert.Equal(t, "Fulano Tal", outcome.Contact.Name)
+	assert.Equal(t, "fulano tal", outcome.Contact.NameNorm)
+	require.NotNil(t, outcome.Contact.Phone)
+	assert.Equal(t, "9292929290", *outcome.Contact.Phone)
+	assert.Nil(t, outcome.Contact.Email)
+	assert.NotZero(t, outcome.Contact.ID)
 
 	wantSegments := []models.SegmentScore{
 		{Text: "Fulano", Score: 0.99, Included: true},
 		{Text: "de", Score: 0.1, Included: false},
 		{Text: "Tal", Score: 0.98, Included: true},
 	}
-	if len(outcome.Segments) != len(wantSegments) {
-		t.Fatalf("Segments = %v, want %v", outcome.Segments, wantSegments)
-	}
-	for i := range wantSegments {
-		if outcome.Segments[i] != wantSegments[i] {
-			t.Errorf("Segments[%d] = %+v, want %+v", i, outcome.Segments[i], wantSegments[i])
-		}
-	}
+	assert.Equal(t, wantSegments, outcome.Segments)
 
 	var count int64
-	if err := db.Model(&models.Contact{}).Count(&count).Error; err != nil {
-		t.Fatalf("Count() error = %v", err)
-	}
-	if count != 1 {
-		t.Errorf("contacts count = %d, want 1", count)
-	}
+	require.NoError(t, db.Model(&models.Contact{}).Count(&count).Error)
+	assert.Equal(t, int64(1), count)
 }
 
 func TestContactServiceAddNoData(t *testing.T) {
 	db := newTestDB(t)
 	mock := &mockJevRequester{}
-	service := NewContactService(NewContactExtractor(mock), db)
+	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
 
 	outcome, err := service.Add(&models.ReceiveMessageRequest{Message: "sem dados aqui"}, &models.Classification{})
-	if err != nil {
-		t.Fatalf("Add() error = %v", err)
-	}
-	if outcome.Action != models.ActionContactNoData {
-		t.Errorf("Action = %q, want %q", outcome.Action, models.ActionContactNoData)
-	}
-	if outcome.Contact != nil {
-		t.Errorf("Contact = %v, want nil", outcome.Contact)
-	}
-	if outcome.Segments != nil {
-		t.Errorf("Segments = %v, want nil", outcome.Segments)
-	}
-	if mock.got != nil {
-		t.Error("MakeJevRequest should not be called when no phone/email")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, models.ActionContactNoData, outcome.Action)
+	assert.Nil(t, outcome.Contact)
+	assert.Nil(t, outcome.Segments)
+	assert.Nil(t, mock.got, "MakeJevRequest should not be called when no phone/email")
 
 	var count int64
-	if err := db.Model(&models.Contact{}).Count(&count).Error; err != nil {
-		t.Fatalf("Count() error = %v", err)
-	}
-	if count != 0 {
-		t.Errorf("contacts count = %d, want 0", count)
-	}
+	require.NoError(t, db.Model(&models.Contact{}).Count(&count).Error)
+	assert.Equal(t, int64(0), count)
 }
 
 func TestContactServiceAddEmailOnly(t *testing.T) {
 	db := newTestDB(t)
 	mock := &mockJevRequester{resp: noulResponse(0.1, 0.1, 0.1, 0.99, 0.1)}
-	service := NewContactService(NewContactExtractor(mock), db)
+	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
 
 	outcome, err := service.Add(&models.ReceiveMessageRequest{Message: "salva contato do fulano email x@y.com"}, &models.Classification{})
-	if err != nil {
-		t.Fatalf("Add() error = %v", err)
-	}
-	if outcome.Action != models.ActionContactAdd {
-		t.Errorf("Action = %q, want %q", outcome.Action, models.ActionContactAdd)
-	}
-	if outcome.Contact.Email == nil || *outcome.Contact.Email != "x@y.com" {
-		t.Errorf("Email = %v, want %q", outcome.Contact.Email, "x@y.com")
-	}
-	if outcome.Contact.Phone != nil {
-		t.Errorf("Phone = %v, want nil", *outcome.Contact.Phone)
-	}
-	if outcome.Contact.Name != "fulano" {
-		t.Errorf("Name = %q, want %q", outcome.Contact.Name, "fulano")
-	}
-	if len(outcome.Segments) != 5 {
-		t.Fatalf("Segments len = %d, want 5", len(outcome.Segments))
-	}
-	if outcome.Segments[3].Text != "fulano" || !outcome.Segments[3].Included {
-		t.Errorf("Segments[3] = %+v, want included fulano", outcome.Segments[3])
-	}
+	require.NoError(t, err)
+	assert.Equal(t, models.ActionContactAdd, outcome.Action)
+	require.NotNil(t, outcome.Contact.Email)
+	assert.Equal(t, "x@y.com", *outcome.Contact.Email)
+	assert.Nil(t, outcome.Contact.Phone)
+	assert.Equal(t, "fulano", outcome.Contact.Name)
+	require.Len(t, outcome.Segments, 5)
+	assert.Equal(t, "fulano", outcome.Segments[3].Text)
+	assert.True(t, outcome.Segments[3].Included)
 }
 
 func TestContactServiceAddJevFailure(t *testing.T) {
 	db := newTestDB(t)
 	mock := &mockJevRequester{err: errors.New("boom")}
-	service := NewContactService(NewContactExtractor(mock), db)
+	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
 
 	_, err := service.Add(&models.ReceiveMessageRequest{Message: "09292929290 Fulano de Tal"}, &models.Classification{})
-	if !errors.Is(err, ErrUpstream) {
-		t.Errorf("Add() error = %v, want wrapped ErrUpstream", err)
-	}
+	assert.ErrorIs(t, err, ErrUpstream)
 }
 
 func TestContactServiceAddDBFailure(t *testing.T) {
 	db := newTestDB(t)
 	sqlDB, err := db.DB()
-	if err != nil {
-		t.Fatalf("db.DB() error = %v", err)
-	}
-	if err := sqlDB.Close(); err != nil {
-		t.Fatalf("sqlDB.Close() error = %v", err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, sqlDB.Close())
 
 	mock := &mockJevRequester{resp: noulResponse(0.99)}
-	service := NewContactService(NewContactExtractor(mock), db)
+	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
 
 	_, err = service.Add(&models.ReceiveMessageRequest{Message: "09292929290 Fulano"}, &models.Classification{})
-	if err == nil {
-		t.Fatal("Add() = nil, want db error")
-	}
-	if !strings.Contains(err.Error(), "failed to check duplicate contact") {
-		t.Errorf("Add() error = %v, want wrapped duplicate-check context", err)
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to check duplicate contact")
 }
 
 func TestContactServiceAddDuplicatePhone(t *testing.T) {
@@ -180,32 +137,19 @@ func TestContactServiceAddDuplicatePhone(t *testing.T) {
 	db.Create(&models.Contact{Name: "Fulano", Phone: strPtr("9292929290")})
 
 	mock := &mockJevRequester{}
-	service := NewContactService(NewContactExtractor(mock), db)
+	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
 
 	outcome, err := service.Add(&models.ReceiveMessageRequest{Message: "09292929290 Fulano de Tal"}, &models.Classification{})
-	if err != nil {
-		t.Fatalf("Add() error = %v", err)
-	}
-	if outcome.Action != models.ActionContactDuplicate {
-		t.Errorf("Action = %q, want %q", outcome.Action, models.ActionContactDuplicate)
-	}
-	if outcome.Contact == nil || outcome.Contact.Name != "Fulano" {
-		t.Errorf("Contact = %+v, want existing Fulano", outcome.Contact)
-	}
-	if outcome.Segments != nil {
-		t.Errorf("Segments = %v, want nil (no Jev spent)", outcome.Segments)
-	}
-	if mock.got != nil {
-		t.Error("MakeJevRequest should not be called on duplicate")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, models.ActionContactDuplicate, outcome.Action)
+	require.NotNil(t, outcome.Contact)
+	assert.Equal(t, "Fulano", outcome.Contact.Name)
+	assert.Nil(t, outcome.Segments, "no Jev spent on duplicate")
+	assert.Nil(t, mock.got, "MakeJevRequest should not be called on duplicate")
 
 	var count int64
-	if err := db.Model(&models.Contact{}).Count(&count).Error; err != nil {
-		t.Fatalf("Count() error = %v", err)
-	}
-	if count != 1 {
-		t.Errorf("contacts count = %d, want 1 (no new row)", count)
-	}
+	require.NoError(t, db.Model(&models.Contact{}).Count(&count).Error)
+	assert.Equal(t, int64(1), count, "no new row")
 }
 
 func TestContactServiceAddDuplicateEmail(t *testing.T) {
@@ -213,21 +157,14 @@ func TestContactServiceAddDuplicateEmail(t *testing.T) {
 	db.Create(&models.Contact{Name: "Fulano", Email: strPtr("X@Y.COM")})
 
 	mock := &mockJevRequester{}
-	service := NewContactService(NewContactExtractor(mock), db)
+	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
 
 	outcome, err := service.Add(&models.ReceiveMessageRequest{Message: "salva fulano email x@y.com"}, &models.Classification{})
-	if err != nil {
-		t.Fatalf("Add() error = %v", err)
-	}
-	if outcome.Action != models.ActionContactDuplicate {
-		t.Errorf("Action = %q, want %q", outcome.Action, models.ActionContactDuplicate)
-	}
-	if outcome.Contact == nil || outcome.Contact.Name != "Fulano" {
-		t.Errorf("Contact = %+v, want existing Fulano", outcome.Contact)
-	}
-	if mock.got != nil {
-		t.Error("MakeJevRequest should not be called on duplicate")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, models.ActionContactDuplicate, outcome.Action)
+	require.NotNil(t, outcome.Contact)
+	assert.Equal(t, "Fulano", outcome.Contact.Name)
+	assert.Nil(t, mock.got, "MakeJevRequest should not be called on duplicate")
 }
 
 func TestContactServiceBackfillNameNorm(t *testing.T) {
@@ -235,26 +172,16 @@ func TestContactServiceBackfillNameNorm(t *testing.T) {
 	db.Create(&models.Contact{Name: "João da Silva"})            // pre-migration row: empty NameNorm
 	db.Create(&models.Contact{Name: "Maria", NameNorm: "maria"}) // already filled
 
-	service := NewContactService(NewContactExtractor(&mockJevRequester{}), db)
-	if err := service.BackfillNameNorm(); err != nil {
-		t.Fatalf("BackfillNameNorm() error = %v", err)
-	}
+	service := NewContactService(NewContactExtractor(&mockJevRequester{}), repository.NewContactRepository(db))
+	require.NoError(t, service.BackfillNameNorm())
 
 	var joao models.Contact
-	if err := db.Where("name = ?", "João da Silva").First(&joao).Error; err != nil {
-		t.Fatalf("reload João: %v", err)
-	}
-	if joao.NameNorm != "joao da silva" {
-		t.Errorf("NameNorm = %q, want %q", joao.NameNorm, "joao da silva")
-	}
+	require.NoError(t, db.Where("name = ?", "João da Silva").First(&joao).Error)
+	assert.Equal(t, "joao da silva", joao.NameNorm)
 
 	var maria models.Contact
-	if err := db.Where("name = ?", "Maria").First(&maria).Error; err != nil {
-		t.Fatalf("reload Maria: %v", err)
-	}
-	if maria.NameNorm != "maria" {
-		t.Errorf("NameNorm = %q, want unchanged %q", maria.NameNorm, "maria")
-	}
+	require.NoError(t, db.Where("name = ?", "Maria").First(&maria).Error)
+	assert.Equal(t, "maria", maria.NameNorm)
 }
 
 func TestContactServiceHandleRequireRoutesToGet(t *testing.T) {
@@ -262,16 +189,11 @@ func TestContactServiceHandleRequireRoutesToGet(t *testing.T) {
 	db.Create(&models.Contact{Name: "Fulano", Phone: strPtr("9292929290")})
 
 	mock := &mockJevRequester{}
-	service := NewContactService(NewContactExtractor(mock), db)
+	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
 
 	outcome, err := service.Handle(&models.ReceiveMessageRequest{Message: "09292929290"}, &models.Classification{Kind: models.KindFinding{Choice: "require"}})
-	if err != nil {
-		t.Fatalf("Handle() error = %v", err)
-	}
-	if outcome.Action != models.ActionContactFound {
-		t.Errorf("Action = %q, want %q", outcome.Action, models.ActionContactFound)
-	}
-	if outcome.Contact == nil || outcome.Contact.Name != "Fulano" {
-		t.Errorf("Contact = %+v, want Fulano", outcome.Contact)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, models.ActionContactFound, outcome.Action)
+	require.NotNil(t, outcome.Contact)
+	assert.Equal(t, "Fulano", outcome.Contact.Name)
 }
