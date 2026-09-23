@@ -35,8 +35,9 @@ type PromptForm struct {
 	Expected string `json:"expected" form:"expected"`
 }
 
-// EvaluateForm is the inbound DTO for POST /prompts/evaluate and /prompts/export.
+// EvaluateForm is the inbound DTO for POST /prompts/evaluate.
 type EvaluateForm struct {
-	Flow string `json:"flow" form:"flow"`
-	IDs  []uint `json:"ids" form:"ids"`
+	Flow   string `json:"flow" form:"flow"`
+	IDs    []uint `json:"ids" form:"ids"`
+	Export bool   `json:"export" form:"export"`
 }

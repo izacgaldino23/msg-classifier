@@ -5,7 +5,7 @@ INSERT INTO jev_prompts (flow, message, expected_result) VALUES
 ('classification', 'Salva o telefone do João: (11) 91234-5678', 'contact:add'),
 ('classification', 'Adiciona o email da Maria: maria@exemplo.com', 'contact:add'),
 ('classification', 'Quero o contato do Pedro, me passa o número dele', 'contact:require'),
-('classification', 'Me lembra de pagar a conta de luz amanhã', 'finance:add'),
+('classification', 'Me lembra de pagar a conta de luz amanhã', 'notes:add'),
 ('classification', 'Quanto gastei com mercado esse mês?', 'finance:require'),
 ('classification', 'Agenda reunião com o time às 14h', 'schedule:add'),
 ('classification', 'Que horas é minha consulta na sexta?', 'schedule:require'),

@@ -1,6 +1,7 @@
 {{ define "evaluation_results" }}
 <article id="evaluation">
     <p><strong>Fluxo:</strong> {{ .Flow }}</p>
+    {{ if .CsvPath }}<p><strong>CSV exportado:</strong> {{ .CsvPath }}</p>{{ end }}
     {{ if .Results }}
     <table>
         <thead>

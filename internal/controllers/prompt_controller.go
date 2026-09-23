@@ -63,7 +63,7 @@ func (ctrl *PromptController) Add(c *gin.Context) {
 	views.RenderPromptTable(c, request.Flow, prompts)
 }
 
-// Evaluate handles POST /prompts/evaluate — runs the selected prompts and renders results.
+// Evaluate handles POST /prompts/evaluate — runs the selected prompts, optionally exports the results as CSV (form checkbox), and renders the results.
 func (ctrl *PromptController) Evaluate(c *gin.Context) {
 	request := &models.EvaluateForm{}
 	if err := c.Bind(request); err != nil {
@@ -75,20 +75,13 @@ func (ctrl *PromptController) Evaluate(c *gin.Context) {
 		renderServiceError(c, err)
 		return
 	}
-	views.RenderEvaluationResults(c, request.Flow, results)
-}
-
-// Export handles POST /prompts/export — writes the CSV and renders the saved path.
-func (ctrl *PromptController) Export(c *gin.Context) {
-	request := &models.EvaluateForm{}
-	if err := c.Bind(request); err != nil {
-		views.RenderError(c, http.StatusBadRequest, "invalid request")
-		return
+	csvPath := ""
+	if request.Export {
+		csvPath, err = ctrl.service.ExportCSV(request.Flow, results)
+		if err != nil {
+			renderServiceError(c, err)
+			return
+		}
 	}
-	path, err := ctrl.service.ExportCSV(request.Flow, request.IDs)
-	if err != nil {
-		renderServiceError(c, err)
-		return
-	}
-	views.RenderExportResult(c, path)
+	views.RenderEvaluationResults(c, request.Flow, results, csvPath)
 }

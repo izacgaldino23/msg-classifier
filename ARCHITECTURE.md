@@ -69,9 +69,8 @@ msg-classifier/
 │       └── partial/
 │           ├── result.html      # "resultado" partial (classification + action-specific process trace)
 │           ├── error.html       # "error" partial (error card for htmx swap targets)
-│           ├── prompt_table.html        # checkbox table + Avaliar/Exportar buttons
-│           ├── evaluation_results.html  # expected vs obtained comparison + segment trace
-│           └── export_result.html       # CSV path confirmation
+│           ├── prompt_table.html        # checkbox table + Avaliar button + export checkbox
+│           ├── evaluation_results.html  # expected vs obtained comparison + segment trace + CSV path
 ├── scripts/
 │   └── sql/
 │       └── seed_prompts.sql    # wipe + re-seed jev_prompts examples
@@ -94,7 +93,6 @@ msg-classifier/
   - `GET /prompts/table` → `promptController.Table`
   - `POST /prompts` → `promptController.Add`
   - `POST /prompts/evaluate` → `promptController.Evaluate`
-  - `POST /prompts/export` → `promptController.Export`
 - Template render: shared set for `layouts/`+`partial/`, cloned per page (`index`, `prompts`) via `views.PagesRenderer`; partials render from the shared set.
 - Server runs on `:8080`.
 
@@ -149,8 +147,8 @@ msg-classifier/
 - `error.html`: `error` partial rendering a Pico `<article>` error card (used for 400/502/500 responses).
 
 ### 12. Prompt Service (validation harness) — `internal/services/prompt.go` + `prompt_controller.go`
-- `PromptService` orchestrates the Jev validation harness: `Add` (validates flow ∈ {classification, name} and non-empty fields, `ErrInvalidPrompt` → 400), `ListByFlow`, `Evaluate` (loads prompts by flow, filters to selected ids, runs the exact production paths — `ClassificationService.Classify` for classification, `ContactExtractor.ExtractName` for name — and compares expected vs obtained; a Jev failure for one prompt is captured in its row as the obtained result with match=false and evaluation continues), and `ExportCSV` (re-runs `Evaluate` and writes `exports/<flow>-<yyyyMMdd-HHmmss>.csv` via `encoding/csv`, folder created on demand).
-- `PromptController` is thin: `Page` renders the page, `Table` renders the `prompt_table` partial, `Add` persists and re-renders the table, `Evaluate` renders `evaluation_results`, `Export` renders `export_result`. Bind failures → 400, invalid prompt → 400, service failures → 500 (existing `renderServiceError`).
+- `PromptService` orchestrates the Jev validation harness: `Add` (validates flow ∈ {classification, name} and non-empty fields, `ErrInvalidPrompt` → 400), `ListByFlow`, `Evaluate` (loads prompts by flow, filters to selected ids, runs the exact production paths — `ClassificationService.Classify` for classification, `ContactExtractor.ExtractName` for name — and compares expected vs obtained; a Jev failure for one prompt is captured in its row as the obtained result with match=false and evaluation continues), and `ExportCSV` (writes the given evaluation results to `exports/<flow>-<yyyyMMdd-HHmmss>.csv` via `encoding/csv`, folder created on demand — no re-run, the CSV mirrors the evaluation the user just saw).
+- `PromptController` is thin: `Page` renders the page, `Table` renders the `prompt_table` partial, `Add` persists and re-renders the table, `Evaluate` renders `evaluation_results` (and, when the form's export checkbox is set, saves the CSV first). Bind failures → 400, invalid prompt → 400, service failures → 500 (existing `renderServiceError`).
 - The harness reuses the exact production Jev paths — no new request-building code.
 
 ## Data Flow
@@ -192,18 +190,14 @@ Browser (/prompts)
   │ select flow → hx-get /prompts/table?flow=classification
   ▼
 PromptController.Table → PromptService.ListByFlow → prompt_table partial (checkboxes)
-  │ check rows → "Avaliar" → hx-post /prompts/evaluate {flow, ids[]}
+  │ check rows → "Avaliar" → hx-post /prompts/evaluate {flow, ids[], export?}
   ▼
 PromptController.Evaluate → PromptService.Evaluate
   │   ├─ per id: ClassificationService.Classify  (or ContactExtractor.ExtractName)
   │   ├─ match = expected vs obtained (format per flow)
-  │   └─ per-row error capture (upstream → obtained=error, match=false)
-  → evaluation_results partial (✓/✗ per row)
-  │ "Exportar CSV" → hx-post /prompts/export {flow, ids[]}
-  ▼
-PromptController.Export → PromptService.ExportCSV
-  │   └─ Evaluate (re-run) → encoding/csv → exports/<flow>-<timestamp>.csv
-  → export_result partial (path confirmation)
+  │   ├─ per-row error capture (upstream → obtained=error, match=false)
+  │   ├─ if export checkbox set → PromptService.ExportCSV(results) → exports/<flow>-<timestamp>.csv
+  → evaluation_results partial (✓/✗ per row + CSV path when exported)
 ```
 
 ## Error Handling

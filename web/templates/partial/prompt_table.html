@@ -23,7 +23,10 @@
             {{ end }}
         </tbody>
     </table>
+    <label>
+        <input type="checkbox" name="export" value="1">
+        Exportar CSV após avaliar
+    </label>
     <button type="button" hx-post="/prompts/evaluate" hx-target="#evaluation" hx-swap="innerHTML" hx-target-error="#evaluation" hx-include="#prompt-form">Avaliar</button>
-    <button type="button" hx-post="/prompts/export" hx-target="#evaluation" hx-swap="innerHTML" hx-target-error="#evaluation" hx-include="#prompt-form">Exportar CSV</button>
 </form>
 {{ end }}

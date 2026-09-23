@@ -18,7 +18,6 @@ const (
 
 	PromptTableTemplate       = "prompt_table"
 	EvaluationResultsTemplate = "evaluation_results"
-	ExportResultTemplate      = "export_result"
 )
 
 const (
@@ -91,11 +90,7 @@ type PromptTableData struct {
 type EvaluationResultsData struct {
 	Flow    string
 	Results []models.EvaluationResult
-}
-
-// ExportResultData is the view model for the "export_result" partial.
-type ExportResultData struct {
-	Path string
+	CsvPath string // set when the results were exported as CSV
 }
 
 // RenderPromptTable renders the "prompt_table" partial (HTTP 200).
@@ -103,12 +98,8 @@ func RenderPromptTable(c *gin.Context, flow string, prompts []models.JevPrompt) 
 	c.HTML(http.StatusOK, PromptTableTemplate, PromptTableData{Flow: flow, Prompts: prompts})
 }
 
-// RenderEvaluationResults renders the "evaluation_results" partial (HTTP 200).
-func RenderEvaluationResults(c *gin.Context, flow string, results []models.EvaluationResult) {
-	c.HTML(http.StatusOK, EvaluationResultsTemplate, EvaluationResultsData{Flow: flow, Results: results})
-}
-
-// RenderExportResult renders the "export_result" partial (HTTP 200).
-func RenderExportResult(c *gin.Context, path string) {
-	c.HTML(http.StatusOK, ExportResultTemplate, ExportResultData{Path: path})
+// RenderEvaluationResults renders the "evaluation_results" partial (HTTP 200);
+// csvPath is shown when the results were exported as CSV.
+func RenderEvaluationResults(c *gin.Context, flow string, results []models.EvaluationResult, csvPath string) {
+	c.HTML(http.StatusOK, EvaluationResultsTemplate, EvaluationResultsData{Flow: flow, Results: results, CsvPath: csvPath})
 }

@@ -98,7 +98,7 @@ type jevClient interface {
 - Template names are constants in `internal/views/render.go` — never string literals at call sites.
 - Render through `views.RenderPage` / `views.RenderResult` / `views.RenderError`, not raw `c.HTML`.
 - Pages render through `views.RenderPage(c, page, content)`; `views.PagesRenderer` clones the shared layout set per page so page blocks never collide.
-- Template name constants in `internal/views/render.go` include the harness partials: `prompt_table`, `evaluation_results`, `export_result`.
+- Template name constants in `internal/views/render.go` include the harness partials: `prompt_table`, `evaluation_results`.
 
 ### Validation harness (/prompts)
 - `PromptService` reuses the production Jev paths (`ClassificationService.Classify`, `ContactExtractor.ExtractName`) — no new request-building code.

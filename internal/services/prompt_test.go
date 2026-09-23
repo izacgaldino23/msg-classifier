@@ -205,7 +205,10 @@ func TestPromptServiceExportCSV(t *testing.T) {
 	prompt := &models.JevPrompt{Flow: models.FlowClassification, Message: "salva fulano", ExpectedResult: "contact:add"}
 	require.NoError(t, db.Create(prompt).Error)
 
-	path, err := service.ExportCSV(models.FlowClassification, []uint{prompt.ID})
+	results, err := service.Evaluate(models.FlowClassification, []uint{prompt.ID})
+	require.NoError(t, err)
+
+	path, err := service.ExportCSV(models.FlowClassification, results)
 	require.NoError(t, err)
 	assert.True(t, strings.HasPrefix(filepath.Base(path), "classification-"))
 	assert.True(t, strings.HasSuffix(path, ".csv"))

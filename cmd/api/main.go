@@ -87,7 +87,6 @@ func main() {
 	router.GET("/prompts/table", promptController.Table)
 	router.POST("/prompts", promptController.Add)
 	router.POST("/prompts/evaluate", promptController.Evaluate)
-	router.POST("/prompts/export", promptController.Export)
 
 	api := router.Group("/api")
 	api.POST("/message", messageController.ReceiveMessage)

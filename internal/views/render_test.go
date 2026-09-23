@@ -210,7 +210,7 @@ func TestRenderEvaluationResults(t *testing.T) {
 		{PromptID: 1, Message: "salva fulano", ExpectedResult: "contact:add", ObtainedResult: "contact:add", Match: true},
 		{PromptID: 2, Message: "quanto gastei?", ExpectedResult: "contact:add", ObtainedResult: "finance:require", Match: false},
 	}
-	RenderEvaluationResults(c, models.FlowClassification, results)
+	RenderEvaluationResults(c, models.FlowClassification, results, "")
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", w.Code)
@@ -237,7 +237,7 @@ func TestRenderEvaluationResultsNameSegments(t *testing.T) {
 			},
 		},
 	}
-	RenderEvaluationResults(c, models.FlowName, results)
+	RenderEvaluationResults(c, models.FlowName, results, "")
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", w.Code)
@@ -247,20 +247,6 @@ func TestRenderEvaluationResultsNameSegments(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("body missing %q: %s", want, body)
 		}
-	}
-}
-
-func TestRenderExportResult(t *testing.T) {
-	c, w := newTestContext()
-
-	RenderExportResult(c, "exports/classification-20260923-101530.csv")
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", w.Code)
-	}
-	body := w.Body.String()
-	if !strings.Contains(body, "exports/classification-20260923-101530.csv") {
-		t.Errorf("body missing export path: %s", body)
 	}
 }
 

@@ -112,14 +112,10 @@ func (s *PromptService) evaluateOne(flow string, prompt models.JevPrompt) models
 	return result
 }
 
-// ExportCSV re-runs the evaluation and writes the results to
-// exports/<flow>-<yyyyMMdd-HHmmss>.csv (folder created on demand), returning the path.
-func (s *PromptService) ExportCSV(flow string, ids []uint) (string, error) {
-	results, err := s.Evaluate(flow, ids)
-	if err != nil {
-		return "", err
-	}
-
+// ExportCSV writes the given evaluation results to
+// exports/<flow>-<yyyyMMdd-HHmmss>.csv (folder created on demand), returning the
+// path. It does not re-run the evaluation — the CSV mirrors what was evaluated.
+func (s *PromptService) ExportCSV(flow string, results []models.EvaluationResult) (string, error) {
 	if err := os.MkdirAll(exportDir, 0o755); err != nil {
 		return "", fmt.Errorf("failed to create export dir: %w", err)
 	}

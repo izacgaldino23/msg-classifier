@@ -42,6 +42,10 @@ var phonePattern = regexp.MustCompile(`(?:\+?55[\s.-]?)?0?[\s.-]?(?:\(?[1-9][0-9
 
 var emailPattern = regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
 
+// trimPunctuation is stripped from the ends of included name segments; periods
+// stay ("Jr." is a legitimate name ending).
+const trimPunctuation = `"'),;:!?-—`
+
 // ExtractPhone returns the first valid BR phone normalized to digits (10/11) and its span.
 func (e *ContactExtractor) ExtractPhone(message string) (string, Span, bool) {
 	for _, loc := range phonePattern.FindAllStringIndex(message, -1) {
@@ -65,7 +69,7 @@ func (e *ContactExtractor) ExtractEmail(message string) (string, Span, bool) {
 
 // ExtractName removes the given spans, splits the remainder into whitespace
 // segments, and asks Jev one Noul question per segment; segments with noul > 0.5
-// are joined in order and kept in the trace (single threshold site).
+// are joined in order (punctuation trimmed from segment ends, periods preserved) and kept in the trace (single threshold site).
 func (e *ContactExtractor) ExtractName(message string, spans []Span) (NameResult, error) {
 	segments := strings.Fields(removeSpans(message, spans))
 	if len(segments) == 0 {
@@ -107,7 +111,9 @@ func (e *ContactExtractor) ExtractName(message string, spans []Span) (NameResult
 		included := answer.Noul > 0.5
 		trace = append(trace, models.SegmentScore{Text: segment, Score: answer.Noul, Included: included})
 		if included {
-			nameParts = append(nameParts, segment)
+			if trimmed := strings.Trim(segment, trimPunctuation); trimmed != "" {
+				nameParts = append(nameParts, trimmed)
+			}
 		}
 	}
 

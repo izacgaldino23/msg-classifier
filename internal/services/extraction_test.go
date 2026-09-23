@@ -228,4 +228,55 @@ func TestExtractName(t *testing.T) {
 			t.Errorf("ExtractName() error = %v, want wrapped ErrUpstream", err)
 		}
 	})
+
+	t.Run("trims punctuation from included segments", func(t *testing.T) {
+		message := "Salva o contato do João da Silva, telefone (11) 91234-5678"
+		probe := NewContactExtractor(&mockJevRequester{})
+		_, span, ok := probe.ExtractPhone(message)
+		if !ok {
+			t.Fatal("ExtractPhone() = false, want true")
+		}
+
+		mock := &mockJevRequester{resp: noulResponse(0.1, 0.1, 0.1, 0.1, 0.99, 0.99, 0.99, 0.1)}
+		e := NewContactExtractor(mock)
+		result, err := e.ExtractName(message, []Span{span})
+		if err != nil {
+			t.Fatalf("ExtractName() error = %v", err)
+		}
+		if result.Name != "João da Silva" {
+			t.Errorf("Name = %q, want %q", result.Name, "João da Silva")
+		}
+	})
+
+	t.Run("trims trailing comma before email", func(t *testing.T) {
+		message := "Salva a Ana Paula, email ana@exemplo.com"
+		probe := NewContactExtractor(&mockJevRequester{})
+		_, span, ok := probe.ExtractEmail(message)
+		if !ok {
+			t.Fatal("ExtractEmail() = false, want true")
+		}
+
+		mock := &mockJevRequester{resp: noulResponse(0.1, 0.1, 0.99, 0.99, 0.1)}
+		e := NewContactExtractor(mock)
+		result, err := e.ExtractName(message, []Span{span})
+		if err != nil {
+			t.Fatalf("ExtractName() error = %v", err)
+		}
+		if result.Name != "Ana Paula" {
+			t.Errorf("Name = %q, want %q", result.Name, "Ana Paula")
+		}
+	})
+
+	t.Run("keeps periods in name endings like Jr.", func(t *testing.T) {
+		mock := &mockJevRequester{resp: noulResponse(0.1, 0.1, 0.99, 0.99, 0.99)}
+		e := NewContactExtractor(mock)
+
+		result, err := e.ExtractName("Cadastra o Pedro Henrique Jr.", nil)
+		if err != nil {
+			t.Fatalf("ExtractName() error = %v", err)
+		}
+		if result.Name != "Pedro Henrique Jr." {
+			t.Errorf("Name = %q, want %q", result.Name, "Pedro Henrique Jr.")
+		}
+	})
 }
