@@ -1,0 +1,29 @@
+{{ define "prompt_table" }}
+<form id="prompt-form">
+    <input type="hidden" name="flow" value="{{ .Flow }}">
+    <table>
+        <thead>
+            <tr>
+                <th><input type="checkbox" onchange="document.querySelectorAll('.prompt-check').forEach(cb => cb.checked = this.checked)"></th>
+                <th>Mensagem</th>
+                <th>Resultado esperado</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{ if .Prompts }}
+                {{ range .Prompts }}
+                <tr>
+                    <td><input type="checkbox" class="prompt-check" name="ids" value="{{ .ID }}"></td>
+                    <td>{{ .Message }}</td>
+                    <td>{{ .ExpectedResult }}</td>
+                </tr>
+                {{ end }}
+            {{ else }}
+                <tr><td colspan="3">Nenhum exemplo cadastrado para este fluxo.</td></tr>
+            {{ end }}
+        </tbody>
+    </table>
+    <button type="button" hx-post="/prompts/evaluate" hx-target="#evaluation" hx-swap="innerHTML" hx-target-error="#evaluation" hx-include="#prompt-form">Avaliar</button>
+    <button type="button" hx-post="/prompts/export" hx-target="#evaluation" hx-swap="innerHTML" hx-target-error="#evaluation" hx-include="#prompt-form">Exportar CSV</button>
+</form>
+{{ end }}
