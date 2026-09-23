@@ -27,6 +27,7 @@ Conventions observed in this codebase. Follow these when writing new code.
   - `config/` — env singleton (single godotenv load site)
   - `controllers/` — HTTP concerns only (bind → service → render → status)
   - `models/` — DTOs and domain structs
+  - `repository/` — persistence layer; structs with `New*` constructors holding `*gorm.DB`; methods return raw gorm errors; package exposes its own not-found sentinel (`ErrNotFound = gorm.ErrRecordNotFound`)
   - `services/` — business rules and orchestration
   - `views/` — template name constants + render helpers
 - **`pkg/`** — reusable packages: `pkg/request.go` (response helper), `pkg/jev/` (API client + embedded `requests/` JSON templates).
@@ -121,8 +122,10 @@ Never read `os.Getenv` directly outside `internal/config/env.go`. Config is read
 
 ## Testing
 
-- **No tests exist yet.** Go convention applies: `*_test.go` files alongside source, `func TestXxx(t *testing.T)`.
-- No test framework or mocking library is configured. The service boundary interfaces (`jevClient`) exist so services can be tested without HTTP.
+- Table-driven tests using **testify** (`assert`/`require`).
+- Hand-written fakes for one-method Jev seams (`mockJevRequester`, `mockJevClient`).
+- Real in-memory SQLite (`newTestDB`) for repository/service integration tests.
+- Assert on sentinels with `errors.Is` (`ErrUpstream`, `repository.ErrNotFound`).
 
 ## Do's and Don'ts
 
