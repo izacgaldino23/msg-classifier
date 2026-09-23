@@ -3,20 +3,23 @@ package services
 import (
 	"errors"
 	"fmt"
+	"strings"
+	"unicode"
 
 	"msg-classifier/internal/models"
+	"msg-classifier/internal/repository"
 
-	"gorm.io/gorm"
+	"golang.org/x/text/unicode/norm"
 )
 
 // ContactService handles the contact category use cases.
 type ContactService struct {
 	extractor *ContactExtractor
-	db        *gorm.DB
+	repo      *repository.ContactRepository
 }
 
-func NewContactService(extractor *ContactExtractor, db *gorm.DB) *ContactService {
-	return &ContactService{extractor: extractor, db: db}
+func NewContactService(extractor *ContactExtractor, repo *repository.ContactRepository) *ContactService {
+	return &ContactService{extractor: extractor, repo: repo}
 }
 
 // Handle routes contact messages to the add or get use case.
@@ -38,17 +41,17 @@ func (s *ContactService) Add(request *models.ReceiveMessageRequest, classificati
 
 	// Duplicate check before name extraction (early return — no Jev spent).
 	if hasPhone {
-		existing, err := s.findDuplicate("phone = ?", phone)
-		if err != nil {
-			return nil, err
+		existing, err := s.repo.FindByPhone(phone)
+		if err != nil && !errors.Is(err, repository.ErrNotFound) {
+			return nil, fmt.Errorf("failed to check duplicate contact: %w", err)
 		}
 		if existing != nil {
 			return &models.UseCaseOutcome{Classification: classification, Action: models.ActionContactDuplicate, Contact: existing}, nil
 		}
 	} else if hasEmail {
-		existing, err := s.findDuplicate("LOWER(email) = LOWER(?)", email)
-		if err != nil {
-			return nil, err
+		existing, err := s.repo.FindByEmail(email)
+		if err != nil && !errors.Is(err, repository.ErrNotFound) {
+			return nil, fmt.Errorf("failed to check duplicate contact: %w", err)
 		}
 		if existing != nil {
 			return &models.UseCaseOutcome{Classification: classification, Action: models.ActionContactDuplicate, Contact: existing}, nil
@@ -76,37 +79,39 @@ func (s *ContactService) Add(request *models.ReceiveMessageRequest, classificati
 		contact.Email = &email
 	}
 
-	if err := s.db.Create(contact).Error; err != nil {
+	if err := s.repo.Create(contact); err != nil {
 		return nil, fmt.Errorf("failed to persist contact: %w", err)
 	}
 
 	return &models.UseCaseOutcome{Classification: classification, Action: models.ActionContactAdd, Contact: contact, Segments: nameResult.Segments}, nil
 }
 
-// findDuplicate returns the existing contact matching the query, or nil.
-func (s *ContactService) findDuplicate(query string, arg string) (*models.Contact, error) {
-	var existing models.Contact
-	err := s.db.Where(query, arg).First(&existing).Error
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, fmt.Errorf("failed to check duplicate contact: %w", err)
-	}
-	if err == nil {
-		return &existing, nil
-	}
-	return nil, nil
-}
-
 // BackfillNameNorm recomputes NameNorm for rows created before the column existed.
 func (s *ContactService) BackfillNameNorm() error {
-	var contacts []models.Contact
-	if err := s.db.Where("name_norm = '' OR name_norm IS NULL").Find(&contacts).Error; err != nil {
+	contacts, err := s.repo.ListNeedingNameNorm()
+	if err != nil {
 		return fmt.Errorf("failed to load contacts for backfill: %w", err)
 	}
 	for i := range contacts {
 		contacts[i].NameNorm = normalizeName(contacts[i].Name)
-		if err := s.db.Save(&contacts[i]).Error; err != nil {
+		if err := s.repo.Save(&contacts[i]); err != nil {
 			return fmt.Errorf("failed to backfill name_norm: %w", err)
 		}
 	}
 	return nil
+}
+
+// normalizeName lowercases, strips diacritics (NFD + remove Mn marks), and
+// collapses whitespace so name matching is robust to case and accents.
+func normalizeName(s string) string {
+	s = norm.NFD.String(s)
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if unicode.Is(unicode.Mn, r) {
+			continue
+		}
+		b.WriteRune(unicode.ToLower(r))
+	}
+	return strings.Join(strings.Fields(b.String()), " ")
 }
