@@ -7,6 +7,7 @@ import (
 	"msg-classifier/internal/config"
 	"msg-classifier/internal/controllers"
 	"msg-classifier/internal/models"
+	"msg-classifier/internal/repository"
 	"msg-classifier/internal/services"
 	"msg-classifier/pkg/jev"
 
@@ -48,7 +49,7 @@ func main() {
 
 	classifier := services.NewClassificationService(jevClient)
 	extractor := services.NewContactExtractor(jevClient)
-	contactService := services.NewContactService(extractor, db)
+	contactService := services.NewContactService(extractor, repository.NewContactRepository(db))
 	if err := contactService.BackfillNameNorm(); err != nil {
 		log.Fatalf("failed to backfill name_norm: %v", err)
 	}
