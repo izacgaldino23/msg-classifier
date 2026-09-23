@@ -1,0 +1,29 @@
+{{ define "page:title" }}Validação Jev{{ end }}
+{{ define "page:content" }}
+<main class="container">
+    <h1>Validação Jev</h1>
+
+    <p>
+        <label for="flow">Fluxo:</label>
+        <select id="flow" name="flow" hx-get="/prompts/table" hx-target="#prompt-table" hx-swap="innerHTML" hx-target-error="#prompt-table" hx-trigger="load, change">
+            <option value="classification">Classificação</option>
+            <option value="name">Extração de nome</option>
+        </select>
+    </p>
+
+    <form hx-post="/prompts" hx-target="#prompt-table" hx-swap="innerHTML" hx-target-error="#prompt-table" hx-include="#flow">
+        <p>
+            <label for="message">Mensagem:</label>
+            <textarea id="message" name="message" required></textarea>
+        </p>
+        <p>
+            <label for="expected">Resultado esperado:</label>
+            <input type="text" id="expected" name="expected" required>
+        </p>
+        <button type="submit">Adicionar exemplo</button>
+    </form>
+
+    <div id="prompt-table"></div>
+    <div id="evaluation"></div>
+</main>
+{{ end }}
