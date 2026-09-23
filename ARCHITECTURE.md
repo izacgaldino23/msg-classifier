@@ -35,22 +35,26 @@ msg-classifier/
 ├── internal/                    # Private application code (not importable externally)
 │   ├── config/
 │   │   └── env.go               # Env singleton (TYPESAFE_API_URL, TYPESAFE_MODEL, TS_API_KEY, DB_PATH) — single godotenv load site
-│   ├── controllers/             # C — HTTP concerns only (bind → service → render → status)
-│   │   ├── web_controller.go    # GET / handler (delegates page/partial switch to views)
-│   │   └── message_controller.go# POST /api/message handler (bind → Classify → Dispatch → render)
 │   ├── models/                  # M — data structures
 │   │   ├── message.go           # DTOs + Classification domain struct + UseCaseOutcome/Action + ToResponse
-│   │   └── contact.go           # Contact entity + SegmentScore
+│   │   ├── contact.go           # Contact entity + SegmentScore
+│   │   └── prompt.go            # JevPrompt entity + Flow constants + EvaluationResult + form DTOs
 │   ├── repository/              # Persistence — all gorm queries
-│   │   └── contact.go           # ContactRepository — all gorm queries
+│   │   ├── contact.go           # ContactRepository — all gorm queries
+│   │   └── prompt.go            # PromptRepository — Create, ListByFlow
 │   ├── services/                # M — business rules
 │   │   ├── classification.go    # ClassificationService (single Jev call, checked answer mapping)
 │   │   ├── dispatcher.go        # Dispatcher (category → handler registry) + CategoryHandler interface
 │   │   ├── contact.go           # ContactService (add + duplicate check + NameNorm backfill; normalizeName folded in; require routing)
 │   │   ├── contact_get.go       # ContactService.Get (require flow: phone → email → name search)
 │   │   ├── extraction.go        # ContactExtractor (regex phone/email + Jev Noul name fan-out)
+│   │   └── prompt.go            # PromptService (validation harness: Add, ListByFlow, Evaluate, ExportCSV)
+│   ├── controllers/             # C — HTTP concerns only (bind → service → render → status)
+│   │   ├── web_controller.go    # GET / handler (delegates page/partial switch to views)
+│   │   ├── message_controller.go# POST /api/message handler (bind → Classify → Dispatch → render)
+│   │   └── prompt_controller.go # /prompts routes (Page, Table, Add, Evaluate, Export)
 │   └── views/                   # V — render helpers
-│       └── render.go            # Template name constants + RenderPage/RenderResult/RenderError
+│       └── render.go            # Template name constants + RenderPage/RenderResult/RenderError + prompt partial helpers
 ├── pkg/                         # Reusable packages
 │   ├── request.go               # ReturnJson helper ({"data": ...} / {"error": ...})
 │   └── jev/
@@ -59,11 +63,18 @@ msg-classifier/
 │           └── classification.json  # two choice questions: "classification" + "adding_or_requiring"
 ├── web/
 │   └── templates/
-│       ├── layouts/base.html    # "base" layout (sakura.css + htmx CDN + response-targets)
+│       ├── layouts/base.html    # "base" layout (Pico.css + htmx CDN + response-targets + nav)
 │       ├── pages/index.html     # "page:title" / "page:content" blocks (form)
+│       ├── pages/prompts.html   # "Validação Jev" page (flow select + add form + swap targets)
 │       └── partial/
 │           ├── result.html      # "resultado" partial (classification + action-specific process trace)
-│           └── error.html       # "error" partial (error card for htmx swap targets)
+│           ├── error.html       # "error" partial (error card for htmx swap targets)
+│           ├── prompt_table.html        # checkbox table + Avaliar/Exportar buttons
+│           ├── evaluation_results.html  # expected vs obtained comparison + segment trace
+│           └── export_result.html       # CSV path confirmation
+├── scripts/
+│   └── sql/
+│       └── seed_prompts.sql    # wipe + re-seed jev_prompts examples
 ├── go.mod / go.sum              # Module "msg-classifier", Go 1.25.4
 ├── local.env                    # Env vars (not committed secrets)
 ├── .vscode/launch.json          # Go debug config for cmd/api/main.go
@@ -78,6 +89,11 @@ msg-classifier/
 - Registers routes:
   - `GET /` → `webController.Home`
   - `POST /api/message` → `messageController.ReceiveMessage`
+  - `GET /prompts` → `promptController.Page`
+  - `GET /prompts/table` → `promptController.Table`
+  - `POST /prompts` → `promptController.Add`
+  - `POST /prompts/evaluate` → `promptController.Evaluate`
+  - `POST /prompts/export` → `promptController.Export`
 - Server runs on `:8080`.
 
 ### 2. Config Singleton — `internal/config/env.go`
@@ -130,6 +146,11 @@ msg-classifier/
 - `result.html`: `resultado` partial — a Pico `<article>` with the classification block in `<header>`, plus branches for add/found/not-found/duplicate/no-data and the per-segment extraction trace in `<footer><small>`.
 - `error.html`: `error` partial rendering a Pico `<article>` error card (used for 400/502/500 responses).
 
+### 12. Prompt Service (validation harness) — `internal/services/prompt.go` + `prompt_controller.go`
+- `PromptService` orchestrates the Jev validation harness: `Add` (validates flow ∈ {classification, name} and non-empty fields, `ErrInvalidPrompt` → 400), `ListByFlow`, `Evaluate` (loads prompts by flow, filters to selected ids, runs the exact production paths — `ClassificationService.Classify` for classification, `ContactExtractor.ExtractName` for name — and compares expected vs obtained; a Jev failure for one prompt is captured in its row as the obtained result with match=false and evaluation continues), and `ExportCSV` (re-runs `Evaluate` and writes `exports/<flow>-<yyyyMMdd-HHmmss>.csv` via `encoding/csv`, folder created on demand).
+- `PromptController` is thin: `Page` renders the page, `Table` renders the `prompt_table` partial, `Add` persists and re-renders the table, `Evaluate` renders `evaluation_results`, `Export` renders `export_result`. Bind failures → 400, invalid prompt → 400, service failures → 500 (existing `renderServiceError`).
+- The harness reuses the exact production Jev paths — no new request-building code.
+
 ## Data Flow
 
 ```
@@ -163,6 +184,25 @@ gin router ──► MessageController.ReceiveMessage
 ```
 
 Up to two TypeSafe API calls are made per request: the classification call, and (for contact add with extractable data, or a require-by-name search) the name fan-out call. All persistence goes through `ContactRepository` — `repo.Create` for saves, `repo.FindByPhone` / `repo.FindByEmail` / `repo.FindByName` for lookups, and `repo.ListNeedingNameNorm` + `repo.Save` for the startup `NameNorm` backfill. Contacts are persisted to a local SQLite database (`DB_PATH`, default `contacts.db`); the require flow searches by phone/email/name and duplicate saves are detected before name extraction. The result partial always shows the classification block and adds an action-specific block (saved contact with ID, fields, the per-segment extraction trace, found/not-found/duplicate messages, or the no-data message).
+
+```
+Browser (/prompts)
+  │ select flow → hx-get /prompts/table?flow=classification
+  ▼
+PromptController.Table → PromptService.ListByFlow → prompt_table partial (checkboxes)
+  │ check rows → "Avaliar" → hx-post /prompts/evaluate {flow, ids[]}
+  ▼
+PromptController.Evaluate → PromptService.Evaluate
+  │   ├─ per id: ClassificationService.Classify  (or ContactExtractor.ExtractName)
+  │   ├─ match = expected vs obtained (format per flow)
+  │   └─ per-row error capture (upstream → obtained=error, match=false)
+  → evaluation_results partial (✓/✗ per row)
+  │ "Exportar CSV" → hx-post /prompts/export {flow, ids[]}
+  ▼
+PromptController.Export → PromptService.ExportCSV
+  │   └─ Evaluate (re-run) → encoding/csv → exports/<flow>-<timestamp>.csv
+  → export_result partial (path confirmation)
+```
 
 ## Error Handling
 
@@ -214,5 +254,5 @@ go build ./cmd/api
 ```
 
 - No Dockerfile, Makefile, or CI pipeline exists yet.
-- Tests exist for `pkg/jev`, `internal/models`, `internal/config`, `internal/services`, and `internal/views` (run with `go test ./...`).
-- `.gitignore` ignores `**/*_bin.exe` and `thoughts/`.
+- Tests exist for `pkg/jev`, `internal/models`, `internal/config`, `internal/services`, `internal/views`, and `internal/repository` (run with `go test ./...`).
+- `.gitignore` ignores `**/*_bin.exe`, `thoughts/`, `*.db`, `.vscode`, and `exports/`.
