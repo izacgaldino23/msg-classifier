@@ -43,7 +43,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to open database %q: %v", env.DBPath, err)
 	}
-	if err := db.AutoMigrate(&models.Contact{}); err != nil {
+	if err := db.AutoMigrate(&models.Contact{}, &models.JevPrompt{}); err != nil {
 		log.Fatalf("failed to migrate database: %v", err)
 	}
 
@@ -57,10 +57,19 @@ func main() {
 		"contact": contactService,
 	})
 
+	promptRepo := repository.NewPromptRepository(db)
+	promptService := services.NewPromptService(promptRepo, classifier, extractor)
+	promptController := controllers.NewPromptController(promptService)
+
 	webController := controllers.NewWebController()
 	messageController := controllers.NewMessageController(classifier, dispatcher)
 
 	router.GET("/", webController.Home)
+	router.GET("/prompts", promptController.Page)
+	router.GET("/prompts/table", promptController.Table)
+	router.POST("/prompts", promptController.Add)
+	router.POST("/prompts/evaluate", promptController.Evaluate)
+	router.POST("/prompts/export", promptController.Export)
 
 	api := router.Group("/api")
 	api.POST("/message", messageController.ReceiveMessage)
