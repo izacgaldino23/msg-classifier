@@ -2,3 +2,4 @@
 thoughts/
 *.db
 .vscode
+exports/
