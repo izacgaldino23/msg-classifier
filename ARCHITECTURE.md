@@ -39,13 +39,15 @@ msg-classifier/
 │   │   ├── web_controller.go    # GET / handler (delegates page/partial switch to views)
 │   │   └── message_controller.go# POST /api/message handler (bind → Classify → Dispatch → render)
 │   ├── models/                  # M — data structures
-│   │   └── message.go           # ReceiveMessageRequest/Response DTOs + Classification domain struct + UseCaseOutcome/Action + Contact entity + SegmentScore
+│   │   ├── message.go           # DTOs + Classification domain struct + UseCaseOutcome/Action + ToResponse
+│   │   └── contact.go           # Contact entity + SegmentScore
+│   ├── repository/              # Persistence — all gorm queries
+│   │   └── contact.go           # ContactRepository — all gorm queries
 │   ├── services/                # M — business rules
 │   │   ├── classification.go    # ClassificationService (single Jev call, checked answer mapping)
 │   │   ├── dispatcher.go        # Dispatcher (category → handler registry) + CategoryHandler interface
-│   │   ├── contact.go           # ContactService (add + duplicate check + NameNorm backfill; require routing)
+│   │   ├── contact.go           # ContactService (add + duplicate check + NameNorm backfill; normalizeName folded in; require routing)
 │   │   ├── contact_get.go       # ContactService.Get (require flow: phone → email → name search)
-│   │   ├── normalize.go         # normalizeName (lowercase + NFD diacritics strip + whitespace collapse)
 │   │   ├── extraction.go        # ContactExtractor (regex phone/email + Jev Noul name fan-out)
 │   └── views/                   # V — render helpers
 │       └── render.go            # Template name constants + RenderPage/RenderResult/RenderError
@@ -95,17 +97,17 @@ msg-classifier/
 - `Dispatcher` holds a `map[string]CategoryHandler` keyed by `Category.Choice`; `Dispatch` looks up the handler, falling back to an `ActionNone` outcome on a miss. Adding a category = new service implementing `CategoryHandler` + one wiring line in `main.go`.
 
 ### 6. Contact Service — `internal/services/contact.go` + `contact_get.go`
-- `ContactService` implements `CategoryHandler` for the `contact` category. Constructor takes a `*ContactExtractor` and a `*gorm.DB`. `Handle` routes `require` → `Get`, everything else → `Add`. `Add` extracts phone/email → neither found → `ActionContactNoData` outcome; a duplicate check (phone, then email) runs **before** name extraction — a match returns `ActionContactDuplicate` + the existing contact (no Jev call); otherwise name extraction runs and Gorm inserts the contact (populating `NameNorm`) → `ActionContactAdd` outcome carrying the saved contact and the segment trace (`outcome.Segments`). `Get` (require flow) searches with phone → email → name priority; phone/email searches skip Jev entirely; name search uses `LIKE %term%` on `name_norm`; `SearchTerm` is set on the outcome and not-found is an outcome, not an error. `BackfillNameNorm()` recomputes `NameNorm` for pre-migration rows at startup.
+- `ContactService` implements `CategoryHandler` for the `contact` category. Constructor takes a `*ContactExtractor` and a `*repository.ContactRepository` — the repository owns all gorm queries, and the service wraps repo errors with the same context strings (`failed to check duplicate contact`, `failed to persist contact`, `failed to search contact`, `failed to load contacts for backfill`, `failed to backfill name_norm`). `Handle` routes `require` → `Get`, everything else → `Add`. `Add` extracts phone/email → neither found → `ActionContactNoData` outcome; a duplicate check (phone, then email) runs **before** name extraction — a match returns `ActionContactDuplicate` + the existing contact (no Jev call); otherwise name extraction runs and the repository inserts the contact (populating `NameNorm`) → `ActionContactAdd` outcome carrying the saved contact and the segment trace (`outcome.Segments`). `Get` (require flow) searches with phone → email → name priority; phone/email searches skip Jev entirely; name search uses `LIKE %term%` on `name_norm`; `SearchTerm` is set on the outcome and not-found is an outcome, not an error. `BackfillNameNorm()` recomputes `NameNorm` for pre-migration rows at startup.
 
 ### 6b. Contact Extractor — `internal/services/extraction.go`
 - `ContactExtractor` extracts phone (BR regex, normalized to 10/11 digits) and email (first match + span) deterministically, and the name via one dynamic Jev request with a Noul question per whitespace segment (`segment_0..N`). `ExtractName` returns a `NameResult` — the joined name plus a per-segment trace (`SegmentScore`: text, noul score, `Included` = score > 0.5, the single threshold site the join and the UI both derive from). Depends on a minimal `jevRequester` interface (`MakeJevRequest`) so tests mock the Jev call.
 
-### 7. Models — `internal/models/message.go`
-- `ReceiveMessageRequest` / `ReceiveMessageResponse` DTOs.
-- `Classification` domain struct (`CategoryFinding` / `KindFinding` with raw numeric confidences; `KindFinding.Choice` carries the kind: `"add"` / `"require"` / `"both"`).
-- `UseCaseOutcome` (`Classification` + `Action` + `SearchTerm`) — the seam where use-case results (extracted contact, DB confirmation, search term) flow back without signature changes.
-- `Contact` Gorm entity (ID, Name, `NameNorm` column, Phone/Email nullable, timestamps); `SegmentScore` (text, noul score, included flag); `UseCaseOutcome` carries `Contact` and `Segments` (nil unless name extraction ran); actions are `ActionNone` / `ActionContactAdd` / `ActionContactNoData` / `ActionContactFound` / `ActionContactNotFound` / `ActionContactDuplicate`.
-- `Classification.ToResponse()` formats confidences as `%.2f` percent strings for display (successor of the former `fromJevResponse`).
+### 6c. Contact Repository — `internal/repository/contact.go`
+- `ContactRepository` owns all gorm queries for the `Contact` entity; `NewContactRepository(db *gorm.DB)` wraps the DB handle. Methods: `Create` (persist a new contact), `FindByPhone` / `FindByEmail` (case-insensitive) / `FindByName` (`name_norm LIKE %term%`), `ListNeedingNameNorm` (empty/NULL `name_norm`, pre-migration rows), and `Save` (backfill updates). `ErrNotFound = gorm.ErrRecordNotFound` is the not-found sentinel — services detect it with `errors.Is` without importing gorm; all other errors are returned raw and wrapped by the service with its context strings.
+
+### 7. Models — `internal/models/message.go` + `contact.go`
+- `message.go`: `ReceiveMessageRequest` / `ReceiveMessageResponse` DTOs; `Classification` domain struct (`CategoryFinding` / `KindFinding` with raw numeric confidences; `KindFinding.Choice` carries the kind: `"add"` / `"require"` / `"both"`); `UseCaseOutcome` (`Classification` + `Action` + `SearchTerm`) — the seam where use-case results (extracted contact, DB confirmation, search term) flow back without signature changes; actions are `ActionNone` / `ActionContactAdd` / `ActionContactNoData` / `ActionContactFound` / `ActionContactNotFound` / `ActionContactDuplicate`; `Classification.ToResponse()` formats confidences as `%.2f` percent strings for display (successor of the former `fromJevResponse`).
+- `contact.go`: `Contact` Gorm entity (ID, Name, `NameNorm` column, Phone/Email nullable, timestamps) and `SegmentScore` (text, noul score, included flag); `UseCaseOutcome` carries `Contact` and `Segments` (nil unless name extraction ran).
 
 ### 8. Views — `internal/views/render.go`
 - Template name constants (`base`, `page:content`, `resultado`, `error`) — no string literals at call sites.
@@ -143,14 +145,15 @@ gin router ──► MessageController.ReceiveMessage
   │     ├─► contact + add/both → ContactService.Add
   │     │     ├─► ExtractPhone / ExtractEmail (regex)
   │     │     ├─► neither → outcome ActionContactNoData (200, friendly partial)
+  │     │     ├─► duplicate check → repo.FindByPhone / repo.FindByEmail (no Jev)
   │     │     ├─► remainder → segments → Jev call #2 (dynamic Noul fan-out)
   │     │     ├─► name = segments with noul > 0.5, joined in order (trace kept)
-  │     │     ├─► Gorm insert Contact (SQLite)
+  │     │     ├─► repo.Create(contact) (SQLite)
   │     │     └─► outcome ActionContactAdd + saved contact + segment trace
   │     ├─► contact + require   → ContactService.Get
-  │     │     ├─► ExtractPhone → search phone = ? (no Jev)
-  │     │     ├─► else ExtractEmail → search LOWER(email) = LOWER(?) (no Jev)
-  │     │     ├─► else ExtractName → normalizeName → search name_norm LIKE %term%
+  │     │     ├─► ExtractPhone → repo.FindByPhone (no Jev)
+  │     │     ├─► else ExtractEmail → repo.FindByEmail (no Jev)
+  │     │     ├─► else ExtractName → normalizeName → repo.FindByName (name_norm LIKE %term%)
   │     │     ├─► found → outcome ActionContactFound + contact + SearchTerm
   │     │     ├─► not found → outcome ActionContactNotFound + SearchTerm
   │     │     └─► nothing extractable → outcome ActionContactNoData
@@ -159,7 +162,7 @@ gin router ──► MessageController.ReceiveMessage
   └─► views.RenderResult ──► c.HTML(200, "resultado", ...) ──► htmx swaps #resultado innerHTML
 ```
 
-Up to two TypeSafe API calls are made per request: the classification call, and (for contact add with extractable data, or a require-by-name search) the name fan-out call. Contacts are persisted to a local SQLite database (`DB_PATH`, default `contacts.db`); the require flow searches by phone/email/name and duplicate saves are detected before name extraction. The result partial always shows the classification block and adds an action-specific block (saved contact with ID, fields, the per-segment extraction trace, found/not-found/duplicate messages, or the no-data message).
+Up to two TypeSafe API calls are made per request: the classification call, and (for contact add with extractable data, or a require-by-name search) the name fan-out call. All persistence goes through `ContactRepository` — `repo.Create` for saves, `repo.FindByPhone` / `repo.FindByEmail` / `repo.FindByName` for lookups, and `repo.ListNeedingNameNorm` + `repo.Save` for the startup `NameNorm` backfill. Contacts are persisted to a local SQLite database (`DB_PATH`, default `contacts.db`); the require flow searches by phone/email/name and duplicate saves are detected before name extraction. The result partial always shows the classification block and adds an action-specific block (saved contact with ID, fields, the per-segment extraction trace, found/not-found/duplicate messages, or the no-data message).
 
 ## Error Handling
 
