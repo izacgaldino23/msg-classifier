@@ -1,0 +1,38 @@
+{{ define "evaluation_results" }}
+<article id="evaluation">
+    <p><strong>Fluxo:</strong> {{ .Flow }}</p>
+    {{ if .Results }}
+    <table>
+        <thead>
+            <tr>
+                <th>Mensagem</th>
+                <th>Esperado</th>
+                <th>Obtido</th>
+                <th>Resultado</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{ range .Results }}
+            <tr>
+                <td>{{ .Message }}</td>
+                <td>{{ .ExpectedResult }}</td>
+                <td>{{ .ObtainedResult }}</td>
+                <td>{{ if .Match }}✓{{ else }}✗{{ end }}</td>
+            </tr>
+            {{ if .Segments }}
+            <tr>
+                <td colspan="4">
+                    <small><strong>Extração:</strong>
+                    {{ range $i, $seg := .Segments }}{{ if $i }} · {{ end }}{{ $seg.Text }} {{ printf "%.2f" $seg.Score }}{{ if $seg.Included }} ✓{{ else }} ✗{{ end }}{{ end }}
+                    </small>
+                </td>
+            </tr>
+            {{ end }}
+            {{ end }}
+        </tbody>
+    </table>
+    {{ else }}
+    <p>Nenhum prompt selecionado.</p>
+    {{ end }}
+</article>
+{{ end }}
