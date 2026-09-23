@@ -173,3 +173,84 @@ func TestRenderResultContactDuplicate(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderPromptTable(t *testing.T) {
+	c, w := newTestContext()
+
+	prompts := []models.JevPrompt{
+		{ID: 1, Flow: models.FlowClassification, Message: "salva fulano", ExpectedResult: "contact:add"},
+		{ID: 2, Flow: models.FlowClassification, Message: "quanto gastei?", ExpectedResult: "finance:require"},
+	}
+	RenderPromptTable(c, models.FlowClassification, prompts)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := w.Body.String()
+	for _, want := range []string{"prompt-form", "salva fulano", "contact:add", "quanto gastei?", "finance:require", `name="ids"`, `value="1"`, `value="2"`, "Avaliar", "Exportar CSV"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body missing %q: %s", want, body)
+		}
+	}
+}
+
+func TestRenderEvaluationResults(t *testing.T) {
+	c, w := newTestContext()
+
+	results := []models.EvaluationResult{
+		{PromptID: 1, Message: "salva fulano", ExpectedResult: "contact:add", ObtainedResult: "contact:add", Match: true},
+		{PromptID: 2, Message: "quanto gastei?", ExpectedResult: "contact:add", ObtainedResult: "finance:require", Match: false},
+	}
+	RenderEvaluationResults(c, models.FlowClassification, results)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := w.Body.String()
+	for _, want := range []string{"salva fulano", "contact:add", "finance:require", "✓", "✗"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body missing %q: %s", want, body)
+		}
+	}
+}
+
+func TestRenderEvaluationResultsNameSegments(t *testing.T) {
+	c, w := newTestContext()
+
+	results := []models.EvaluationResult{
+		{
+			PromptID: 3, Message: "João da Silva", ExpectedResult: "João da Silva",
+			ObtainedResult: "João da Silva", Match: true,
+			Segments: []models.SegmentScore{
+				{Text: "João", Score: 0.99, Included: true},
+				{Text: "da", Score: 0.98, Included: true},
+				{Text: "Silva", Score: 0.97, Included: true},
+			},
+		},
+	}
+	RenderEvaluationResults(c, models.FlowName, results)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := w.Body.String()
+	for _, want := range []string{"João 0.99", "da 0.98", "Silva 0.97"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body missing %q: %s", want, body)
+		}
+	}
+}
+
+func TestRenderExportResult(t *testing.T) {
+	c, w := newTestContext()
+
+	RenderExportResult(c, "exports/classification-20260923-101530.csv")
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "exports/classification-20260923-101530.csv") {
+		t.Errorf("body missing export path: %s", body)
+	}
+}
