@@ -54,6 +54,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to open database %q: %v", env.DBPath, err)
 	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		log.Fatalf("failed to get database pool: %v", err)
+	}
+	// Single connection serializes SQLite access; concurrent connections are
+	// unstable with the pure-Go driver (glebarez/modernc) on Windows.
+	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&models.Contact{}, &models.JevPrompt{}); err != nil {
 		log.Fatalf("failed to migrate database: %v", err)
 	}

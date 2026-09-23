@@ -86,6 +86,7 @@ msg-classifier/
 ### 1. Composition Root — `cmd/api/main.go`
 - `main()` builds a `gin.Default()` router, parses `web/templates/**/*.html` (`template.Must`), installs an htmx middleware that stores an `*htmx.Handler` in the Gin context under key `"htmx"` (single htmx instance).
 - Wires dependencies: `config.GetEnv()` (single godotenv load site) → `jev.NewClient(url, token, model)` → `services.NewClassificationService(client)` → `services.NewDispatcher` (registry: `"contact"` → `ContactService`) → controllers.
+- SQLite pool is capped at one connection (`SetMaxOpenConns(1)` right after `gorm.Open`) — all DB access is serialized; the pure-Go driver (glebarez/modernc) is unstable with concurrent connections on Windows.
 - Registers routes:
   - `GET /` → `webController.Home`
   - `POST /api/message` → `messageController.ReceiveMessage`
