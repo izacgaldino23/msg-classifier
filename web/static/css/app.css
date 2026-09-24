@@ -1,6 +1,26 @@
 /* app.css — custom layer over Pico.css v2 (loaded after pico.min.css) */
 
 /* 1. Design tokens */
+:root {
+	/* Compact scale: smaller fonts, tighter components, narrow centered column */
+	--pico-font-size: 92%;
+	--pico-h1-font-size: 1.75rem;
+	--pico-h2-font-size: 1.5rem;
+	--pico-h3-font-size: 1.25rem;
+	--pico-h4-font-size: 1.125rem;
+	--pico-h5-font-size: 1rem;
+	--pico-h6-font-size: 0.875rem;
+	--pico-spacing: 0.75rem;
+	--pico-typography-spacing-vertical: 0.75rem;
+	--pico-form-element-spacing-vertical: 0.5rem;
+	--pico-form-element-spacing-horizontal: 0.75rem;
+	--pico-form-element-height: 2.25rem;
+	--pico-button-spacing-vertical: 0.5rem;
+	--pico-button-spacing-horizontal: 1rem;
+	--pico-card-spacing: 0.75rem;
+	--pico-container-max-width: 760px;
+}
+
 :root[data-theme="dark"] {
 	--pico-primary: #818cf8;
 	--pico-primary-background: #6366f1;
@@ -28,7 +48,7 @@ body {
 	backdrop-filter: blur(8px);
 	-webkit-backdrop-filter: blur(8px);
 	border-bottom: 1px solid var(--pico-card-border-color);
-	margin-bottom: 2rem;
+	margin-bottom: 1.5rem;
 }
 
 .site-nav-inner {
@@ -231,5 +251,10 @@ button.htmx-request .button-label {
 
 .hero .subtitle {
 	color: var(--pico-muted-color);
-	margin-bottom: 1.5rem;
+	margin-bottom: 1rem;
+}
+
+/* Compact message textarea */
+textarea {
+	min-height: 6rem;
 }
