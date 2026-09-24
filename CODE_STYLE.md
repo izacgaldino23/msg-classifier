@@ -99,6 +99,7 @@ type jevClient interface {
 - Render through `views.RenderPage` / `views.RenderResult` / `views.RenderError`, not raw `c.HTML`.
 - Pages render through `views.RenderPage(c, page, content)`; `views.PagesRenderer` clones the shared layout set per page so page blocks never collide.
 - Template name constants in `internal/views/render.go` include the harness partials: `prompt_table`, `evaluation_results`.
+- Template helpers are exposed via `views.FuncMap` (e.g., `label` for PT-BR badge text) and registered on the shared template set in `cmd/api/main.go` (`template.New("").Funcs(views.FuncMap)`).
 
 ### Validation harness (/prompts)
 - `PromptService` reuses the production Jev paths (`ClassificationService.Classify`, `ContactExtractor.ExtractName`) — no new request-building code.

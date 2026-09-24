@@ -25,9 +25,12 @@ const (
 func main() {
 	router := gin.Default()
 
+	// Static assets (app.css) — CWD-relative, same convention as web/templates.
+	router.Static("/static", "./web/static")
+
 	// Templates: layouts+partials are shared; each page gets its own clone so
 	// pages never collide on page:title/page:content block names.
-	tmpl := template.Must(template.ParseGlob(SourcePath + "/layouts/*.html"))
+	tmpl := template.Must(template.New("").Funcs(views.FuncMap).ParseGlob(SourcePath + "/layouts/*.html"))
 	tmpl = template.Must(tmpl.ParseGlob(SourcePath + "/partial/*.html"))
 	pagesRenderer, err := views.NewPagesRenderer(tmpl, map[string]string{
 		views.HomePage:    SourcePath + "/pages/index.html",

@@ -1,6 +1,7 @@
 package views
 
 import (
+	"html/template"
 	"net/http"
 
 	"msg-classifier/internal/models"
@@ -102,4 +103,35 @@ func RenderPromptTable(c *gin.Context, flow string, prompts []models.JevPrompt) 
 // csvPath is shown when the results were exported as CSV.
 func RenderEvaluationResults(c *gin.Context, flow string, results []models.EvaluationResult, csvPath string) {
 	c.HTML(http.StatusOK, EvaluationResultsTemplate, EvaluationResultsData{Flow: flow, Results: results, CsvPath: csvPath})
+}
+
+// labelMap maps classification choices to their PT-BR display labels.
+var labelMap = map[string]string{
+	"contact":  "Contato",
+	"finance":  "Finanças",
+	"schedule": "Agenda",
+	"notes":    "Notas",
+	"other":    "Outro",
+	"add":      "Adicionar",
+	"require":  "Consultar",
+	"both":     "Ambos",
+}
+
+// Label returns the PT-BR display label for a classification choice,
+// falling back to the input unchanged when it is not mapped. It takes any
+// so a nil map lookup (missing classification) renders "" instead of erroring.
+func Label(choice any) string {
+	s, ok := choice.(string)
+	if !ok {
+		return ""
+	}
+	if label, ok := labelMap[s]; ok {
+		return label
+	}
+	return s
+}
+
+// FuncMap exposes template helpers to the shared template set.
+var FuncMap = template.FuncMap{
+	"label": Label,
 }

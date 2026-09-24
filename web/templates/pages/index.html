@@ -1,23 +1,24 @@
 {{ define "page:title" }}Home{{ end }}
 {{ define "page:content" }}
 <main class="container">
-    <h1>Classificador de Mensagens</h1>
+    <section class="hero">
+        <h1>Classificador de Mensagens</h1>
+        <p class="subtitle">Envie uma mensagem e veja a categoria, a ação e os contatos extraídos.</p>
+    </section>
 
     <form hx-post="/api/message" hx-target="#resultado" hx-swap="innerHTML">
-        <p>
-            <label for="message">Mensagem:</label>
-            <textarea id="message" name="message" required></textarea>
-        </p>
+        <label for="message">Mensagem:</label>
+        <textarea id="message" name="message" required></textarea>
 
-        <p>
-            <label for="user_id">User ID:</label>
-            <input type="text" id="user_id" name="user_id" value="12345">
-        </p>
+        <label for="user_id">User ID:</label>
+        <input type="text" id="user_id" name="user_id" value="12345">
 
-        <button type="submit">Enviar</button>
+        <button type="submit" hx-indicator="this" hx-disabled-elt="this">
+            <span class="button-label">Enviar</span>
+            <span class="htmx-indicator" aria-hidden="true"><span class="spinner"></span>Classificando…</span>
+        </button>
     </form>
-    
-    <div id="resultado">
-    </div>
+
+    <div id="resultado"></div>
 </main>
 {{ end }}

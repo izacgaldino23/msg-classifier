@@ -18,7 +18,7 @@ func newTestContext() (*gin.Context, *httptest.ResponseRecorder) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	c, engine := gin.CreateTestContext(w)
-	shared := template.Must(template.ParseGlob("../../web/templates/layouts/*.html"))
+	shared := template.Must(template.New("").Funcs(FuncMap).ParseGlob("../../web/templates/layouts/*.html"))
 	shared = template.Must(shared.ParseGlob("../../web/templates/partial/*.html"))
 	pr, err := NewPagesRenderer(shared, map[string]string{
 		HomePage:    "../../web/templates/pages/index.html",
@@ -54,7 +54,14 @@ func TestRenderResultContactAdd(t *testing.T) {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
 	body := w.Body.String()
-	for _, want := range []string{"contact", "add", "Contato salvo", "ID 7", "Fulano Tal", "9292929290", "Fulano 0.91", "de 0.08", "Tal 0.88", "✓", "✗"} {
+	for _, want := range []string{
+		"badge-cat-contact", "badge-kind-add", "Contato", "Adicionar",
+		"Contato salvo", "ID 7", "Fulano Tal", "9292929290",
+		"segment-text\">Fulano", "score-pill\">0.91",
+		"segment-text\">de", "score-pill\">0.08",
+		"segment-text\">Tal", "score-pill\">0.88",
+		"segment-mark ok", "segment-mark no", "✓", "✗",
+	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body missing %q: %s", want, body)
 		}
@@ -216,7 +223,7 @@ func TestRenderEvaluationResults(t *testing.T) {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
 	body := w.Body.String()
-	for _, want := range []string{"salva fulano", "contact:add", "finance:require", "✓", "✗"} {
+	for _, want := range []string{"salva fulano", "contact:add", "finance:require", "badge-match-ok", "badge-match-no", "✓", "✗"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body missing %q: %s", want, body)
 		}
@@ -243,7 +250,11 @@ func TestRenderEvaluationResultsNameSegments(t *testing.T) {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
 	body := w.Body.String()
-	for _, want := range []string{"João 0.99", "da 0.98", "Silva 0.97"} {
+	for _, want := range []string{
+		"segment-text\">João", "score-pill\">0.99",
+		"segment-text\">da", "score-pill\">0.98",
+		"segment-text\">Silva", "score-pill\">0.97",
+	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body missing %q: %s", want, body)
 		}
@@ -285,5 +296,23 @@ func TestRenderPromptsPage(t *testing.T) {
 	}
 	if strings.Contains(body, "Classificador de Mensagens") {
 		t.Errorf("prompts page leaked home content: %s", body)
+	}
+}
+
+func TestLabel(t *testing.T) {
+	for input, want := range map[string]string{
+		"contact": "Contato", "finance": "Finanças", "schedule": "Agenda",
+		"notes": "Notas", "other": "Outro", "add": "Adicionar",
+		"require": "Consultar", "both": "Ambos",
+	} {
+		if got := Label(input); got != want {
+			t.Errorf("Label(%q) = %q, want %q", input, got, want)
+		}
+	}
+	if got := Label("unknown"); got != "unknown" {
+		t.Errorf("Label(%q) = %q, want fallback to input", "unknown", got)
+	}
+	if got := Label(nil); got != "" {
+		t.Errorf("Label(nil) = %q, want empty string", got)
 	}
 }

@@ -21,7 +21,7 @@ The codebase follows a **semantic MVC pattern** on an idiomatic Go layout:
 | Env loading | [joho/godotenv](https://github.com/joho/godotenv) v1.5.1 |
 | AI API | TypeSafe System One (`https://api.typesafe.ai/v1/systemone`, model `jev-latest`) |
 | Templating | Go `html/template` (ParseGlob) |
-| CSS | Pico.css v2 (CDN, dark theme) |
+| CSS | Pico.css v2 (CDN, dark theme) + custom layer (web/static/css/app.css) |
 | Database | SQLite via [glebarez/sqlite](https://github.com/glebarez/sqlite) (pure-Go, zero CGO) |
 | ORM | [gorm.io/gorm](https://gorm.io) |
 
@@ -62,15 +62,17 @@ msg-classifier/
 │       └── requests/            # JSON prompt templates (embedded via go:embed)
 │           └── classification.json  # two choice questions: "classification" + "adding_or_requiring"
 ├── web/
+│   ├── static/
+│   │   └── css/app.css        # custom layer over Pico v2 (tokens, badges, navbar, spinner, tables)
 │   └── templates/
-│       ├── layouts/base.html    # "base" layout (Pico.css + htmx CDN + response-targets + nav)
-│       ├── pages/index.html     # "page:title" / "page:content" blocks (form)
-│       ├── pages/prompts.html   # "Validação Jev" page (flow select + add form + swap targets)
+│       ├── layouts/base.html    # "base" layout (pt-BR, Inter, favicon, sticky navbar, page:active block)
+│       ├── pages/index.html     # home page (hero copy + form + spinner on Enviar)
+│       ├── pages/prompts.html   # "Validação Jev" page (flow select + add form + spinner)
 │       └── partial/
-│           ├── result.html      # "resultado" partial (classification + action-specific process trace)
-│           ├── error.html       # "error" partial (error card for htmx swap targets)
-│           ├── prompt_table.html        # checkbox table + Avaliar button + export checkbox
-│           ├── evaluation_results.html  # expected vs obtained comparison + segment trace + CSV path
+│           ├── result.html      # "resultado" partial (badges + structured card + segment list)
+│           ├── error.html       # "error" partial (red error card for htmx swap targets)
+│           ├── prompt_table.html        # checkbox table + Avaliar button + export checkbox + spinner
+│           ├── evaluation_results.html  # expected vs obtained comparison + match badges + segment rows + CSV path
 ├── scripts/
 │   └── sql/
 │       └── seed_prompts.sql    # wipe + re-seed jev_prompts examples
@@ -83,7 +85,7 @@ msg-classifier/
 ## Core Components
 
 ### 1. Composition Root — `cmd/api/main.go`
-- `main()` builds a `gin.Default()` router, parses `web/templates/**/*.html` (`template.Must`), installs an htmx middleware that stores an `*htmx.Handler` in the Gin context under key `"htmx"` (single htmx instance).
+- `main()` builds a `gin.Default()` router, serves `web/static` via `router.Static("/static", "./web/static")`, parses `web/templates/**/*.html` (`template.Must`), installs an htmx middleware that stores an `*htmx.Handler` in the Gin context under key `"htmx"` (single htmx instance).
 - Wires dependencies: `config.GetEnv()` (single godotenv load site) → `jev.NewClient(url, token, model)` → `services.NewClassificationService(client)` → `services.NewDispatcher` (registry: `"contact"` → `ContactService`) → controllers.
 - SQLite pool is capped at one connection (`SetMaxOpenConns(1)` right after `gorm.Open`) — all DB access is serialized; the pure-Go driver (glebarez/modernc) is unstable with concurrent connections on Windows.
 - Registers routes:
@@ -129,6 +131,7 @@ msg-classifier/
 - Template name constants (`base`, `page:content`, `resultado`, `error`) — no string literals at call sites.
 - `RenderPage`: renders `page:content` for htmx requests, full `base` otherwise; falls back to the full page on missing/mistyped htmx context (no panic).
 - `RenderResult` / `RenderError`: render the result or error partial; errors carry proper HTTP status so htmx swaps the error card into `#resultado`.
+- The shared template set registers `views.FuncMap` (`label` helper for PT-BR badge text).
 
 ### 9. Jev API Client — `pkg/jev/jev.go`
 - `Client` struct with `NewClient(apiURL, token, model)` — all configuration injected, no `internal/config` import (genuinely reusable).
@@ -141,9 +144,9 @@ msg-classifier/
 - `classification.json`: two `choice` questions — `"classification"` with 5 criteria (contact, finance, schedule, notes, other) and `"adding_or_requiring"` with descriptive criteria (add, require, both).
 
 ### 11. HTML Templates — `web/templates/`
-- `base.html`: `base` layout, loads Pico.css v2 (dark theme via `data-theme="dark"`) + htmx 2.0.10 + response-targets extension from CDNs; `hx-ext="response-targets"` + `hx-target-error="#resultado"` on `<body>` route 4xx/5xx responses into the result container.
+- `base.html`: `base` layout, `lang="pt-BR"`, loads Inter (Google Fonts) + Pico.css v2 (dark theme via `data-theme="dark"`) + `app.css` + htmx 2.0.10 + response-targets extension from CDNs; sticky navbar with a `page:active` block for the active link; `hx-ext="response-targets"` + `hx-target-error="#resultado"` on `<body>` route 4xx/5xx responses into the result container.
 - `index.html`: form posting via `hx-post="/api/message"` targeting `#resultado` with `hx-swap="innerHTML"`.
-- `result.html`: `resultado` partial — a Pico `<article>` with the classification block in `<header>`, plus branches for add/found/not-found/duplicate/no-data and the per-segment extraction trace in `<footer><small>`.
+- `result.html`: `resultado` partial — a Pico `<article class="result-card">` with PT-BR category/kind badges in `<header>`, branches for add/found/not-found/duplicate/no-data, and the per-segment extraction trace as a list in `<footer>`.
 - `error.html`: `error` partial rendering a Pico `<article>` error card (used for 400/502/500 responses).
 
 ### 12. Prompt Service (validation harness) — `internal/services/prompt.go` + `prompt_controller.go`

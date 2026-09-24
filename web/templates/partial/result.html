@@ -1,33 +1,41 @@
 {{ define "resultado" }}
-<article id="resultado">
+<article id="resultado" class="result-card">
 	<header>
-		<p><strong>Categoria:</strong> {{ index .Category "choice" }} · <strong>Confiança:</strong> {{ index .Category "confidence" }}%</p>
-		<p><strong>Ação:</strong> {{ index .Kind "choice" }} · <strong>Confiança:</strong> {{ index .Kind "confidence" }}%</p>
+		<span class="badge badge-cat-{{ index .Category "choice" }}">{{ label (index .Category "choice") }}</span>
+		<span class="badge badge-kind-{{ index .Kind "choice" }}">{{ label (index .Kind "choice") }}</span>
+		<p class="confidence">Confiança: {{ index .Category "confidence" }}% · {{ index .Kind "confidence" }}%</p>
 	</header>
 	{{ if eq .Action "contact_add" }}
 		<p><strong>Contato salvo · ID {{ .Contact.ID }}</strong></p>
-		{{ if .Contact.Name }}<p><strong>Nome:</strong> {{ .Contact.Name }}</p>{{ end }}
-		{{ if .Contact.Phone }}<p><strong>Telefone:</strong> {{ .Contact.Phone }}</p>{{ end }}
-		{{ if .Contact.Email }}<p><strong>Email:</strong> {{ .Contact.Email }}</p>{{ end }}
+		{{ if .Contact.Name }}<div class="contact-row"><span class="row-label">Nome</span><span>{{ .Contact.Name }}</span></div>{{ end }}
+		{{ if .Contact.Phone }}<div class="contact-row"><span class="row-label">Telefone</span><span>{{ .Contact.Phone }}</span></div>{{ end }}
+		{{ if .Contact.Email }}<div class="contact-row"><span class="row-label">Email</span><span>{{ .Contact.Email }}</span></div>{{ end }}
 	{{ else if eq .Action "contact_found" }}
 		<p><strong>Contato encontrado</strong></p>
-		{{ if .Contact.Name }}<p><strong>Nome:</strong> {{ .Contact.Name }}</p>{{ end }}
-		{{ if .Contact.Phone }}<p><strong>Telefone:</strong> {{ .Contact.Phone }}</p>{{ end }}
-		{{ if .Contact.Email }}<p><strong>Email:</strong> {{ .Contact.Email }}</p>{{ end }}
+		{{ if .Contact.Name }}<div class="contact-row"><span class="row-label">Nome</span><span>{{ .Contact.Name }}</span></div>{{ end }}
+		{{ if .Contact.Phone }}<div class="contact-row"><span class="row-label">Telefone</span><span>{{ .Contact.Phone }}</span></div>{{ end }}
+		{{ if .Contact.Email }}<div class="contact-row"><span class="row-label">Email</span><span>{{ .Contact.Email }}</span></div>{{ end }}
 	{{ else if eq .Action "contact_not_found" }}
-		<p><strong>Nenhum contato encontrado para '{{ .SearchTerm }}'</strong></p>
+		<p class="notice-warn">Nenhum contato encontrado para '{{ .SearchTerm }}'</p>
 	{{ else if eq .Action "contact_duplicate" }}
 		<p><strong>Contato já existe: {{ .Contact.Name }}</strong></p>
-		{{ if .Contact.Phone }}<p><strong>Telefone:</strong> {{ .Contact.Phone }}</p>{{ end }}
-		{{ if .Contact.Email }}<p><strong>Email:</strong> {{ .Contact.Email }}</p>{{ end }}
+		{{ if .Contact.Phone }}<div class="contact-row"><span class="row-label">Telefone</span><span>{{ .Contact.Phone }}</span></div>{{ end }}
+		{{ if .Contact.Email }}<div class="contact-row"><span class="row-label">Email</span><span>{{ .Contact.Email }}</span></div>{{ end }}
 	{{ else if eq .Action "contact_no_data" }}
-		<p><strong>Nenhum dado de contato encontrado na mensagem.</strong></p>
+		<p class="muted">Nenhum dado de contato encontrado na mensagem.</p>
 	{{ end }}
 	{{ if .Segments }}
 	<footer>
-		<small><strong>Extração:</strong>
-		{{ range $i, $seg := .Segments }}{{ if $i }} · {{ end }}{{ $seg.Text }} {{ printf "%.2f" $seg.Score }}{{ if $seg.Included }} ✓{{ else }} ✗{{ end }}{{ end }}
-		</small>
+		<small><strong>Extração:</strong></small>
+		<ul class="segment-trace">
+		{{ range .Segments }}
+			<li>
+				<span class="segment-text">{{ .Text }}</span>
+				<span class="score-pill">{{ printf "%.2f" .Score }}</span>
+				<span class="segment-mark {{ if .Included }}ok{{ else }}no{{ end }}" aria-hidden="true">{{ if .Included }}✓{{ else }}✗{{ end }}</span>
+			</li>
+		{{ end }}
+		</ul>
 	</footer>
 	{{ end }}
 </article>
