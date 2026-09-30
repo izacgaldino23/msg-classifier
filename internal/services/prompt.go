@@ -22,20 +22,22 @@ var ErrInvalidPrompt = errors.New("invalid prompt")
 var exportDir = "exports"
 
 // PromptService orchestrates the Jev validation harness. It reuses the exact
-// production Jev paths (ClassificationService.Classify, ContactExtractor.ExtractName).
+// production Jev paths (ClassificationService.Classify, ContactExtractor.ExtractName,
+// NoteExtractor.ExtractType).
 type PromptService struct {
-	repo       *repository.PromptRepository
-	classifier *ClassificationService
-	extractor  *ContactExtractor
+	repo          *repository.PromptRepository
+	classifier    *ClassificationService
+	extractor     *ContactExtractor
+	noteExtractor *NoteExtractor
 }
 
-func NewPromptService(repo *repository.PromptRepository, classifier *ClassificationService, extractor *ContactExtractor) *PromptService {
-	return &PromptService{repo: repo, classifier: classifier, extractor: extractor}
+func NewPromptService(repo *repository.PromptRepository, classifier *ClassificationService, extractor *ContactExtractor, noteExtractor *NoteExtractor) *PromptService {
+	return &PromptService{repo: repo, classifier: classifier, extractor: extractor, noteExtractor: noteExtractor}
 }
 
 // Add validates the input and persists a new prompt.
 func (s *PromptService) Add(flow, message, expected string) (*models.JevPrompt, error) {
-	if flow != models.FlowClassification && flow != models.FlowName {
+	if flow != models.FlowClassification && flow != models.FlowName && flow != models.FlowNote {
 		return nil, fmt.Errorf("%w: flow %q", ErrInvalidPrompt, flow)
 	}
 	if strings.TrimSpace(message) == "" || strings.TrimSpace(expected) == "" {
@@ -108,6 +110,15 @@ func (s *PromptService) evaluateOne(flow string, prompt models.JevPrompt) models
 		result.ObtainedResult = nameResult.Name
 		result.Segments = nameResult.Segments
 		result.Match = normalizeName(prompt.ExpectedResult) == normalizeName(nameResult.Name)
+	case models.FlowNote:
+		noteType, err := s.noteExtractor.ExtractType(&models.ReceiveMessageRequest{Message: prompt.Message})
+		if err != nil {
+			result.ObtainedResult = err.Error()
+			result.Match = false
+			return result
+		}
+		result.ObtainedResult = noteType
+		result.Match = strings.EqualFold(strings.TrimSpace(noteType), strings.TrimSpace(prompt.ExpectedResult))
 	}
 	return result
 }
