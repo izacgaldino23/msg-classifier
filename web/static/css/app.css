@@ -258,3 +258,64 @@ button.htmx-request .button-label {
 textarea {
 	min-height: 6rem;
 }
+
+/* 10. Notes (add / found branches) */
+.badge-note-note { background: rgba(139, 92, 246, 0.15); color: #8b5cf6; }
+.badge-note-reminder { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+.badge-note-todo { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
+
+.note-row {
+	display: flex;
+	gap: 0.5rem;
+	padding: 0.2rem 0;
+	align-items: center;
+}
+
+.note-row .row-label {
+	color: var(--pico-muted-color);
+	min-width: 5rem;
+}
+
+.note-list {
+	list-style: none;
+	margin: 0.5rem 0 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+}
+
+.note-list > li {
+	border: 1px solid var(--pico-card-border-color);
+	border-radius: var(--pico-border-radius);
+	padding: 0.5rem 0.75rem;
+}
+
+.note-content {
+	flex: 1;
+}
+
+.todo-list {
+	list-style: none;
+	margin: 0.35rem 0 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 0.2rem;
+}
+
+.todo-item {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.todo-item.done {
+	color: var(--pico-muted-color);
+	text-decoration: line-through;
+}
+
+.todo-mark {
+	color: var(--pico-primary);
+	font-weight: 700;
+}

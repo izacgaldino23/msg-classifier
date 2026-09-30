@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"msg-classifier/internal/models"
 
@@ -314,5 +315,167 @@ func TestLabel(t *testing.T) {
 	}
 	if got := Label(nil); got != "" {
 		t.Errorf("Label(nil) = %q, want empty string", got)
+	}
+}
+
+func TestRenderResultNoteAddReminder(t *testing.T) {
+	c, w := newTestContext()
+
+	date := time.Date(2026, 5, 10, 0, 0, 0, 0, time.UTC)
+	clock := "14:30"
+	outcome := &models.UseCaseOutcome{
+		Classification: &models.Classification{
+			Category: models.CategoryFinding{Choice: "notes", Confidence: 0.9},
+			Kind:     models.KindFinding{Choice: "add", Confidence: 0.8},
+		},
+		Action: models.ActionNoteAdd,
+		Notes: []*models.Note{{
+			ID:      3,
+			Type:    models.NoteTypeReminder,
+			Content: "pagar a conta de luz",
+			Date:    &date,
+			Time:    &clock,
+		}},
+	}
+
+	RenderResult(c, outcome)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := w.Body.String()
+	for _, want := range []string{
+		"badge-cat-notes", "Lembrete salvo", "ID 3",
+		"badge-note-reminder", "Lembrete", "pagar a conta de luz", "10/05/2026", "14:30",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body missing %q: %s", want, body)
+		}
+	}
+}
+
+func TestRenderResultNoteAddTodo(t *testing.T) {
+	c, w := newTestContext()
+
+	outcome := &models.UseCaseOutcome{
+		Classification: &models.Classification{
+			Category: models.CategoryFinding{Choice: "notes", Confidence: 0.88},
+			Kind:     models.KindFinding{Choice: "add", Confidence: 0.91},
+		},
+		Action: models.ActionNoteAdd,
+		Notes: []*models.Note{{
+			ID:      4,
+			Type:    models.NoteTypeTodo,
+			Content: "comprar pão, leite e ovos",
+			Items: []models.TodoItem{
+				{ID: 1, NoteID: 4, Text: "comprar pão", Position: 0},
+				{ID: 2, NoteID: 4, Text: "leite e ovos", Position: 1, Done: true},
+			},
+		}},
+	}
+
+	RenderResult(c, outcome)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := w.Body.String()
+	for _, want := range []string{
+		"Lista de tarefas salva", "ID 4", "badge-note-todo", "Lista de tarefas",
+		"todo-list", "todo-item", "comprar pão", "leite e ovos", "todo-item done", "✓", "○",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body missing %q: %s", want, body)
+		}
+	}
+}
+
+func TestRenderResultNoteFound(t *testing.T) {
+	c, w := newTestContext()
+
+	date := time.Date(2026, 5, 10, 0, 0, 0, 0, time.UTC)
+	outcome := &models.UseCaseOutcome{
+		Classification: &models.Classification{
+			Category: models.CategoryFinding{Choice: "notes", Confidence: 0.9},
+			Kind:     models.KindFinding{Choice: "require", Confidence: 0.9},
+		},
+		Action: models.ActionNoteFound,
+		Notes: []*models.Note{
+			{ID: 1, Type: models.NoteTypeReminder, Content: "pagar a conta", Date: &date},
+			{ID: 2, Type: models.NoteTypeNote, Content: "renomear o projeto"},
+		},
+		SearchTerm: "10/05/2026",
+	}
+
+	RenderResult(c, outcome)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := w.Body.String()
+	for _, want := range []string{
+		"2 nota(s) encontrada(s) para '10/05/2026'",
+		"note-list", "badge-note-reminder", "badge-note-note",
+		"pagar a conta", "renomear o projeto", "10/05/2026",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body missing %q: %s", want, body)
+		}
+	}
+}
+
+func TestRenderResultNoteNotFound(t *testing.T) {
+	c, w := newTestContext()
+
+	outcome := &models.UseCaseOutcome{
+		Classification: &models.Classification{
+			Category: models.CategoryFinding{Choice: "notes", Confidence: 0.9},
+			Kind:     models.KindFinding{Choice: "require", Confidence: 0.9},
+		},
+		Action:     models.ActionNoteNotFound,
+		SearchTerm: "projeto",
+	}
+
+	RenderResult(c, outcome)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if body := w.Body.String(); !strings.Contains(body, "Nenhuma nota encontrada para 'projeto'") {
+		t.Errorf("body missing not-found message with SearchTerm: %s", body)
+	}
+}
+
+func TestRenderResultNoteNoData(t *testing.T) {
+	c, w := newTestContext()
+
+	outcome := &models.UseCaseOutcome{
+		Classification: &models.Classification{
+			Category: models.CategoryFinding{Choice: "notes", Confidence: 0.9},
+			Kind:     models.KindFinding{Choice: "add", Confidence: 0.9},
+		},
+		Action: models.ActionNoteNoData,
+	}
+
+	RenderResult(c, outcome)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := w.Body.String()
+	for _, want := range []string{"notes", "Não consegui extrair os dados da nota", "dia 10"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body missing %q: %s", want, body)
+		}
+	}
+}
+
+func TestLabelNoteTypes(t *testing.T) {
+	for input, want := range map[string]string{
+		"note": "Nota", "reminder": "Lembrete", "todo": "Lista de tarefas",
+	} {
+		if got := Label(input); got != want {
+			t.Errorf("Label(%q) = %q, want %q", input, got, want)
+		}
 	}
 }

@@ -39,6 +39,7 @@ type ResultData struct {
 	Kind       map[string]any
 	Action     models.Action
 	Contact    *models.Contact
+	Notes      []*models.Note
 	Segments   []models.SegmentScore
 	SearchTerm string
 }
@@ -54,7 +55,7 @@ func RenderPage(c *gin.Context, page, content string) {
 
 // RenderResult renders the "resultado" partial (HTTP 200) from the use case outcome.
 func RenderResult(c *gin.Context, outcome *models.UseCaseOutcome) {
-	data := ResultData{Action: outcome.Action, Contact: outcome.Contact, Segments: outcome.Segments, SearchTerm: outcome.SearchTerm}
+	data := ResultData{Action: outcome.Action, Contact: outcome.Contact, Notes: outcome.Notes, Segments: outcome.Segments, SearchTerm: outcome.SearchTerm}
 	if outcome.Classification != nil {
 		response := outcome.Classification.ToResponse()
 		data.Category = response.Category
@@ -115,6 +116,9 @@ var labelMap = map[string]string{
 	"add":      "Adicionar",
 	"require":  "Consultar",
 	"both":     "Ambos",
+	"note":     "Nota",
+	"reminder": "Lembrete",
+	"todo":     "Lista de tarefas",
 }
 
 // Label returns the PT-BR display label for a classification choice,

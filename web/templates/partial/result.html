@@ -23,6 +23,43 @@
 		{{ if .Contact.Email }}<div class="contact-row"><span class="row-label">Email</span><span>{{ .Contact.Email }}</span></div>{{ end }}
 	{{ else if eq .Action "contact_no_data" }}
 		<p class="muted">Nenhum dado de contato encontrado na mensagem.</p>
+	{{ else if eq .Action "note_add" }}
+		{{ range .Notes }}
+		<p><strong>{{ if eq .Type "reminder" }}Lembrete salvo{{ else if eq .Type "todo" }}Lista de tarefas salva{{ else }}Nota salva{{ end }} · ID {{ .ID }}</p>
+		<div class="note-row"><span class="row-label">Tipo</span><span class="badge badge-note-{{ .Type }}">{{ label .Type }}</span></div>
+		<div class="note-row"><span class="row-label">Conteúdo</span><span>{{ .Content }}</span></div>
+		{{ if .Date }}<div class="note-row"><span class="row-label">Data</span><span>{{ .Date.Format "02/01/2006" }}</span></div>{{ end }}
+		{{ if .Time }}<div class="note-row"><span class="row-label">Horário</span><span>{{ .Time }}</span></div>{{ end }}
+		{{ if .Items }}
+		<ul class="todo-list">
+			{{ range .Items }}
+			<li class="todo-item {{ if .Done }}done{{ end }}"><span class="todo-mark" aria-hidden="true">{{ if .Done }}✓{{ else }}○{{ end }}</span><span class="todo-text">{{ .Text }}</span></li>
+			{{ end }}
+		</ul>
+		{{ end }}
+		{{ end }}
+	{{ else if eq .Action "note_found" }}
+		<p><strong>{{ len .Notes }} nota(s) encontrada(s) para '{{ .SearchTerm }}'</strong></p>
+		<ul class="note-list">
+			{{ range .Notes }}
+			<li>
+				<div class="note-row"><span class="badge badge-note-{{ .Type }}">{{ label .Type }}</span><span class="note-content">{{ .Content }}</span></div>
+				{{ if .Date }}<div class="note-row"><span class="row-label">Data</span><span>{{ .Date.Format "02/01/2006" }}</span></div>{{ end }}
+				{{ if .Time }}<div class="note-row"><span class="row-label">Horário</span><span>{{ .Time }}</span></div>{{ end }}
+				{{ if .Items }}
+				<ul class="todo-list">
+					{{ range .Items }}
+					<li class="todo-item {{ if .Done }}done{{ end }}"><span class="todo-mark" aria-hidden="true">{{ if .Done }}✓{{ else }}○{{ end }}</span><span class="todo-text">{{ .Text }}</span></li>
+					{{ end }}
+				</ul>
+				{{ end }}
+			</li>
+			{{ end }}
+		</ul>
+	{{ else if eq .Action "note_not_found" }}
+		<p class="notice-warn">Nenhuma nota encontrada para '{{ .SearchTerm }}'.</p>
+	{{ else if eq .Action "note_no_data" }}
+		<p class="muted">Não consegui extrair os dados da nota. Para lembretes, informe a data (ex.: dia 10, 10/05 ou amanhã).</p>
 	{{ end }}
 	{{ if .Segments }}
 	<footer>
