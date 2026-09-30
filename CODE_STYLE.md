@@ -28,7 +28,7 @@ Conventions observed in this codebase. Follow these when writing new code.
   - `controllers/` — HTTP concerns only (bind → service → render → status)
   - `models/` — DTOs and domain structs
   - `repository/` — persistence layer; structs with `New*` constructors holding `*gorm.DB`; methods return raw gorm errors; package exposes its own not-found sentinel (`ErrNotFound = gorm.ErrRecordNotFound`)
-  - `services/` — business rules and orchestration
+  - `services/` — business rules and orchestration; a use case that grew past one screen splits like the contact flow did (`contact.go` + `contact_get.go`, `note.go` + `note_get.go`).
   - `views/` — template name constants + render helpers
 - **`pkg/`** — reusable packages: `pkg/request.go` (response helper), `pkg/jev/` (API client + embedded `requests/` JSON templates).
 - **`web/templates/`** — HTML templates split into `layouts/`, `pages/`, `partial/`.
@@ -92,7 +92,15 @@ type jevClient interface {
 - Category-specific use cases implement the `CategoryHandler` interface: `Handle(request, classification) (*models.UseCaseOutcome, error)`.
 - A `Dispatcher` holds a `map[string]CategoryHandler` keyed by `Category.Choice`; misses fall back to an `ActionNone` outcome.
 - Adding a category = new service implementing `CategoryHandler` + one wiring line in `main.go` — no dispatcher edits.
-- Use cases return a `models.UseCaseOutcome` (`Classification` + `Action`); actions: `ActionNone`, `ActionContactAdd`, `ActionContactNoData`, `ActionContactFound`, `ActionContactNotFound`, `ActionContactDuplicate`. Future use-case results (extracted data, DB confirmation) flow back through the outcome without signature changes.
+- Use cases return a `models.UseCaseOutcome` (`Classification` + `Action` + the use-case payload: `Contact`/`Segments` for contacts, `Notes []*Note` for notes, `SearchTerm`); actions: `ActionNone`, `ActionContactAdd`, `ActionContactNoData`, `ActionContactFound`, `ActionContactNotFound`, `ActionContactDuplicate`, `ActionNoteAdd`, `ActionNoteNoData`, `ActionNoteFound`, `ActionNoteNotFound`.
+
+### Notes use case
+- A second Jev call is allowed per message: the classification call plus one category-specific extraction call (`note.json` for notes). Keep it conditional — the notes add path only asks for the sub-type when the message is actually a note.
+- Deterministic text work (dates, times, list splitting, stopword removal) lives in `internal/services` as pure functions with no I/O, so it is testable without mocks; the Jev call is the only mocked seam.
+- Dates are normalized to UTC midnight at parse time so the stored value and the query filter compare identically in SQLite; never compare a locally-built `time.Time` against a stored one.
+- Normalize text with the existing `normalizeName` before matching PT-BR keywords or stopwords — the lists are written accent-free.
+- Repository finders return `([]*models.Note, error)` and map an empty result to the package's `ErrNotFound`; "not found" is an outcome, not an error.
+- Persist a note and its to-do items in one transaction (`Create(note, items)`); a partial write is never acceptable.
 
 ### Views
 - Template names are constants in `internal/views/render.go` — never string literals at call sites.
@@ -136,6 +144,7 @@ Never read `os.Getenv` directly outside `internal/config/env.go`. Config is read
 - Hand-written fakes for one-method Jev seams (`mockJevRequester`, `mockJevClient`).
 - Real in-memory SQLite (`newTestDB`) for repository/service integration tests.
 - Assert on sentinels with `errors.Is` (`ErrUpstream`, `repository.ErrNotFound`).
+- New to-do/note fixtures must use a fixed calendar date (`10/05/2026`) instead of "hoje"/"amanhã" so assertions never depend on the day the suite runs; relative forms are tested directly on the parser with an injected `now`.
 
 ## Do's and Don'ts
 
