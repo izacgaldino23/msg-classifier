@@ -1,24 +1,28 @@
 {{ define "page:title" }}Home{{ end }}
 {{ define "page:content" }}
-<main class="container">
-    <section class="hero">
-        <h1>Classificador de Mensagens</h1>
-        <p class="subtitle">Envie uma mensagem e veja a categoria, a ação e os contatos extraídos.</p>
+<div>
+    <section class="mb-4">
+        <h1 class="mb-1">Classificador de Mensagens</h1>
+        <p class="text-secondary mb-0">Envie uma mensagem e veja a categoria, a ação e os contatos extraídos.</p>
     </section>
 
     <form hx-post="/api/message" hx-target="#resultado" hx-swap="innerHTML">
-        <label for="message">Mensagem:</label>
-        <textarea id="message" name="message" required></textarea>
+        <div class="mb-3">
+            <label for="message" class="form-label">Mensagem:</label>
+            <textarea id="message" name="message" class="form-control" required></textarea>
+        </div>
 
-        <label for="user_id">User ID:</label>
-        <input type="text" id="user_id" name="user_id" value="12345">
+        <div class="mb-3">
+            <label for="user_id" class="form-label">User ID:</label>
+            <input type="text" id="user_id" name="user_id" class="form-control" value="12345">
+        </div>
 
-        <button type="submit" hx-indicator="this" hx-disabled-elt="this">
+        <button type="submit" class="btn btn-primary" hx-indicator="this" hx-disabled-elt="this">
             <span class="button-label">Enviar</span>
-            <span class="htmx-indicator" aria-hidden="true"><span class="spinner"></span>Classificando…</span>
+            <span class="htmx-indicator" aria-hidden="true"><span class="spinner-border spinner-border-sm me-2"></span>Classificando…</span>
         </button>
     </form>
 
-    <div id="resultado"></div>
-</main>
+    <div id="resultado" class="mt-4"></div>
+</div>
 {{ end }}

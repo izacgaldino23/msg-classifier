@@ -1,5 +1,7 @@
 {{ define "error" }}
-<article id="resultado" class="error-card">
-	<p><strong>Erro:</strong> {{ .Message }}</p>
-</article>
+<div id="resultado" class="card border-danger">
+	<div class="card-body">
+		<p class="mb-0"><strong>Erro:</strong> <span class="text-danger">{{ .Message }}</span></p>
+	</div>
+</div>
 {{ end }}

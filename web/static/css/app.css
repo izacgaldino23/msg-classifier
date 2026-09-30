@@ -1,94 +1,96 @@
-/* app.css — custom layer over Pico.css v2 (loaded after pico.min.css) */
+/* app.css — custom layer over Bootstrap 5.3 (loaded after bootstrap.min.css) */
 
-/* 1. Design tokens */
-:root {
-	/* Compact scale: smaller fonts, tighter components, narrow centered column */
-	--pico-font-size: 92%;
-	--pico-h1-font-size: 1.75rem;
-	--pico-h2-font-size: 1.5rem;
-	--pico-h3-font-size: 1.25rem;
-	--pico-h4-font-size: 1.125rem;
-	--pico-h5-font-size: 1rem;
-	--pico-h6-font-size: 0.875rem;
-	--pico-spacing: 0.75rem;
-	--pico-typography-spacing-vertical: 0.75rem;
-	--pico-form-element-spacing-vertical: 0.5rem;
-	--pico-form-element-spacing-horizontal: 0.75rem;
-	--pico-form-element-height: 2.25rem;
-	--pico-button-spacing-vertical: 0.5rem;
-	--pico-button-spacing-horizontal: 1rem;
-	--pico-card-spacing: 0.75rem;
-	--pico-container-max-width: 760px;
+/* 1. Theme tokens + compact scale */
+:root,
+[data-bs-theme="dark"] {
+	--bs-font-sans-serif: "Inter", system-ui, -apple-system, sans-serif;
+	--bs-body-font-size: 0.92rem;
+	--bs-border-radius: 0.75rem;
 }
 
-:root[data-theme="dark"] {
-	--pico-primary: #818cf8;
-	--pico-primary-background: #6366f1;
-	--pico-primary-hover: #4f46e5;
-	--pico-primary-focus: rgba(99, 102, 241, 0.35);
-	--pico-font-family: "Inter", system-ui, -apple-system, sans-serif;
-	--pico-border-radius: 0.75rem;
-	--pico-card-background-color: #14161f;
-	--pico-card-border-color: #262a3a;
-	--pico-card-box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+h1 { font-size: 1.75rem; }
+h2 { font-size: 1.5rem; }
+h3 { font-size: 1.25rem; }
+h4 { font-size: 1.125rem; }
+h5 { font-size: 1rem; }
+h6 { font-size: 0.875rem; }
+
+.form-control,
+.form-select,
+.btn {
+	font-size: 0.92rem;
 }
 
-body {
-	background-color: #0b0d14;
-	background-image: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(99, 102, 241, 0.18), transparent);
-	background-attachment: fixed;
+.card {
+	--bs-card-spacer-y: 0.75rem;
+	--bs-card-spacer-x: 0.75rem;
 }
 
-/* 2. Navbar */
-.site-nav {
-	position: sticky;
-	top: 0;
-	z-index: 10;
-	background: rgba(11, 13, 20, 0.85);
-	backdrop-filter: blur(8px);
-	-webkit-backdrop-filter: blur(8px);
-	border-bottom: 1px solid var(--pico-card-border-color);
-	margin-bottom: 1.5rem;
+/* 2. Layout — narrow centered content column (~760px) */
+.content-wrapper {
+	max-width: 760px;
+	margin: 0 auto;
+	padding: 1.5rem 1rem;
 }
 
-.site-nav-inner {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	gap: 1rem;
-	flex-wrap: wrap;
+/* Layout wrapper - fills the viewport so the sidebar spans the full page height */
+.app-layout {
+	min-height: 100vh;
 }
 
-.site-nav a {
-	padding: 0.25rem 0.75rem;
+/* 3. Sidebar (offcanvas-lg: drawer < lg, static column >= lg) */
+.offcanvas-lg.sidebar {
+	--bs-offcanvas-width: 280px;
 }
 
-.site-nav a.active {
-	background: var(--pico-primary-focus);
-	border-radius: 999px;
+@media (min-width: 992px) {
+	.offcanvas-lg.sidebar {
+		flex-grow: 0;
+		width: 280px !important;
+		border-right: 1px solid var(--bs-border-color) !important;
+		background-color: var(--bs-body-bg) !important;
+	}
+
+	.offcanvas-lg.sidebar .offcanvas-body {
+		padding: 1rem;
+	}
 }
 
-body.page-home .site-nav a[href="/"],
-body.page-prompts .site-nav a[href="/prompts"] {
-	background: var(--pico-primary-focus);
-	border-radius: 999px;
+.sidebar-nav .nav-link {
+	padding: 0.5rem 0.75rem;
+	border-radius: 0.5rem;
+	transition: background-color 0.15s ease-in-out;
 }
 
+.sidebar-nav .nav-link:hover {
+	background-color: var(--bs-secondary-bg-subtle);
+}
+
+/* Active nav — page:active mechanism (body class + attribute selectors) */
+body.page-home .sidebar-nav a[href="/"],
+body.page-prompts .sidebar-nav a[href="/prompts"] {
+	background-color: var(--bs-primary-bg-subtle);
+	color: var(--bs-primary);
+}
+
+/* 4. Brand */
 .brand {
 	display: inline-flex;
 	align-items: center;
 	gap: 0.5rem;
 	font-weight: 600;
+	text-decoration: none;
+	color: var(--bs-body-color);
 }
 
 .brand-mark {
 	width: 1.5rem;
 	height: 1.5rem;
 	border-radius: 0.4rem;
-	background: linear-gradient(135deg, #6366f1, #8b5cf6);
+	background: linear-gradient(135deg, var(--bs-primary), var(--bs-info));
 }
 
-/* 3. Badges */
+/* 5. Badges — semantic classes mapped to Bootstrap palette */
 .badge {
 	display: inline-flex;
 	align-items: center;
@@ -98,56 +100,38 @@ body.page-prompts .site-nav a[href="/prompts"] {
 	font-size: 0.75rem;
 	font-weight: 600;
 	line-height: 1.4;
-	background: rgba(107, 114, 128, 0.15);
-	color: #6b7280;
 }
 
-.badge-cat-contact { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
-.badge-cat-finance { background: rgba(16, 185, 129, 0.15); color: #10b981; }
-.badge-cat-schedule { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
-.badge-cat-notes { background: rgba(139, 92, 246, 0.15); color: #8b5cf6; }
-.badge-cat-other { background: rgba(107, 114, 128, 0.15); color: #6b7280; }
-.badge-kind-add { background: rgba(16, 185, 129, 0.15); color: #10b981; }
-.badge-kind-require { background: rgba(99, 102, 241, 0.15); color: #818cf8; }
-.badge-kind-both { background: rgba(139, 92, 246, 0.15); color: #8b5cf6; }
-.badge-match-ok { background: rgba(16, 185, 129, 0.15); color: #10b981; }
-.badge-match-no { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+.badge-cat-contact { background-color: var(--bs-primary-bg-subtle); color: var(--bs-primary); }
+.badge-cat-finance { background-color: var(--bs-success-bg-subtle); color: var(--bs-success); }
+.badge-cat-schedule { background-color: var(--bs-warning-bg-subtle); color: var(--bs-warning); }
+.badge-cat-notes { background-color: var(--bs-info-bg-subtle); color: var(--bs-info); }
+.badge-cat-other { background-color: var(--bs-secondary-bg-subtle); color: var(--bs-secondary); }
+.badge-kind-add { background-color: var(--bs-success-bg-subtle); color: var(--bs-success); }
+.badge-kind-require { background-color: var(--bs-warning-bg-subtle); color: var(--bs-warning); }
+.badge-kind-both { background-color: var(--bs-primary-bg-subtle); color: var(--bs-primary); }
+.badge-note-note { background-color: var(--bs-secondary-bg-subtle); color: var(--bs-secondary); }
+.badge-note-reminder { background-color: var(--bs-warning-bg-subtle); color: var(--bs-warning); }
+.badge-note-todo { background-color: var(--bs-info-bg-subtle); color: var(--bs-info); }
+.badge-match-ok { background-color: var(--bs-success-bg-subtle); color: var(--bs-success); }
+.badge-match-no { background-color: var(--bs-danger-bg-subtle); color: var(--bs-danger); }
 
-/* 4. Result card */
-.result-card header {
+/* 6. Result / note rows */
+.contact-row,
+.note-row {
 	display: flex;
-	flex-wrap: wrap;
 	align-items: center;
-	gap: 0.5rem;
-	margin-bottom: 0.75rem;
-}
-
-.result-card .confidence {
-	color: var(--pico-muted-color);
-	font-size: 0.85rem;
-	margin: 0;
-	width: 100%;
-}
-
-.contact-row {
-	display: flex;
 	gap: 0.5rem;
 	padding: 0.2rem 0;
 }
 
-.contact-row .row-label {
-	color: var(--pico-muted-color);
+.contact-row .row-label,
+.note-row .row-label {
+	color: var(--bs-secondary-color);
 	min-width: 5rem;
 }
 
-.notice-warn {
-	color: #f59e0b;
-}
-
-.muted {
-	color: var(--pico-muted-color);
-}
-
+/* 7. Segment trace */
 .segment-trace {
 	list-style: none;
 	margin: 0.5rem 0 0;
@@ -169,113 +153,16 @@ body.page-prompts .site-nav a[href="/prompts"] {
 
 .score-pill {
 	border-radius: 999px;
-	background: rgba(255, 255, 255, 0.06);
+	background: rgba(0, 0, 0, 0.06);
 	padding: 0.05rem 0.5rem;
 	font-size: 0.75rem;
 	font-variant-numeric: tabular-nums;
 }
 
-.segment-mark.ok { color: #10b981; }
-.segment-mark.no { color: #ef4444; }
+.segment-mark.ok { color: var(--bs-success); }
+.segment-mark.no { color: var(--bs-danger); }
 
-/* 5. Loading states */
-.htmx-indicator {
-	display: none;
-}
-
-button.htmx-request .htmx-indicator {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.4rem;
-}
-
-button.htmx-request .button-label {
-	display: none;
-}
-
-.spinner {
-	width: 1rem;
-	height: 1rem;
-	border: 2px solid rgba(255, 255, 255, 0.25);
-	border-top-color: currentColor;
-	border-radius: 50%;
-	animation: spin 0.7s linear infinite;
-}
-
-@keyframes spin {
-	to { transform: rotate(360deg); }
-}
-
-/* 6. Tables */
-.table-wrap {
-	overflow-x: auto;
-}
-
-.table-wrap table {
-	margin-bottom: 0;
-}
-
-.table-wrap tbody tr:nth-child(odd) {
-	background: rgba(255, 255, 255, 0.02);
-}
-
-.table-wrap tbody tr:hover {
-	background: rgba(99, 102, 241, 0.06);
-}
-
-/* 7. Error card */
-.error-card {
-	border: 1px solid rgba(239, 68, 68, 0.3);
-	background: rgba(239, 68, 68, 0.08);
-}
-
-/* 8. htmx transitions */
-.htmx-swapping {
-	opacity: 0;
-	transition: opacity 150ms ease-out;
-}
-
-.htmx-settling {
-	animation: fadeIn 200ms ease-in;
-}
-
-@keyframes fadeIn {
-	from { opacity: 0; transform: translateY(4px); }
-	to { opacity: 1; transform: none; }
-}
-
-/* 9. Hero (index.html) */
-.hero h1 {
-	margin-bottom: 0.25rem;
-}
-
-.hero .subtitle {
-	color: var(--pico-muted-color);
-	margin-bottom: 1rem;
-}
-
-/* Compact message textarea */
-textarea {
-	min-height: 6rem;
-}
-
-/* 10. Notes (add / found branches) */
-.badge-note-note { background: rgba(139, 92, 246, 0.15); color: #8b5cf6; }
-.badge-note-reminder { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
-.badge-note-todo { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
-
-.note-row {
-	display: flex;
-	gap: 0.5rem;
-	padding: 0.2rem 0;
-	align-items: center;
-}
-
-.note-row .row-label {
-	color: var(--pico-muted-color);
-	min-width: 5rem;
-}
-
+/* 8. Notes */
 .note-list {
 	list-style: none;
 	margin: 0.5rem 0 0;
@@ -286,8 +173,8 @@ textarea {
 }
 
 .note-list > li {
-	border: 1px solid var(--pico-card-border-color);
-	border-radius: var(--pico-border-radius);
+	border: 1px solid var(--bs-border-color);
+	border-radius: var(--bs-border-radius);
 	padding: 0.5rem 0.75rem;
 }
 
@@ -311,11 +198,46 @@ textarea {
 }
 
 .todo-item.done {
-	color: var(--pico-muted-color);
+	color: var(--bs-secondary-color);
 	text-decoration: line-through;
 }
 
 .todo-mark {
-	color: var(--pico-primary);
+	color: var(--bs-primary);
 	font-weight: 700;
+}
+
+/* 9. Loading states (htmx) */
+.htmx-indicator {
+	display: none;
+}
+
+button.htmx-request .htmx-indicator {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+}
+
+button.htmx-request .button-label {
+	display: none;
+}
+
+/* 10. htmx transitions */
+.htmx-swapping {
+	opacity: 0;
+	transition: opacity 150ms ease-out;
+}
+
+.htmx-settling {
+	animation: fadeIn 200ms ease-in;
+}
+
+@keyframes fadeIn {
+	from { opacity: 0; transform: translateY(4px); }
+	to { opacity: 1; transform: none; }
+}
+
+/* 11. Compact message textarea */
+textarea.form-control {
+	min-height: 6rem;
 }

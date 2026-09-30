@@ -1,28 +1,34 @@
 {{ define "page:title" }}Validação Jev{{ end }}
 {{ define "page:active" }}prompts{{ end }}
 {{ define "page:content" }}
-<main class="container">
-    <h1>Validação Jev</h1>
+<div>
+    <h1 class="mb-4">Validação Jev</h1>
 
-    <label for="flow">Fluxo:</label>
-    <select id="flow" name="flow" hx-get="/prompts/table" hx-target="#prompt-table" hx-swap="innerHTML" hx-target-error="#prompt-table" hx-trigger="load, change">
-        <option value="classification">Classificação</option>
-        <option value="name">Extração de nome</option>
-        <option value="note">Tipo de nota</option>
-    </select>
+    <div class="mb-3">
+        <label for="flow" class="form-label">Fluxo:</label>
+        <select id="flow" name="flow" class="form-select" hx-get="/prompts/table" hx-target="#prompt-table" hx-swap="innerHTML" hx-target-error="#prompt-table" hx-trigger="load, change">
+            <option value="classification">Classificação</option>
+            <option value="name">Extração de nome</option>
+            <option value="note">Tipo de nota</option>
+        </select>
+    </div>
 
     <form hx-post="/prompts" hx-target="#prompt-table" hx-swap="innerHTML" hx-target-error="#prompt-table" hx-include="#flow">
-        <label for="message">Mensagem:</label>
-        <textarea id="message" name="message" required></textarea>
-        <label for="expected">Resultado esperado:</label>
-        <input type="text" id="expected" name="expected" required>
-        <button type="submit" hx-indicator="this" hx-disabled-elt="this">
+        <div class="mb-3">
+            <label for="message" class="form-label">Mensagem:</label>
+            <textarea id="message" name="message" class="form-control" required></textarea>
+        </div>
+        <div class="mb-3">
+            <label for="expected" class="form-label">Resultado esperado:</label>
+            <input type="text" id="expected" name="expected" class="form-control" required>
+        </div>
+        <button type="submit" class="btn btn-primary" hx-indicator="this" hx-disabled-elt="this">
             <span class="button-label">Adicionar exemplo</span>
-            <span class="htmx-indicator" aria-hidden="true"><span class="spinner"></span>Adicionando…</span>
+            <span class="htmx-indicator" aria-hidden="true"><span class="spinner-border spinner-border-sm me-2"></span>Adicionando…</span>
         </button>
     </form>
 
-    <div id="prompt-table"></div>
-    <div id="evaluation"></div>
-</main>
+    <div id="prompt-table" class="mt-4"></div>
+    <div id="evaluation" class="mt-4"></div>
+</div>
 {{ end }}

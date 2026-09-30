@@ -1,68 +1,70 @@
 {{ define "resultado" }}
-<article id="resultado" class="result-card">
-	<header>
+<div id="resultado" class="card result-card">
+	<div class="card-header d-flex flex-wrap align-items-center gap-2">
 		<span class="badge badge-cat-{{ index .Category "choice" }}">{{ label (index .Category "choice") }}</span>
 		<span class="badge badge-kind-{{ index .Kind "choice" }}">{{ label (index .Kind "choice") }}</span>
-		<p class="confidence">Confiança: {{ index .Category "confidence" }}% · {{ index .Kind "confidence" }}%</p>
-	</header>
-	{{ if eq .Action "contact_add" }}
-		<p><strong>Contato salvo · ID {{ .Contact.ID }}</strong></p>
-		{{ if .Contact.Name }}<div class="contact-row"><span class="row-label">Nome</span><span>{{ .Contact.Name }}</span></div>{{ end }}
-		{{ if .Contact.Phone }}<div class="contact-row"><span class="row-label">Telefone</span><span>{{ .Contact.Phone }}</span></div>{{ end }}
-		{{ if .Contact.Email }}<div class="contact-row"><span class="row-label">Email</span><span>{{ .Contact.Email }}</span></div>{{ end }}
-	{{ else if eq .Action "contact_found" }}
-		<p><strong>Contato encontrado</strong></p>
-		{{ if .Contact.Name }}<div class="contact-row"><span class="row-label">Nome</span><span>{{ .Contact.Name }}</span></div>{{ end }}
-		{{ if .Contact.Phone }}<div class="contact-row"><span class="row-label">Telefone</span><span>{{ .Contact.Phone }}</span></div>{{ end }}
-		{{ if .Contact.Email }}<div class="contact-row"><span class="row-label">Email</span><span>{{ .Contact.Email }}</span></div>{{ end }}
-	{{ else if eq .Action "contact_not_found" }}
-		<p class="notice-warn">Nenhum contato encontrado para '{{ .SearchTerm }}'</p>
-	{{ else if eq .Action "contact_duplicate" }}
-		<p><strong>Contato já existe: {{ .Contact.Name }}</strong></p>
-		{{ if .Contact.Phone }}<div class="contact-row"><span class="row-label">Telefone</span><span>{{ .Contact.Phone }}</span></div>{{ end }}
-		{{ if .Contact.Email }}<div class="contact-row"><span class="row-label">Email</span><span>{{ .Contact.Email }}</span></div>{{ end }}
-	{{ else if eq .Action "contact_no_data" }}
-		<p class="muted">Nenhum dado de contato encontrado na mensagem.</p>
-	{{ else if eq .Action "note_add" }}
-		{{ range .Notes }}
-		<p><strong>{{ if eq .Type "reminder" }}Lembrete salvo{{ else if eq .Type "todo" }}Lista de tarefas salva{{ else }}Nota salva{{ end }} · ID {{ .ID }}</p>
-		<div class="note-row"><span class="row-label">Tipo</span><span class="badge badge-note-{{ .Type }}">{{ label .Type }}</span></div>
-		<div class="note-row"><span class="row-label">Conteúdo</span><span>{{ .Content }}</span></div>
-		{{ if .Date }}<div class="note-row"><span class="row-label">Data</span><span>{{ .Date.Format "02/01/2006" }}</span></div>{{ end }}
-		{{ if .Time }}<div class="note-row"><span class="row-label">Horário</span><span>{{ .Time }}</span></div>{{ end }}
-		{{ if .Items }}
-		<ul class="todo-list">
-			{{ range .Items }}
-			<li class="todo-item {{ if .Done }}done{{ end }}"><span class="todo-mark" aria-hidden="true">{{ if .Done }}✓{{ else }}○{{ end }}</span><span class="todo-text">{{ .Text }}</span></li>
-			{{ end }}
-		</ul>
-		{{ end }}
-		{{ end }}
-	{{ else if eq .Action "note_found" }}
-		<p><strong>{{ len .Notes }} nota(s) encontrada(s) para '{{ .SearchTerm }}'</strong></p>
-		<ul class="note-list">
+		<p class="text-secondary w-100 mb-0">Confiança: {{ index .Category "confidence" }}% · {{ index .Kind "confidence" }}%</p>
+	</div>
+	<div class="card-body">
+		{{ if eq .Action "contact_add" }}
+			<p><strong>Contato salvo · ID {{ .Contact.ID }}</strong></p>
+			{{ if .Contact.Name }}<div class="contact-row"><span class="row-label">Nome</span><span>{{ .Contact.Name }}</span></div>{{ end }}
+			{{ if .Contact.Phone }}<div class="contact-row"><span class="row-label">Telefone</span><span>{{ .Contact.Phone }}</span></div>{{ end }}
+			{{ if .Contact.Email }}<div class="contact-row"><span class="row-label">Email</span><span>{{ .Contact.Email }}</span></div>{{ end }}
+		{{ else if eq .Action "contact_found" }}
+			<p><strong>Contato encontrado</strong></p>
+			{{ if .Contact.Name }}<div class="contact-row"><span class="row-label">Nome</span><span>{{ .Contact.Name }}</span></div>{{ end }}
+			{{ if .Contact.Phone }}<div class="contact-row"><span class="row-label">Telefone</span><span>{{ .Contact.Phone }}</span></div>{{ end }}
+			{{ if .Contact.Email }}<div class="contact-row"><span class="row-label">Email</span><span>{{ .Contact.Email }}</span></div>{{ end }}
+		{{ else if eq .Action "contact_not_found" }}
+			<p class="text-warning">Nenhum contato encontrado para '{{ .SearchTerm }}'</p>
+		{{ else if eq .Action "contact_duplicate" }}
+			<p><strong>Contato já existe: {{ .Contact.Name }}</strong></p>
+			{{ if .Contact.Phone }}<div class="contact-row"><span class="row-label">Telefone</span><span>{{ .Contact.Phone }}</span></div>{{ end }}
+			{{ if .Contact.Email }}<div class="contact-row"><span class="row-label">Email</span><span>{{ .Contact.Email }}</span></div>{{ end }}
+		{{ else if eq .Action "contact_no_data" }}
+			<p class="text-secondary">Nenhum dado de contato encontrado na mensagem.</p>
+		{{ else if eq .Action "note_add" }}
 			{{ range .Notes }}
-			<li>
-				<div class="note-row"><span class="badge badge-note-{{ .Type }}">{{ label .Type }}</span><span class="note-content">{{ .Content }}</span></div>
-				{{ if .Date }}<div class="note-row"><span class="row-label">Data</span><span>{{ .Date.Format "02/01/2006" }}</span></div>{{ end }}
-				{{ if .Time }}<div class="note-row"><span class="row-label">Horário</span><span>{{ .Time }}</span></div>{{ end }}
-				{{ if .Items }}
-				<ul class="todo-list">
-					{{ range .Items }}
-					<li class="todo-item {{ if .Done }}done{{ end }}"><span class="todo-mark" aria-hidden="true">{{ if .Done }}✓{{ else }}○{{ end }}</span><span class="todo-text">{{ .Text }}</span></li>
-					{{ end }}
-				</ul>
+			<p><strong>{{ if eq .Type "reminder" }}Lembrete salvo{{ else if eq .Type "todo" }}Lista de tarefas salva{{ else }}Nota salva{{ end }} · ID {{ .ID }}</strong></p>
+			<div class="note-row"><span class="row-label">Tipo</span><span class="badge badge-note-{{ .Type }}">{{ label .Type }}</span></div>
+			<div class="note-row"><span class="row-label">Conteúdo</span><span>{{ .Content }}</span></div>
+			{{ if .Date }}<div class="note-row"><span class="row-label">Data</span><span>{{ .Date.Format "02/01/2006" }}</span></div>{{ end }}
+			{{ if .Time }}<div class="note-row"><span class="row-label">Horário</span><span>{{ .Time }}</span></div>{{ end }}
+			{{ if .Items }}
+			<ul class="todo-list">
+				{{ range .Items }}
+				<li class="todo-item {{ if .Done }}done{{ end }}"><span class="todo-mark" aria-hidden="true">{{ if .Done }}✓{{ else }}○{{ end }}</span><span class="todo-text">{{ .Text }}</span></li>
 				{{ end }}
-			</li>
+			</ul>
 			{{ end }}
-		</ul>
-	{{ else if eq .Action "note_not_found" }}
-		<p class="notice-warn">Nenhuma nota encontrada para '{{ .SearchTerm }}'.</p>
-	{{ else if eq .Action "note_no_data" }}
-		<p class="muted">Não consegui extrair os dados da nota. Para lembretes, informe a data (ex.: dia 10, 10/05 ou amanhã).</p>
-	{{ end }}
+			{{ end }}
+		{{ else if eq .Action "note_found" }}
+			<p><strong>{{ len .Notes }} nota(s) encontrada(s) para '{{ .SearchTerm }}'</strong></p>
+			<ul class="note-list">
+				{{ range .Notes }}
+				<li>
+					<div class="note-row"><span class="badge badge-note-{{ .Type }}">{{ label .Type }}</span><span class="note-content">{{ .Content }}</span></div>
+					{{ if .Date }}<div class="note-row"><span class="row-label">Data</span><span>{{ .Date.Format "02/01/2006" }}</span></div>{{ end }}
+					{{ if .Time }}<div class="note-row"><span class="row-label">Horário</span><span>{{ .Time }}</span></div>{{ end }}
+					{{ if .Items }}
+					<ul class="todo-list">
+						{{ range .Items }}
+						<li class="todo-item {{ if .Done }}done{{ end }}"><span class="todo-mark" aria-hidden="true">{{ if .Done }}✓{{ else }}○{{ end }}</span><span class="todo-text">{{ .Text }}</span></li>
+						{{ end }}
+					</ul>
+					{{ end }}
+				</li>
+				{{ end }}
+			</ul>
+		{{ else if eq .Action "note_not_found" }}
+			<p class="text-warning">Nenhuma nota encontrada para '{{ .SearchTerm }}'.</p>
+		{{ else if eq .Action "note_no_data" }}
+			<p class="text-secondary">Não consegui extrair os dados da nota. Para lembretes, informe a data (ex.: dia 10, 10/05 ou amanhã).</p>
+		{{ end }}
+	</div>
 	{{ if .Segments }}
-	<footer>
+	<div class="card-footer">
 		<small><strong>Extração:</strong></small>
 		<ul class="segment-trace">
 		{{ range .Segments }}
@@ -73,7 +75,7 @@
 			</li>
 		{{ end }}
 		</ul>
-	</footer>
+	</div>
 	{{ end }}
-</article>
+</div>
 {{ end }}

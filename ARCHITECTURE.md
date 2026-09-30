@@ -2,7 +2,7 @@
 
 ## Overview
 
-A Go web application that classifies user messages into categories (contact, finance, schedule, notes, other) and determines whether a message is a request to add or require something. Classification is performed by the **TypeSafe System One API** (Jev model) via one AI request per message (a single template with two choice questions). After classification, a **Dispatcher** routes the message to a category-specific use case; the contact flow implements both the **add** path (regex extraction of phone/email, Jev Noul name extraction, duplicate detection on save, and SQLite persistence via Gorm) and the **require** path (search by phone/email/name). The frontend is a server-rendered htmx page styled with Pico.css (no JS build step).
+A Go web application that classifies user messages into categories (contact, finance, schedule, notes, other) and determines whether a message is a request to add or require something. Classification is performed by the **TypeSafe System One API** (Jev model) via one AI request per message (a single template with two choice questions). After classification, a **Dispatcher** routes the message to a category-specific use case; the contact flow implements both the **add** path (regex extraction of phone/email, Jev Noul name extraction, duplicate detection on save, and SQLite persistence via Gorm) and the **require** path (search by phone/email/name). The frontend is a server-rendered htmx page styled with Bootstrap 5.3 (no JS build step).
 
 The same `CategoryHandler` seam now also serves the **notes** flow (`NotesService`): a second Jev call (`note.json`, one `note_type` choice question) picks the sub-type (note / reminder / to-do list), a deterministic PT-BR parser extracts the reminder date and optional time and the to-do list is split into items, everything is persisted in `notes` + `todo_items` (SQLite via Gorm), and the **require** path searches by date, unfinished items or a content term.
 
@@ -23,7 +23,7 @@ The codebase follows a **semantic MVC pattern** on an idiomatic Go layout:
 | Env loading | [joho/godotenv](https://github.com/joho/godotenv) v1.5.1 |
 | AI API | TypeSafe System One (`https://api.typesafe.ai/v1/systemone`, model `jev-latest`) |
 | Templating | Go `html/template` (ParseGlob) |
-| CSS | Pico.css v2 (CDN, dark theme) + custom layer (web/static/css/app.css) |
+| CSS | Bootstrap 5.3 (CDN, default light theme) + Bootstrap Icons (CDN) + custom layer (web/static/css/app.css) |
 | Database | SQLite via [glebarez/sqlite](https://github.com/glebarez/sqlite) (pure-Go, zero CGO) |
 | ORM | [gorm.io/gorm](https://gorm.io) |
 
@@ -73,7 +73,7 @@ msg-classifier/
 │           └── note.json            # one choice question: "note_type" (note / reminder / todo)
 ├── web/
 │   ├── static/
-│   │   └── css/app.css        # custom layer over Pico v2 (tokens, badges, navbar, spinner, tables)
+│   │   └── css/app.css        # custom layer over Bootstrap 5.3 (tokens, badges, sidebar, spinner, tables)
 │   └── templates/
 │       ├── layouts/base.html    # "base" layout (pt-BR, Inter, favicon, sticky navbar, page:active block)
 │       ├── pages/index.html     # home page (hero copy + form + spinner on Enviar)
@@ -171,10 +171,10 @@ msg-classifier/
 - `note.json`: one `choice` question — `"note_type"` with 3 criteria (note, reminder, todo). It is only called for messages classified as `notes`, and only on the add path.
 
 ### 11. HTML Templates — `web/templates/`
-- `base.html`: `base` layout, `lang="pt-BR"`, loads Inter (Google Fonts) + Pico.css v2 (dark theme via `data-theme="dark"`) + `app.css` + htmx 2.0.10 + response-targets extension from CDNs; sticky navbar with a `page:active` block for the active link; `hx-ext="response-targets"` + `hx-target-error="#resultado"` on `<body>` route 4xx/5xx responses into the result container.
+- `base.html`: `base` layout, `lang="pt-BR"`, loads Inter (Google Fonts) + Bootstrap 5.3 (default light theme) + Bootstrap Icons + `app.css` + htmx 2.0.10 + response-targets extension from CDNs; offcanvas-lg sidebar (fixed at lg+, drawer with hamburger below) with a `page:active` block for the active link; `hx-ext="response-targets"` + `hx-target-error="#resultado"` on `<body>` route 4xx/5xx responses into the result container.
 - `index.html`: form posting via `hx-post="/api/message"` targeting `#resultado` with `hx-swap="innerHTML"`.
-- `result.html`: `resultado` partial — a Pico `<article class="result-card">` with PT-BR category/kind badges in `<header>`, branches for add/found/not-found/duplicate/no-data (contact) and note_add/note_found/note_not_found/note_no_data (notes: type badge, content, date/time for reminders, item list with ✓/○ for to-dos), and the per-segment extraction trace as a list in `<footer>`.
-- `error.html`: `error` partial rendering a Pico `<article>` error card (used for 400/502/500 responses).
+- `result.html`: `resultado` partial — a Bootstrap `<div class="card result-card">` with PT-BR category/kind badges in `card-header`, branches for add/found/not-found/duplicate/no-data (contact) and note_add/note_found/note_not_found/note_no_data (notes: type badge, content, date/time for reminders, item list with ✓/○ for to-dos), and the per-segment extraction trace as a list in `card-footer`.
+- `error.html`: `error` partial rendering a Bootstrap `card border-danger` error card (used for 400/502/500 responses).
 
 ### 12. Prompt Service (validation harness) — `internal/services/prompt.go` + `prompt_controller.go`
 - `PromptService` orchestrates the Jev validation harness: `Add` (validates flow ∈ {classification, name, note} and non-empty fields, `ErrInvalidPrompt` → 400), `ListByFlow`, `Evaluate` (loads prompts by flow, filters to selected ids, runs the exact production paths — `ClassificationService.Classify` for classification, `ContactExtractor.ExtractName` for name — and `NoteExtractor.ExtractType` for note (expected/obtained are the sub-type, compared case-insensitively) — and compares expected vs obtained; a Jev failure for one prompt is captured in its row as the obtained result with match=false and evaluation continues), and `ExportCSV` (writes the given evaluation results to `exports/<flow>-<yyyyMMdd-HHmmss>.csv` via `encoding/csv`, folder created on demand — no re-run, the CSV mirrors the evaluation the user just saw).
@@ -266,7 +266,7 @@ All responses to htmx targets are HTML partials — no JSON on this route. The r
 | TypeSafe System One API | Message classification (Jev model) | `TYPESAFE_API_URL`, `TYPESAFE_MODEL`, `TS_API_KEY` |
 | htmx.org 2.0.10 (CDN) | Client-side partial page updates | — |
 | htmx-ext-response-targets (CDN) | Swap 4xx/5xx responses into `#resultado` | — |
-| Pico.css v2 (CDN, dark theme) | Styling | — |
+| Bootstrap 5.3 (CDN, default light theme) + Bootstrap Icons (CDN) | Styling | — |
 | SQLite (glebarez/sqlite) | Contact, note and to-do persistence | DB_PATH |
 
 ## Configuration
