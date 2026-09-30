@@ -64,7 +64,7 @@ func main() {
 	// Single connection serializes SQLite access; concurrent connections are
 	// unstable with the pure-Go driver (glebarez/modernc) on Windows.
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&models.Contact{}, &models.JevPrompt{}); err != nil {
+	if err := db.AutoMigrate(&models.Contact{}, &models.JevPrompt{}, &models.Note{}, &models.TodoItem{}); err != nil {
 		log.Fatalf("failed to migrate database: %v", err)
 	}
 
@@ -74,12 +74,15 @@ func main() {
 	if err := contactService.BackfillNameNorm(); err != nil {
 		log.Fatalf("failed to backfill name_norm: %v", err)
 	}
+	noteExtractor := services.NewNoteExtractor(jevClient)
+	notesService := services.NewNotesService(noteExtractor, services.NewDateParser(), repository.NewNotesRepository(db))
 	dispatcher := services.NewDispatcher(map[string]services.CategoryHandler{
 		"contact": contactService,
+		"notes":   notesService,
 	})
 
 	promptRepo := repository.NewPromptRepository(db)
-	promptService := services.NewPromptService(promptRepo, classifier, extractor)
+	promptService := services.NewPromptService(promptRepo, classifier, extractor, noteExtractor)
 	promptController := controllers.NewPromptController(promptService)
 
 	webController := controllers.NewWebController()
