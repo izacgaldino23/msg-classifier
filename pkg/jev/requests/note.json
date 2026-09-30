@@ -1,0 +1,14 @@
+{
+	"state": {},
+	"questions": {
+		"note_type": {
+			"type": "choice",
+			"instructions": "What kind of note does the user want to store?",
+			"criteria": {
+				"note":     "a plain note: a single piece of information, idea or statement the user wants to keep, with no date and no list structure — a single sentence that mentions an action ('Anota que preciso comprar pão') is still a note, not a task list",
+				"reminder": "a reminder: something the user must be reminded about on a specific date ('dia 10', '10/05', 'amanhã', 'hoje'), with an optional time — 'lembrar' without a date is a note, not a reminder",
+				"todo":     "a to-do list: one or more tasks written as a structured list — separated by commas, semicolons, numbering (1., 2.) or lines, or introduced by a list marker like 'tarefas:' or 'lista:'"
+			}
+		}
+	}
+}

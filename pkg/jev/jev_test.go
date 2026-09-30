@@ -73,3 +73,24 @@ func TestValidateJevRequestNoulRequiresDescriptions(t *testing.T) {
 		t.Error("validateJevRequest() = nil, want error for empty true description")
 	}
 }
+
+func TestLoadJevRequestFromFileNote(t *testing.T) {
+	request, err := LoadJevRequestFromFile("note.json")
+	if err != nil {
+		t.Fatalf("LoadJevRequestFromFile(\"note.json\") = %v", err)
+	}
+
+	question, ok := request.Questions["note_type"]
+	if !ok {
+		t.Fatalf("question %q missing", "note_type")
+	}
+	choice, ok := question.(*JevQuestionChoice)
+	if !ok {
+		t.Fatalf("question type = %T, want *JevQuestionChoice", question)
+	}
+	for _, want := range []string{"note", "reminder", "todo"} {
+		if _, ok := choice.Criteria[want]; !ok {
+			t.Errorf("criteria %q missing, got %v", want, choice.Criteria)
+		}
+	}
+}
