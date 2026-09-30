@@ -91,3 +91,31 @@ func TestUseCaseOutcomeCarriesSearchTerm(t *testing.T) {
 		t.Errorf("outcome.SearchTerm = %q, want %q", outcome.SearchTerm, "fulano tal")
 	}
 }
+
+func TestNoteActionConstants(t *testing.T) {
+	for value, want := range map[Action]string{
+		ActionNoteAdd:      "note_add",
+		ActionNoteNoData:   "note_no_data",
+		ActionNoteFound:    "note_found",
+		ActionNoteNotFound: "note_not_found",
+	} {
+		if string(value) != want {
+			t.Errorf("action = %q, want %q", value, want)
+		}
+	}
+}
+
+func TestUseCaseOutcomeCarriesNotes(t *testing.T) {
+	notes := []*Note{{ID: 1, Type: NoteTypeTodo, Content: "comprar pão"}}
+	outcome := &UseCaseOutcome{Action: ActionNoteAdd, Notes: notes}
+
+	if len(outcome.Notes) != 1 {
+		t.Fatalf("outcome.Notes = %v, want 1 note", outcome.Notes)
+	}
+	if outcome.Notes[0].Type != NoteTypeTodo || outcome.Notes[0].Content != "comprar pão" {
+		t.Errorf("outcome.Notes[0] = %+v", outcome.Notes[0])
+	}
+	if outcome.Contact != nil {
+		t.Errorf("outcome.Contact = %v, want nil for the notes flow", outcome.Contact)
+	}
+}

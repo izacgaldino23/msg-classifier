@@ -40,6 +40,10 @@ const (
 	ActionContactFound     Action = "contact_found"
 	ActionContactNotFound  Action = "contact_not_found"
 	ActionContactDuplicate Action = "contact_duplicate"
+	ActionNoteAdd          Action = "note_add"
+	ActionNoteNoData       Action = "note_no_data"
+	ActionNoteFound        Action = "note_found"
+	ActionNoteNotFound     Action = "note_not_found"
 )
 
 // UseCaseOutcome carries the classification, the dispatched action, and any use-case result.
@@ -47,6 +51,7 @@ type UseCaseOutcome struct {
 	Classification *Classification
 	Action         Action
 	Contact        *Contact
+	Notes          []*Note
 	Segments       []SegmentScore
 	SearchTerm     string
 }

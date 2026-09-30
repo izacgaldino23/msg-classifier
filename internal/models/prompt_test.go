@@ -52,3 +52,9 @@ func TestEvaluationResultFields(t *testing.T) {
 		t.Errorf("Segments = %v, want nil for classification", result.Segments)
 	}
 }
+
+func TestFlowNoteConstant(t *testing.T) {
+	if FlowNote != "note" {
+		t.Errorf("FlowNote = %q, want %q", FlowNote, "note")
+	}
+}

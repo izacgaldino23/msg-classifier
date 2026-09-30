@@ -6,6 +6,7 @@ import "time"
 const (
 	FlowClassification = "classification"
 	FlowName           = "name"
+	FlowNote           = "note"
 )
 
 // JevPrompt is a persisted example message with its expected Jev result.
