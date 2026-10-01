@@ -3,6 +3,7 @@ package views
 import (
 	"html/template"
 	"net/http"
+	"time"
 
 	"msg-classifier/internal/models"
 
@@ -19,6 +20,11 @@ const (
 
 	PromptTableTemplate       = "prompt_table"
 	EvaluationResultsTemplate = "evaluation_results"
+
+	contactsTableTmpl = "contacts_table"
+	notesTableTmpl    = "notes_table"
+	dataDetailTmpl    = "data_detail"
+	dataItemRowTmpl   = "data_item_row"
 )
 
 const (
@@ -26,6 +32,8 @@ const (
 	HomePageContent    = "home:content"
 	PromptsPage        = "prompts"
 	PromptsPageContent = "prompts:content"
+	DataPage           = "data"
+	DataPageContent    = "data:content"
 )
 
 // ErrorData is the view model for the "error" partial.
@@ -135,7 +143,60 @@ func Label(choice any) string {
 	return s
 }
 
+// DataDetailData is the view model for the "data_detail" partial.
+type DataDetailData struct {
+	Kind    string
+	Mode    string
+	Contact *models.Contact
+	Note    *models.Note
+}
+
+// ItemRowData is the view model for the "data_item_row" partial — one to-do item
+// line. The zero value renders the blank row the "Adicionar item" button appends.
+type ItemRowData struct {
+	Text string
+	Done bool
+}
+
+// RenderContactsTable renders the "contacts_table" partial (HTTP 200).
+func RenderContactsTable(c *gin.Context, filter string, contacts []models.Contact) {
+	c.HTML(http.StatusOK, contactsTableTmpl, gin.H{"Filter": filter, "Contacts": contacts})
+}
+
+// RenderNotesTable renders the "notes_table" partial (HTTP 200).
+func RenderNotesTable(c *gin.Context, filter string, notes []*models.Note) {
+	c.HTML(http.StatusOK, notesTableTmpl, gin.H{"Filter": filter, "Notes": notes})
+}
+
+// RenderDataDetail renders the "data_detail" partial (HTTP 200).
+func RenderDataDetail(c *gin.Context, data DataDetailData) {
+	c.HTML(http.StatusOK, dataDetailTmpl, data)
+}
+
+// RenderDataItemRow renders the "data_item_row" partial (HTTP 200) — one to-do row.
+func RenderDataItemRow(c *gin.Context) {
+	c.HTML(http.StatusOK, dataItemRowTmpl, ItemRowData{})
+}
+
+// DateBR formats a date as dd/mm/aaaa; nil renders "".
+func DateBR(d *time.Time) string {
+	if d == nil {
+		return ""
+	}
+	return d.Format("02/01/2006")
+}
+
+// Deref dereferences an optional string; nil renders "".
+func Deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
 // FuncMap exposes template helpers to the shared template set.
 var FuncMap = template.FuncMap{
-	"label": Label,
+	"label":  Label,
+	"dateBR": DateBR,
+	"deref":  Deref,
 }

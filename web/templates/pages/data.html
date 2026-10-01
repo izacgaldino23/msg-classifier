@@ -1,0 +1,62 @@
+{{ define "page:title" }}Dados{{ end }}
+{{ define "page:active" }}dados{{ end }}
+{{ define "page:content" }}
+<div>
+    <h1 class="mb-4">Dados</h1>
+
+    <ul class="nav nav-tabs mb-3" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="tab-contacts" type="button" role="tab" data-bs-toggle="tab" data-bs-target="#pane-contacts" onclick="activateFilterPills('pane-contacts')">Contatos</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="tab-notes" type="button" role="tab" data-bs-toggle="tab" data-bs-target="#pane-notes" onclick="activateFilterPills('pane-notes')">Notas</button>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+        <div class="tab-pane fade show active" id="pane-contacts" role="tabpanel" aria-labelledby="tab-contacts">
+            <ul class="nav nav-pills mb-3">
+                <li class="nav-item"><button type="button" class="nav-link active" data-filter-pill hx-get="/data/table?kind=contact&filter=all" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" hx-trigger="load, click" onclick="markFilterPill(this)">Todos</button></li>
+                <li class="nav-item"><button type="button" class="nav-link" data-filter-pill hx-get="/data/table?kind=contact&filter=phone" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" onclick="markFilterPill(this)">Com telefone</button></li>
+                <li class="nav-item"><button type="button" class="nav-link" data-filter-pill hx-get="/data/table?kind=contact&filter=email" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" onclick="markFilterPill(this)">Com e-mail</button></li>
+                <li class="nav-item"><button type="button" class="nav-link" data-filter-pill hx-get="/data/table?kind=contact&filter=name" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" onclick="markFilterPill(this)">Só nome</button></li>
+            </ul>
+        </div>
+        <div class="tab-pane fade" id="pane-notes" role="tabpanel" aria-labelledby="tab-notes">
+            <ul class="nav nav-pills mb-3">
+                <li class="nav-item"><button type="button" class="nav-link active" data-filter-pill hx-get="/data/table?kind=notes&filter=all" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" onclick="markFilterPill(this)">Todas</button></li>
+                <li class="nav-item"><button type="button" class="nav-link" data-filter-pill hx-get="/data/table?kind=notes&filter=note" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" onclick="markFilterPill(this)">Notas</button></li>
+                <li class="nav-item"><button type="button" class="nav-link" data-filter-pill hx-get="/data/table?kind=notes&filter=reminder" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" onclick="markFilterPill(this)">Lembretes</button></li>
+                <li class="nav-item"><button type="button" class="nav-link" data-filter-pill hx-get="/data/table?kind=notes&filter=todo" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" onclick="markFilterPill(this)">Listas</button></li>
+            </ul>
+        </div>
+    </div>
+
+    <div id="data-table" class="mt-4" hx-get="/data/table" hx-trigger="dataChanged from:body" hx-target="#data-table" hx-swap="innerHTML" hx-include="#data-table-form" hx-target-error="#data-table"></div>
+
+    <div class="offcanvas offcanvas-end" tabindex="-1" id="dataPanel" aria-labelledby="dataPanelLabel">
+        <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="dataPanelLabel">Detalhe</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Fechar"></button>
+        </div>
+        <div class="offcanvas-body" id="data-panel-body"></div>
+    </div>
+
+    <script>
+        // The pills own their own active state: the server re-renders
+        // #data-table but never the pill list, so a server-driven highlight
+        // would be lost on every delete re-render.
+        function markFilterPill(pill) {
+            pill.closest('.nav-pills').querySelectorAll('.nav-link')
+                .forEach(p => p.classList.toggle('active', p === pill));
+        }
+
+        // Switching the outer tab must not leave the other kind's table on
+        // screen, so select (and load) that pane's default filter.
+        function activateFilterPills(paneId) {
+            document.getElementById(paneId)
+                ?.querySelector('.nav-pills .nav-link')?.click();
+        }
+    </script>
+</div>
+{{ end }}

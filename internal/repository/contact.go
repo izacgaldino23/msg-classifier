@@ -69,3 +69,40 @@ func (r *ContactRepository) ListNeedingNameNorm() ([]models.Contact, error) {
 func (r *ContactRepository) Save(contact *models.Contact) error {
 	return r.db.Save(contact).Error
 }
+
+// List returns the contacts matching the filter, newest first. Accepted filters:
+// all, phone, email and name (phone and email both absent or empty). An unknown
+// filter falls back to "all" — the service layer is the gate that rejects it.
+func (r *ContactRepository) List(filter string) ([]models.Contact, error) {
+	query := r.db.Order("id DESC")
+	switch filter {
+	case "phone":
+		query = query.Where("phone IS NOT NULL AND phone <> ''")
+	case "email":
+		query = query.Where("email IS NOT NULL AND email <> ''")
+	case "name":
+		query = query.Where("(phone IS NULL OR phone = '') AND (email IS NULL OR email = '')")
+	}
+	var contacts []models.Contact
+	if err := query.Find(&contacts).Error; err != nil {
+		return nil, err
+	}
+	return contacts, nil
+}
+
+// FindByID returns the contact with the given id, or ErrNotFound.
+func (r *ContactRepository) FindByID(id uint) (*models.Contact, error) {
+	var contact models.Contact
+	if err := r.db.First(&contact, id).Error; err != nil {
+		return nil, err
+	}
+	return &contact, nil
+}
+
+// DeleteByIDs removes the given contacts in a single statement; an empty list is a no-op.
+func (r *ContactRepository) DeleteByIDs(ids []uint) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return r.db.Where("id IN ?", ids).Delete(&models.Contact{}).Error
+}

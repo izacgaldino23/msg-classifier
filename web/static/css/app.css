@@ -68,7 +68,8 @@ h6 { font-size: 0.875rem; }
 
 /* Active nav — page:active mechanism (body class + attribute selectors) */
 body.page-home .sidebar-nav a[href="/"],
-body.page-prompts .sidebar-nav a[href="/prompts"] {
+body.page-prompts .sidebar-nav a[href="/prompts"],
+body.page-dados .sidebar-nav a[href="/data"] {
 	background-color: var(--bs-primary-bg-subtle);
 	color: var(--bs-primary);
 }

@@ -35,6 +35,7 @@ func main() {
 	pagesRenderer, err := views.NewPagesRenderer(tmpl, map[string]string{
 		views.HomePage:    SourcePath + "/pages/index.html",
 		views.PromptsPage: SourcePath + "/pages/prompts.html",
+		views.DataPage:    SourcePath + "/pages/data.html",
 	})
 	if err != nil {
 		log.Fatalf("failed to build page templates: %v", err)
@@ -88,11 +89,27 @@ func main() {
 	webController := controllers.NewWebController()
 	messageController := controllers.NewMessageController(classifier, dispatcher)
 
+	dataService := services.NewDataService(
+		repository.NewContactRepository(db),
+		repository.NewNotesRepository(db),
+		services.NewDateParser(),
+	)
+	dataController := controllers.NewDataController(dataService)
+
 	router.GET("/", webController.Home)
 	router.GET("/prompts", promptController.Page)
 	router.GET("/prompts/table", promptController.Table)
 	router.POST("/prompts", promptController.Add)
 	router.POST("/prompts/evaluate", promptController.Evaluate)
+
+	// Data screen. The static segments are registered before the :kind/:id param
+	// route so they are matched directly instead of being read as a kind.
+	router.GET("/data", dataController.Page)
+	router.GET("/data/table", dataController.Table)
+	router.GET("/data/item-row", dataController.ItemRow)
+	router.GET("/data/:kind/:id", dataController.Detail)
+	router.POST("/data/:kind/:id", dataController.Update)
+	router.POST("/data/delete", dataController.Delete)
 
 	api := router.Group("/api")
 	api.POST("/message", messageController.ReceiveMessage)

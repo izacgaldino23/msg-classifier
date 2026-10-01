@@ -116,3 +116,101 @@ func TestContactRepositoryClosedDB(t *testing.T) {
 
 	require.Error(t, repo.Create(&models.Contact{Name: "Fulano"}))
 }
+
+func TestContactRepositoryListAllNewestFirst(t *testing.T) {
+	db := newTestDB(t)
+	db.Create(&models.Contact{Name: "Fulano", Phone: strPtr("9292929290")})
+	db.Create(&models.Contact{Name: "Doutrina"})
+	repo := NewContactRepository(db)
+
+	contacts, err := repo.List("all")
+	require.NoError(t, err)
+	require.Len(t, contacts, 2)
+	assert.Equal(t, "Doutrina", contacts[0].Name, "newest first (id DESC)")
+	assert.Equal(t, "Fulano", contacts[1].Name)
+}
+
+func TestContactRepositoryListFilters(t *testing.T) {
+	db := newTestDB(t)
+	db.Create(&models.Contact{Name: "Só telefone", Phone: strPtr("1111111111")})
+	db.Create(&models.Contact{Name: "Só email", Email: strPtr("a@b.com")})
+	db.Create(&models.Contact{Name: "Só nome"})
+	db.Create(&models.Contact{Name: "Vazio", Phone: strPtr(""), Email: strPtr("")})
+	repo := NewContactRepository(db)
+
+	phone, err := repo.List("phone")
+	require.NoError(t, err)
+	require.Len(t, phone, 1)
+	assert.Equal(t, "Só telefone", phone[0].Name)
+
+	email, err := repo.List("email")
+	require.NoError(t, err)
+	require.Len(t, email, 1)
+	assert.Equal(t, "Só email", email[0].Name)
+
+	// "name" = phone AND email both absent or empty. Newest first (id DESC),
+	// so "Vazio" (created last) comes before "Só nome".
+	name, err := repo.List("name")
+	require.NoError(t, err)
+	require.Len(t, name, 2)
+	assert.Equal(t, "Vazio", name[0].Name)
+	assert.Equal(t, "Só nome", name[1].Name)
+}
+
+func TestContactRepositoryListUnknownFilterReturnsAll(t *testing.T) {
+	db := newTestDB(t)
+	db.Create(&models.Contact{Name: "Fulano"})
+	repo := NewContactRepository(db)
+
+	contacts, err := repo.List("bogus")
+	require.NoError(t, err, "the repository never errors on an unknown filter - the service is the gate")
+	assert.Len(t, contacts, 1)
+}
+
+func TestContactRepositoryListEmpty(t *testing.T) {
+	repo := NewContactRepository(newTestDB(t))
+
+	contacts, err := repo.List("all")
+	require.NoError(t, err)
+	assert.Empty(t, contacts)
+}
+
+func TestContactRepositoryFindByID(t *testing.T) {
+	db := newTestDB(t)
+	db.Create(&models.Contact{Name: "Fulano", Phone: strPtr("9292929290")})
+	repo := NewContactRepository(db)
+
+	contact, err := repo.FindByID(1)
+	require.NoError(t, err)
+	assert.Equal(t, "Fulano", contact.Name)
+
+	_, err = repo.FindByID(999)
+	assert.ErrorIs(t, err, ErrNotFound)
+}
+
+func TestContactRepositoryDeleteByIDs(t *testing.T) {
+	db := newTestDB(t)
+	db.Create(&models.Contact{Name: "A"})
+	db.Create(&models.Contact{Name: "B"})
+	db.Create(&models.Contact{Name: "C"})
+	repo := NewContactRepository(db)
+
+	require.NoError(t, repo.DeleteByIDs([]uint{1, 3}))
+
+	var remaining []models.Contact
+	require.NoError(t, db.Order("id").Find(&remaining).Error)
+	require.Len(t, remaining, 1)
+	assert.Equal(t, "B", remaining[0].Name)
+}
+
+func TestContactRepositoryDeleteByIDsEmptyIsANoOp(t *testing.T) {
+	db := newTestDB(t)
+	db.Create(&models.Contact{Name: "A"})
+	repo := NewContactRepository(db)
+
+	require.NoError(t, repo.DeleteByIDs(nil))
+
+	var count int64
+	require.NoError(t, db.Model(&models.Contact{}).Count(&count).Error)
+	assert.Equal(t, int64(1), count)
+}

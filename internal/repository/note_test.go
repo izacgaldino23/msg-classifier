@@ -178,3 +178,161 @@ func TestNotesRepositoryClosedDB(t *testing.T) {
 	_, err = repo.FindByDate(fixedDate())
 	assert.Error(t, err)
 }
+
+func TestNotesRepositoryListNewestFirstWithItems(t *testing.T) {
+	db := newNoteTestDB(t)
+	repo := NewNotesRepository(db)
+	require.NoError(t, repo.Create(&models.Note{Type: models.NoteTypeNote, Content: "primeira"}, nil))
+	require.NoError(t, repo.Create(&models.Note{Type: models.NoteTypeTodo, Content: "segunda"}, []models.TodoItem{
+		{Text: "item a", Position: 1},
+		{Text: "item b", Position: 0},
+	}))
+
+	notes, err := repo.List()
+	require.NoError(t, err)
+	require.Len(t, notes, 2)
+	assert.Equal(t, "segunda", notes[0].Content, "newest first (id DESC)")
+	require.Len(t, notes[0].Items, 2)
+	assert.Equal(t, "item b", notes[0].Items[0].Text, "items preloaded in position order")
+	assert.Equal(t, "item a", notes[0].Items[1].Text)
+}
+
+func TestNotesRepositoryListEmptyIsNotAnError(t *testing.T) {
+	repo := NewNotesRepository(newNoteTestDB(t))
+
+	notes, err := repo.List()
+	require.NoError(t, err, "an empty table is a valid state, not a not-found")
+	assert.Empty(t, notes)
+}
+
+func TestNotesRepositoryListByType(t *testing.T) {
+	db := newNoteTestDB(t)
+	repo := NewNotesRepository(db)
+	require.NoError(t, repo.Create(&models.Note{Type: models.NoteTypeNote, Content: "nota"}, nil))
+	require.NoError(t, repo.Create(&models.Note{Type: models.NoteTypeReminder, Content: "lembrete", Date: datePtr(fixedDate())}, nil))
+	require.NoError(t, repo.Create(&models.Note{Type: models.NoteTypeReminder, Content: "outro lembrete"}, nil))
+
+	reminders, err := repo.ListByType(models.NoteTypeReminder)
+	require.NoError(t, err)
+	require.Len(t, reminders, 2)
+	assert.Equal(t, "outro lembrete", reminders[0].Content)
+
+	notes, err := repo.ListByType(models.NoteTypeNote)
+	require.NoError(t, err)
+	require.Len(t, notes, 1)
+	assert.Equal(t, "nota", notes[0].Content)
+
+	todos, err := repo.ListByType(models.NoteTypeTodo)
+	require.NoError(t, err)
+	assert.Empty(t, todos)
+}
+
+func TestNotesRepositoryFindByID(t *testing.T) {
+	db := newNoteTestDB(t)
+	repo := NewNotesRepository(db)
+	require.NoError(t, repo.Create(&models.Note{Type: models.NoteTypeTodo, Content: "comprar"}, []models.TodoItem{
+		{Text: "pão", Position: 0},
+		{Text: "leite", Position: 1, Done: true},
+	}))
+
+	note, err := repo.FindByID(1)
+	require.NoError(t, err)
+	assert.Equal(t, "comprar", note.Content)
+	require.Len(t, note.Items, 2)
+	assert.Equal(t, "pão", note.Items[0].Text)
+	assert.True(t, note.Items[1].Done)
+
+	_, err = repo.FindByID(999)
+	assert.ErrorIs(t, err, ErrNotFound)
+}
+
+func TestNotesRepositorySaveReplacesItems(t *testing.T) {
+	db := newNoteTestDB(t)
+	repo := NewNotesRepository(db)
+	require.NoError(t, repo.Create(&models.Note{Type: models.NoteTypeTodo, Content: "antes"}, []models.TodoItem{
+		{Text: "antigo 1", Position: 0},
+		{Text: "antigo 2", Position: 1},
+	}))
+
+	note, err := repo.FindByID(1)
+	require.NoError(t, err)
+	note.Content = "depois"
+	require.NoError(t, repo.Save(note, []models.TodoItem{{Text: "novo", Position: 0, Done: true}}))
+
+	var items []models.TodoItem
+	require.NoError(t, db.Where("note_id = ?", note.ID).Order("position").Find(&items).Error)
+	require.Len(t, items, 1, "old items are deleted, not merged")
+	assert.Equal(t, "novo", items[0].Text)
+	assert.True(t, items[0].Done)
+	assert.Equal(t, note.ID, items[0].NoteID)
+
+	reloaded, err := repo.FindByID(note.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "depois", reloaded.Content)
+}
+
+func TestNotesRepositorySaveWithoutItems(t *testing.T) {
+	db := newNoteTestDB(t)
+	repo := NewNotesRepository(db)
+	require.NoError(t, repo.Create(&models.Note{Type: models.NoteTypeTodo, Content: "antes"}, []models.TodoItem{
+		{Text: "antigo", Position: 0},
+	}))
+
+	note, err := repo.FindByID(1)
+	require.NoError(t, err)
+	require.NoError(t, repo.Save(note, nil))
+
+	var count int64
+	require.NoError(t, db.Model(&models.TodoItem{}).Count(&count).Error)
+	assert.Equal(t, int64(0), count)
+}
+
+func TestNotesRepositorySaveDoesNotResurrectLoadedItems(t *testing.T) {
+	db := newNoteTestDB(t)
+	repo := NewNotesRepository(db)
+	require.NoError(t, repo.Create(&models.Note{Type: models.NoteTypeTodo, Content: "antes"}, []models.TodoItem{
+		{Text: "antigo", Position: 0},
+	}))
+
+	// note.Items is populated by FindByID; Save must ignore the association and
+	// write only the fields, otherwise the stale items are re-saved.
+	note, err := repo.FindByID(1)
+	require.NoError(t, err)
+	require.Len(t, note.Items, 1)
+	note.Content = "depois"
+	require.NoError(t, repo.Save(note, nil))
+
+	var count int64
+	require.NoError(t, db.Model(&models.TodoItem{}).Count(&count).Error)
+	assert.Equal(t, int64(0), count)
+}
+
+func TestNotesRepositoryDeleteByIDsDropsItems(t *testing.T) {
+	db := newNoteTestDB(t)
+	repo := NewNotesRepository(db)
+	require.NoError(t, repo.Create(&models.Note{Type: models.NoteTypeTodo, Content: "a"}, []models.TodoItem{{Text: "x", Position: 0}}))
+	require.NoError(t, repo.Create(&models.Note{Type: models.NoteTypeNote, Content: "b"}, nil))
+	require.NoError(t, repo.Create(&models.Note{Type: models.NoteTypeTodo, Content: "c"}, []models.TodoItem{{Text: "y", Position: 0}}))
+
+	require.NoError(t, repo.DeleteByIDs([]uint{1, 3}))
+
+	var notes int64
+	require.NoError(t, db.Model(&models.Note{}).Count(&notes).Error)
+	assert.Equal(t, int64(1), notes)
+
+	var items int64
+	require.NoError(t, db.Model(&models.TodoItem{}).Count(&items).Error)
+	assert.Equal(t, int64(0), items, "todo items are deleted with their notes")
+}
+
+func TestNotesRepositoryDeleteByIDsEmptyIsANoOp(t *testing.T) {
+	db := newNoteTestDB(t)
+	repo := NewNotesRepository(db)
+	require.NoError(t, repo.Create(&models.Note{Type: models.NoteTypeNote, Content: "a"}, nil))
+
+	require.NoError(t, repo.DeleteByIDs(nil))
+
+	var count int64
+	require.NoError(t, db.Model(&models.Note{}).Count(&count).Error)
+	assert.Equal(t, int64(1), count)
+}

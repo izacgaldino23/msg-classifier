@@ -1,0 +1,44 @@
+{{ define "contacts_table" }}
+<form id="data-table-form">
+    <input type="hidden" name="kind" value="contact">
+    <input type="hidden" name="filter" value="{{ .Filter }}">
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th><input type="checkbox" onchange="document.querySelectorAll('.data-check').forEach(cb => cb.checked = this.checked)"></th>
+                    <th>#</th>
+                    <th>Nome</th>
+                    <th>Telefone</th>
+                    <th>E-mail</th>
+                    <th>Criado em</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {{ if .Contacts }}
+                    {{ range .Contacts }}
+                    <tr>
+                        <td><input type="checkbox" class="data-check" name="ids" value="{{ .ID }}"></td>
+                        <td>{{ .ID }}</td>
+                        <td>{{ .Name }}</td>
+                        <td>{{ deref .Phone }}</td>
+                        <td>{{ deref .Email }}</td>
+                        <td>{{ .CreatedAt.Format "02/01/2006 15:04" }}</td>
+                        <td class="text-end">
+                            <button type="button" class="btn btn-sm btn-outline-primary" hx-get="/data/contact/{{ .ID }}" hx-target="#data-panel-body" hx-swap="innerHTML" hx-target-error="#data-panel-body" hx-on::after-request="bootstrap.Offcanvas.getOrCreateInstance('#dataPanel').show()">Ver</button>
+                        </td>
+                    </tr>
+                    {{ end }}
+                {{ else }}
+                    <tr><td colspan="7">Nenhum contato cadastrado com este filtro.</td></tr>
+                {{ end }}
+            </tbody>
+        </table>
+    </div>
+    <button type="button" class="btn btn-danger mt-3" hx-post="/data/delete" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" hx-include="#data-table-form" hx-confirm="Apagar os contatos selecionados?" hx-indicator="this" hx-disabled-elt="this">
+        <span class="button-label">Apagar selecionados</span>
+        <span class="htmx-indicator" aria-hidden="true"><span class="spinner-border spinner-border-sm me-2"></span>Apagando…</span>
+    </button>
+</form>
+{{ end }}

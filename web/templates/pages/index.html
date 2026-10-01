@@ -9,13 +9,11 @@
     <form hx-post="/api/message" hx-target="#resultado" hx-swap="innerHTML">
         <div class="mb-3">
             <label for="message" class="form-label">Mensagem:</label>
-            <textarea id="message" name="message" class="form-control" required></textarea>
+            <input type="text" id="message" name="message" class="form-control" required>
         </div>
 
-        <div class="mb-3">
-            <label for="user_id" class="form-label">User ID:</label>
-            <input type="text" id="user_id" name="user_id" class="form-control" value="12345">
-        </div>
+        <!-- User id is still mocked; hidden until a real session supplies it. -->
+        <input type="hidden" name="user_id" value="12345">
 
         <button type="submit" class="btn btn-primary" hx-indicator="this" hx-disabled-elt="this">
             <span class="button-label">Enviar</span>
