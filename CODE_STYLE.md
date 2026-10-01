@@ -105,22 +105,33 @@ type jevClient interface {
 - Persist a note and its to-do items in one transaction (`Create(note, items)`); a partial write is never acceptable.
 - The to-do splitter is deterministic with a fixed precedence — newlines, then numbered markers, then the inline separators — and its two heuristic rules (drop a leading `Label:`, split on ` e `) only fire when the text already proved to be a list. Keep a heuristic gated behind proof: ungated splitting ("e" anywhere, or any `:`) mangles ordinary sentences.
 
+### Finance use case
+- The finance type and the party refinement travel in **one** request: a `transaction_type` choice plus the `segment_N` Noul fan-out. Reuse `noulSegments`/`segmentKey` from `extraction.go` rather than reimplementing the fan-out — the two flows ask the same shape of question.
+- There is no `finance.json` template. The question count depends on the candidate, so the request is built in code and sent through `MakeJevRequest`. Do not invent a fixed template for it.
+- If the mixed request fails and there were segments, retry with the type question alone and continue **without** the party. The type is what makes the message a transaction; the party is a bonus.
+- Amounts are stored positive and the direction lives in the type. Never introduce negative amounts or a signed `Sum` — it would double the accounting.
+- The require path composes one filter (period + type + term) instead of picking one dimension. "quanto gastei com mercado esse mês" is all three at once; an either/or filter would answer none of them.
+- Any text the UI can render back into an edit field must be re-readable by the same parser: the amount field is prefilled with `money` (`R$ 1.234,56`), never `printf "%.2f"` (`50.00` parses back as 5000 because dots are thousands separators).
+- Editing a transaction re-parses amount and date through `ParseAmount`/`ParseEventDate`, the same pair the message path uses, so a stored value can never be one the classifier would not have produced.
+
 ### Views
 - Template names are constants in `internal/views/render.go` — never string literals at call sites.
 - Render through `views.RenderPage` / `views.RenderResult` / `views.RenderError`, not raw `c.HTML`.
 - Pages render through `views.RenderPage(c, page, content)`; `views.PagesRenderer` clones the shared layout set per page so page blocks never collide. Do not try to collapse this into one template set: Go templates have no inheritance and `{{ template }}` names must be string literals, so the block name cannot come from the view data.
 - Template name constants in `internal/views/render.go` include the harness partials: `prompt_table`, `evaluation_results`.
-- Template helpers are exposed via `views.FuncMap` (e.g., `label` for PT-BR badge text, `confidence` for the percent format) and registered on the shared template set in `cmd/api/main.go` (`template.New("").Funcs(views.FuncMap)`).
+- Template helpers are exposed via `views.FuncMap` (e.g., `label` for PT-BR badge text, `confidence` for the percent format, `money` for amounts) and registered on the shared template set in `cmd/api/main.go` (`template.New("").Funcs(views.FuncMap)`).
 - htmx detection is `c.GetHeader("HX-Request") == "true"` in `views.isHxRequest`. There is no server-side htmx library or context middleware for it.
 
 ### Validation harness (/prompts)
-- `PromptService` reuses the production Jev paths (`ClassificationService.Classify`, `ContactExtractor.ExtractName`) — no new request-building code.
+- `PromptService` reuses the production Jev paths (`ClassificationService.Classify`, `ContactExtractor.ExtractName`, `NoteExtractor.ExtractType`, `FinanceExtractor.Extract`) — no new request-building code.
 - Per-prompt Jev failures are captured in the row (obtained = error string, match = false); evaluation continues.
 - CSV exports go to `exports/` (created on demand) via `encoding/csv` (stdlib).
 - Form DTOs (`PromptForm`, `EvaluateForm`) live in `internal/models`; `[]uint` form slices bind repeated `ids` values.
 
 ### Data screen (/data)
-- A browse flow gets its own service composed from the existing repositories (`DataService`). Do **not** grow `ContactService`/`NotesService` with browse queries — those are the classification flow and their extraction logic has no meaning for browsing.
+- A browse flow gets its own service composed from the existing repositories (`DataService`). Do **not** grow `ContactService`/`NotesService`/`FinanceService` with browse queries — those are the classification flow and their extraction logic has no meaning for browsing.
+- Adding a third kind to the screen is a three-way branch, not a second one: `DataService` gains the list/get/update/delete methods, the controller's `Update` and `renderTable`/`renderDetail` switch gains a case, and the partial gains a branch. The `kind` literal is a constant (`services.DataKindTransaction`).
+- A search box that posts into the same table partial must carry `kind` and `filter` in hidden inputs, and the pill that changes the filter must re-point them — otherwise a search silently filters a different type than the one on screen.
 - Filter validation belongs to the service, not the repository. The repository falls back to `all` on an unknown filter on purpose so other callers stay safe; `DataService` returns `ErrInvalidFilter` and the controller maps it to 400.
 - Register literal path segments **before** a `:param` route (`/data/table`, `/data/item-row` before `/data/:kind/:id`), or gin's router reads them as the parameter value.
 - View and edit are one template, not two: toggle `disabled` on the form's `fieldset` and swap the buttons. Two branches drift out of sync.

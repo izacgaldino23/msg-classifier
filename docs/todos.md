@@ -1,14 +1,24 @@
 # TODOs
 
-Backlog of what was deliberately left out of DC-005 (notes, lembretes e listas de tarefas).
+Backlog of what was deliberately left out of DC-005 (notes, lembretes e listas de tarefas) e do DC-007 (finanças).
 
 ## Datas
 
-- [ ] **Datas relativas** — o parser determinístico aceita `dd/mm[/aaaa]`, `dia N`, `hoje`, `amanhã` e `ontem`. Faltam as formas relativas: "daqui a 3 dias", "na sexta", "próxima semana", "semana que vem", "mês que vem".
-- [ ] **Weekday parsing** — "sexta", "segunda" → próxima ocorrência daquela semana (precisa de uma noção de "próxima" vs "esta").
+- [x] **Datas relativas** — resolvido no DC-007: o `dateparse.go` agora entende `semana passada`/`última semana`/`semana anterior`, `semana que vem`/`próxima semana`, `mês passado`/`mês anterior`/`último mês`, `mês que vem`/`próximo mês`, `esse mês`/`este mês` e o par `10 de outubro de 2023`/`15 de novembro`. Um `ParseRange` devolve a janela inteira (`from`/`until`), que é o que o require das finanças usa para "esse mês".
+- [ ] **Weekday parsing** — "sexta", "segunda" → próxima ocorrência daquela semana (precisa de uma noção de "próxima" vs "esta"). As fases acima param em semana e mês, não em dia da semana.
+- [ ] **Contagem a partir de hoje** — "daqui a 3 dias" e "em duas semanas" ainda não são entendidos; só as fases prontas ("próxima semana", "mês que vem") são.
 - [ ] **Anos ambíguos** — `dd/mm` assume o ano corrente; em janeiro um lembrete de dezembro deveria cair no ano seguinte.
 - [ ] **Colisão de substring em `ontem`** — o parser casa `strings.Contains(normalized, "ontem")` na mensagem inteira, e `normalizeName` remove acentos: "contém" vira "contem", que contém "ontem". Uma nota com a frase "o relatório que contém os números" é lida como se fosse de ontem. O casamento precisa ser por palavra inteira (campo a campo), não por substring.
 - [ ] **Fuso horário** — as datas são normalizadas para meia-noite UTC. Gravar a data em horário local exigiria um campo separado ou um offset por usuário.
+
+## Finanças
+
+- [ ] **Extração de imagem/PDF** — hoje o classificador só recebe texto (`ReceiveMessageRequest.Message`). O próximo passo é o usuário poder enviar um comprovante (foto ou PDF) e o bot extrair valor, data e estabelecimento. Antes de codar: upload + OCR, ou mandar o arquivo direto para um modelo multimodal? A parte determinística (`ParseAmount`, `ParseEventDate`, regex do party) continua valendo nos dois caminhos.
+- [ ] **Party sem preposição** — o candidato do estabelecimento nasce de uma regex de preposição, então "padaria, 30 reais" não gera party nenhum (a transação é salva, mas sem estabelecimento). Pedir ao Jev o party como substring entre aspas resolve.
+- [ ] **Parcelamento** — "3 vezes de 300 reais" guarda 300 e o resto fica no texto original, por decisão do DC-007. Quando parcelamento virar consulta de verdade, precisa de uma coluna própria (`installments`), e não de um amount negativo.
+- [ ] **Party no harness** — o flow `finance` do `/prompts` compara **só o tipo**, porque o party é a parte mais fuzzier e sujaria o CSV. Quando o party estabilizar, ele entra como coluna do CSV de evaluation.
+
+## Lista de tarefas
 
 ## Lista de tarefas
 
