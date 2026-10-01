@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"strings"
 	"time"
 
 	"msg-classifier/internal/models"
@@ -47,8 +48,11 @@ type ResultData struct {
 	Action         models.Action
 	Contact        *models.Contact
 	Notes          []*models.Note
+	Transactions   []*models.Transaction
 	Segments       []models.SegmentScore
 	SearchTerm     string
+	Total          float64
+	Missing        string
 }
 
 // RenderPage renders the full page, or only its content for htmx requests.
@@ -67,8 +71,11 @@ func RenderResult(c *gin.Context, outcome *models.UseCaseOutcome) {
 		Action:         outcome.Action,
 		Contact:        outcome.Contact,
 		Notes:          outcome.Notes,
+		Transactions:   outcome.Transactions,
 		Segments:       outcome.Segments,
 		SearchTerm:     outcome.SearchTerm,
+		Total:          outcome.Total,
+		Missing:        outcome.Missing,
 	}
 	c.HTML(http.StatusOK, ResultTemplate, data)
 }
@@ -109,17 +116,22 @@ func RenderEvaluationResults(c *gin.Context, flow string, results []models.Evalu
 
 // labelMap maps classification choices to their PT-BR display labels.
 var labelMap = map[string]string{
-	"contact":  "Contato",
-	"finance":  "Finanças",
-	"schedule": "Agenda",
-	"notes":    "Notas",
-	"other":    "Outro",
-	"add":      "Adicionar",
-	"require":  "Consultar",
-	"both":     "Ambos",
-	"note":     "Nota",
-	"reminder": "Lembrete",
-	"todo":     "Lista de tarefas",
+	"contact":       "Contato",
+	"finance":       "Finanças",
+	"schedule":      "Agenda",
+	"notes":         "Notas",
+	"other":         "Outro",
+	"add":           "Adicionar",
+	"require":       "Consultar",
+	"both":          "Ambos",
+	"note":          "Nota",
+	"reminder":      "Lembrete",
+	"todo":          "Lista de tarefas",
+	"compra":        "Compra",
+	"venda":         "Venda",
+	"pagamento":     "Pagamento",
+	"recebimento":   "Recebimento",
+	"transferencia": "Transferência",
 }
 
 // Label returns the PT-BR display label for a classification choice,
@@ -192,9 +204,25 @@ func Confidence(f float64) string {
 	return fmt.Sprintf("%.2f", f*100)
 }
 
+// MoneyBRL formats an amount as PT-BR currency: "R$ 1.234,56". Amounts are
+// always positive — the transaction type carries the direction — so there is no
+// sign handling here.
+func MoneyBRL(amount float64) string {
+	whole, decimals, _ := strings.Cut(fmt.Sprintf("%.2f", amount), ".")
+	var grouped []byte
+	for i, digit := range []byte(whole) {
+		if i > 0 && (len(whole)-i)%3 == 0 {
+			grouped = append(grouped, '.')
+		}
+		grouped = append(grouped, digit)
+	}
+	return "R$ " + string(grouped) + "," + decimals
+}
+
 // FuncMap exposes template helpers to the shared template set.
 var FuncMap = template.FuncMap{
 	"label":      Label,
+	"money":      MoneyBRL,
 	"confidence": Confidence,
 	"dateBR":     DateBR,
 	"deref":      Deref,

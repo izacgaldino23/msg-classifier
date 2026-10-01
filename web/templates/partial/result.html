@@ -61,6 +61,30 @@
 			<p class="text-warning">Nenhuma nota encontrada para '{{ .SearchTerm }}'.</p>
 		{{ else if eq .Action "note_no_data" }}
 			<p class="text-secondary">Não consegui extrair os dados da nota. Para lembretes, informe a data (ex.: dia 10, 10/05 ou amanhã).</p>
+		{{ else if eq .Action "transaction_add" }}
+			{{ range .Transactions }}
+			<p><strong>Transação salva · ID {{ .ID }}</strong></p>
+			<div class="note-row"><span class="row-label">Tipo</span><span class="badge badge-tx-{{ .Type }}">{{ label .Type }}</span></div>
+			<div class="note-row"><span class="row-label">Valor</span><span>{{ money .Amount }}</span></div>
+			<div class="note-row"><span class="row-label">Data</span><span>{{ dateBR .Date }}</span></div>
+			{{ if .Party }}<div class="note-row"><span class="row-label">Estabelecimento</span><span>{{ .Party }}</span></div>{{ end }}
+			<div class="note-row"><span class="row-label">Mensagem</span><span>{{ .Content }}</span></div>
+			{{ end }}
+		{{ else if eq .Action "transaction_found" }}
+			<p><strong>{{ if eq (len .Transactions) 1 }}1 transação{{ else }}{{ len .Transactions }} transações{{ end }} para '{{ .SearchTerm }}'</strong></p>
+			{{ if .Total }}<p class="tx-total">Total: {{ money .Total }}</p>{{ end }}
+			<ul class="note-list">
+				{{ range .Transactions }}
+				<li>
+					<div class="note-row"><span class="badge badge-tx-{{ .Type }}">{{ label .Type }}</span><span class="note-content">{{ money .Amount }} — {{ .Party }}</span></div>
+					<div class="note-row"><span class="row-label">Data</span><span>{{ dateBR .Date }}</span></div>
+				</li>
+				{{ end }}
+			</ul>
+		{{ else if eq .Action "transaction_not_found" }}
+			<p class="text-warning">Nenhuma transação encontrada para '{{ .SearchTerm }}'.</p>
+		{{ else if eq .Action "transaction_no_data" }}
+			<p class="text-secondary">Não consegui classificar a transação: {{ .Missing }}. Acrescente à mensagem e envie de novo.</p>
 		{{ end }}
 	</div>
 	{{ if .Segments }}

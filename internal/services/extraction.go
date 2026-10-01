@@ -48,6 +48,83 @@ var emailPattern = regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA
 // stay ("Jr." is a legitimate name ending).
 const trimPunctuation = `"'),;:!?-—`
 
+// noulThreshold is the single site where a Noul score becomes an include/exclude
+// verdict.
+const noulThreshold = 0.5
+
+// segmentQuestion describes what a per-segment Noul fan-out is asking about. The
+// prompt gets the segment index so the instruction can point at `segments[i]`.
+type segmentQuestion struct {
+	prompt        string
+	trueCriteria  string
+	falseCriteria string
+}
+
+// nameSegmentQuestion asks whether each segment belongs to the person's name.
+var nameSegmentQuestion = segmentQuestion{
+	prompt:        "Is `segments[%d]` part of the person's name or reference in `message`?",
+	trueCriteria:  "the segment is part of the person's name or reference",
+	falseCriteria: "the segment is a verb, article, preposition or other non-name word (e.g. 'salva', 'o', 'contato', 'do', 'telefone')",
+}
+
+// segmentKey is the answer and state key of the Noul question for segment i.
+func segmentKey(i int) string {
+	return fmt.Sprintf("segment_%d", i)
+}
+
+// noulSegments asks Jev one Noul question per segment and returns the response
+// plus the per-segment trace. It is shared by the contact name and the finance
+// party: both are the same fan-out — "which of these words is the thing we
+// want" — with different criteria.
+//
+// extra rides in the same request (nil for a pure fan-out), so a caller can ask a
+// choice question without paying a second call; that is why the raw response is
+// returned as well. With no segments and no extra questions there is nothing to
+// ask and no request is made.
+func noulSegments(client jevRequester, message string, segments []string, question segmentQuestion, extra map[string]jev.JevQuestionInterface) (*jev.JevResponse, []models.SegmentScore, error) {
+	if len(segments) == 0 && len(extra) == 0 {
+		return nil, nil, nil
+	}
+
+	questions := make(map[string]jev.JevQuestionInterface, len(segments)+len(extra))
+	for name, q := range extra {
+		questions[name] = q
+	}
+	for i := range segments {
+		questions[segmentKey(i)] = &jev.JevQuestionNoul{
+			JevQuestion: jev.JevQuestion{
+				Type:         jev.NoulQuestionType,
+				Instructions: fmt.Sprintf(question.prompt, i),
+			},
+			Criteria: jev.JevNoulCriteria{
+				True:  question.trueCriteria,
+				False: question.falseCriteria,
+			},
+		}
+	}
+
+	resp, err := client.MakeJevRequest(&jev.JevRequest{
+		State: jev.JevState(map[string]any{
+			"message":  message,
+			"segments": segments,
+		}),
+		Questions: questions,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: failed to extract segments via jev: %w", ErrUpstream, err)
+	}
+
+	trace := make([]models.SegmentScore, 0, len(segments))
+	for i, segment := range segments {
+		answer, err := answerAsNoul(resp, segmentKey(i))
+		if err != nil {
+			return nil, nil, fmt.Errorf("%w: %w", ErrUpstream, err)
+		}
+		trace = append(trace, models.SegmentScore{Text: segment, Score: answer.Noul, Included: answer.Noul > noulThreshold})
+	}
+	return resp, trace, nil
+}
+
 // ExtractPhone returns the first valid BR phone normalized to digits (10/11) and its span.
 func (e *ContactExtractor) ExtractPhone(message string) (string, Span, bool) {
 	for _, loc := range phonePattern.FindAllStringIndex(message, -1) {
@@ -73,43 +150,9 @@ func (e *ContactExtractor) ExtractEmail(message string) (string, Span, bool) {
 // segments, and asks Jev one Noul question per segment; segments with noul > 0.5
 // are joined in order (punctuation trimmed from segment ends, periods preserved) and kept in the trace (single threshold site).
 func (e *ContactExtractor) ExtractName(message string, spans []Span) (NameResult, error) {
-	segments := strings.Fields(removeSpans(message, spans))
-	if len(segments) == 0 {
-		return NameResult{}, nil
-	}
-
-	questions := make(map[string]jev.JevQuestionInterface, len(segments))
-	for i := range segments {
-		questions[fmt.Sprintf("segment_%d", i)] = &jev.JevQuestionNoul{
-			JevQuestion: jev.JevQuestion{
-				Type:         jev.NoulQuestionType,
-				Instructions: fmt.Sprintf("Is `segments[%d]` part of the person's name or reference in `message`?", i),
-			},
-			Criteria: jev.JevNoulCriteria{
-				True:  "the segment is part of the person's name or reference",
-				False: "the segment is a verb, article, preposition or other non-name word (e.g. 'salva', 'o', 'contato', 'do', 'telefone')",
-			},
-		}
-	}
-
-	resp, err := e.jev.MakeJevRequest(&jev.JevRequest{
-		State: jev.JevState(map[string]any{
-			"message":  message,
-			"segments": segments,
-		}),
-		Questions: questions,
-	})
+	_, trace, err := noulSegments(e.jev, message, strings.Fields(removeSpans(message, spans)), nameSegmentQuestion, nil)
 	if err != nil {
-		return NameResult{}, fmt.Errorf("%w: failed to extract name via jev: %w", ErrUpstream, err)
-	}
-
-	trace := make([]models.SegmentScore, 0, len(segments))
-	for i, segment := range segments {
-		answer, err := answerAsNoul(resp, fmt.Sprintf("segment_%d", i))
-		if err != nil {
-			return NameResult{}, fmt.Errorf("%w: %w", ErrUpstream, err)
-		}
-		trace = append(trace, models.SegmentScore{Text: segment, Score: answer.Noul, Included: answer.Noul > 0.5})
+		return NameResult{}, err
 	}
 
 	// Deterministic post-filter over Jev's per-segment verdicts. The Noul scores

@@ -587,6 +587,95 @@ func TestRenderContactsTable(t *testing.T) {
 	}
 }
 
+func TestRenderResultTransactionAdd(t *testing.T) {
+	c, w := newTestContext()
+
+	outcome := &models.UseCaseOutcome{
+		Classification: &models.Classification{
+			Category: models.CategoryFinding{Choice: "finance", Confidence: 0.94},
+			Kind:     models.KindFinding{Choice: "add", Confidence: 0.86},
+		},
+		Action: models.ActionTransactionAdd,
+		Transactions: []*models.Transaction{{
+			ID:      7,
+			Type:    models.TransactionTypePurchase,
+			Amount:  1234.56,
+			Date:    time.Date(2026, 5, 10, 0, 0, 0, 0, time.UTC),
+			Party:   "supermercado",
+			Content: "compras no supermercado",
+		}},
+	}
+
+	RenderResult(c, outcome)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := w.Body.String()
+	for _, want := range []string{
+		"badge-cat-finance", "Transação salva", "ID 7", "badge-tx-compra",
+		"Compra", "R$ 1.234,56", "10/05/2026", "supermercado", "compras no supermercado",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("transaction add missing %q: %s", want, body)
+		}
+	}
+}
+
+func TestRenderResultTransactionFoundWithTotal(t *testing.T) {
+	c, w := newTestContext()
+
+	outcome := &models.UseCaseOutcome{
+		Classification: &models.Classification{
+			Category: models.CategoryFinding{Choice: "finance", Confidence: 0.9},
+			Kind:     models.KindFinding{Choice: "require", Confidence: 0.9},
+		},
+		Action:     models.ActionTransactionFound,
+		SearchTerm: "supermercado",
+		Total:      1300.5,
+		Transactions: []*models.Transaction{
+			{ID: 1, Type: models.TransactionTypePurchase, Amount: 50, Party: "supermercado", Date: time.Date(2026, 5, 9, 0, 0, 0, 0, time.UTC)},
+			{ID: 2, Type: models.TransactionTypePurchase, Amount: 1250.5, Party: "supermercado", Date: time.Date(2026, 5, 10, 0, 0, 0, 0, time.UTC)},
+		},
+	}
+
+	RenderResult(c, outcome)
+
+	body := w.Body.String()
+	for _, want := range []string{
+		"2 transações", "supermercado", "tx-total", "Total: R$ 1.300,50",
+		"R$ 50,00", "R$ 1.250,50",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("transaction found missing %q: %s", want, body)
+		}
+	}
+}
+
+func TestRenderResultTransactionNoData(t *testing.T) {
+	c, w := newTestContext()
+
+	outcome := &models.UseCaseOutcome{
+		Classification: &models.Classification{
+			Category: models.CategoryFinding{Choice: "finance", Confidence: 0.7},
+			Kind:     models.KindFinding{Choice: "add", Confidence: 0.8},
+		},
+		Action:  models.ActionTransactionNoData,
+		Missing: "o valor",
+	}
+
+	RenderResult(c, outcome)
+
+	body := w.Body.String()
+	for _, want := range []string{
+		"badge-cat-finance", "Não consegui classificar", "o valor", "Acrescente à mensagem", "envie de novo",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("transaction no data missing %q: %s", want, body)
+		}
+	}
+}
+
 func TestRenderContactsTableEmpty(t *testing.T) {
 	c, w := newTestContext()
 	RenderContactsTable(c, "all", nil)
@@ -750,5 +839,24 @@ func TestDateBRAndDeref(t *testing.T) {
 	}
 	if got := Deref(nil); got != "" {
 		t.Errorf("Deref(nil) = %q, want empty", got)
+	}
+}
+
+func TestMoneyBRL(t *testing.T) {
+	tests := []struct {
+		amount float64
+		want   string
+	}{
+		{0, "R$ 0,00"},
+		{50, "R$ 50,00"},
+		{50.5, "R$ 50,50"},
+		{1234.56, "R$ 1.234,56"},
+		{1000, "R$ 1.000,00"},
+		{1000000.99, "R$ 1.000.000,99"},
+	}
+	for _, tt := range tests {
+		if got := MoneyBRL(tt.amount); got != tt.want {
+			t.Errorf("MoneyBRL(%v) = %q, want %q", tt.amount, got, tt.want)
+		}
 	}
 }

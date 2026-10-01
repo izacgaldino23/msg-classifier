@@ -114,6 +114,11 @@ body.page-dados .sidebar-nav a[href="/data"] {
 .badge-note-note { background-color: var(--bs-secondary-bg-subtle); color: var(--bs-secondary); }
 .badge-note-reminder { background-color: var(--bs-warning-bg-subtle); color: var(--bs-warning); }
 .badge-note-todo { background-color: var(--bs-info-bg-subtle); color: var(--bs-info); }
+.badge-tx-compra { background-color: var(--bs-primary-bg-subtle); color: var(--bs-primary); }
+.badge-tx-venda { background-color: var(--bs-success-bg-subtle); color: var(--bs-success); }
+.badge-tx-pagamento { background-color: var(--bs-danger-bg-subtle); color: var(--bs-danger); }
+.badge-tx-recebimento { background-color: var(--bs-success-bg-subtle); color: var(--bs-success); }
+.badge-tx-transferencia { background-color: var(--bs-info-bg-subtle); color: var(--bs-info); }
 .badge-match-ok { background-color: var(--bs-success-bg-subtle); color: var(--bs-success); }
 .badge-match-no { background-color: var(--bs-danger-bg-subtle); color: var(--bs-danger); }
 
@@ -130,6 +135,12 @@ body.page-dados .sidebar-nav a[href="/data"] {
 .note-row .row-label {
 	color: var(--bs-secondary-color);
 	min-width: 5rem;
+}
+
+.tx-total {
+	font-size: 1.25rem;
+	font-weight: 600;
+	color: var(--bs-body-color);
 }
 
 /* 7. Segment trace */
