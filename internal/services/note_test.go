@@ -104,21 +104,23 @@ func TestNoteServiceAddTodoSplitsItems(t *testing.T) {
 	assert.Equal(t, models.NoteTypeTodo, note.Type)
 	assert.Equal(t, "comprar pão, comprar leite e ovos", note.Content)
 	assert.Nil(t, note.Date)
-	require.Len(t, note.Items, 2)
+	require.Len(t, note.Items, 3)
 	assert.NotZero(t, note.Items[0].ID, "the item is persisted")
 	assert.Equal(t, note.ID, note.Items[0].NoteID, "the item points back to the note")
 	assert.Equal(t, "comprar pão", note.Items[0].Text)
 	assert.Zero(t, note.Items[0].Position)
-	assert.Equal(t, "comprar leite e ovos", note.Items[1].Text)
+	assert.Equal(t, "comprar leite", note.Items[1].Text)
 	assert.Equal(t, 1, note.Items[1].Position)
+	assert.Equal(t, "ovos", note.Items[2].Text)
+	assert.Equal(t, 2, note.Items[2].Position)
 
 	var count int64
 	require.NoError(t, db.Model(&models.TodoItem{}).Count(&count).Error)
-	assert.Equal(t, int64(2), count)
+	assert.Equal(t, int64(3), count)
 }
 
-// A leading "Label:" is not stripped from the first item (known limitation).
-func TestNoteServiceAddTodoKeepsLeadingLabelOnFirstItem(t *testing.T) {
+// A leading "Label:" is dropped from the items, and the "e" conjunction separates them.
+func TestNoteServiceAddTodoStripsLeadingLabel(t *testing.T) {
 	service, db := noteService(t, models.NoteTypeTodo)
 
 	outcome, err := service.Add(&models.ReceiveMessageRequest{Message: "Tarefas: comprar pão, leite e ovos"}, &models.Classification{})
@@ -126,13 +128,14 @@ func TestNoteServiceAddTodoKeepsLeadingLabelOnFirstItem(t *testing.T) {
 	require.Len(t, outcome.Notes, 1)
 
 	note := outcome.Notes[0]
-	require.Len(t, note.Items, 2)
-	assert.Equal(t, "Tarefas: comprar pão", note.Items[0].Text, "the leading label is kept as-is - see docs/todos.md")
-	assert.Equal(t, "leite e ovos", note.Items[1].Text)
+	require.Len(t, note.Items, 3)
+	assert.Equal(t, "comprar pão", note.Items[0].Text)
+	assert.Equal(t, "leite", note.Items[1].Text)
+	assert.Equal(t, "ovos", note.Items[2].Text)
 
 	var count int64
 	require.NoError(t, db.Model(&models.TodoItem{}).Count(&count).Error)
-	assert.Equal(t, int64(2), count)
+	assert.Equal(t, int64(3), count)
 }
 
 func TestNoteServiceAddTodoWithoutItems(t *testing.T) {

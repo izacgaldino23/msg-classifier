@@ -33,4 +33,7 @@ INSERT INTO jev_prompts (flow, message, expected_result) VALUES
 ('note', 'Não posso esquecer da consulta dia 20', 'reminder'),
 ('note', 'comprar pão, leite e ovos', 'todo'),
 ('note', 'Lista: lavar o carro, limpar a casa, pagar as contas', 'todo'),
-('note', '1. revisar contrato 2. enviar relatório 3. ligar para o cliente', 'todo');
+('note', '1. revisar contrato 2. enviar relatório 3. ligar para o cliente', 'todo'),
+('note', 'Comprar: arroz, feijão, alho e 2 cenouras', 'todo'),
+('note', 'Lista do mercado: óleo, açúcar e café', 'todo'),
+('note', 'Pendências: ligar para o banco, conferir o extrato e pagar a fatura', 'todo');

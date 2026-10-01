@@ -103,6 +103,7 @@ type jevClient interface {
 - Normalize text with the existing `normalizeName` before matching PT-BR keywords or stopwords — the lists are written accent-free.
 - Repository finders return `([]*models.Note, error)` and map an empty result to the package's `ErrNotFound`; "not found" is an outcome, not an error.
 - Persist a note and its to-do items in one transaction (`Create(note, items)`); a partial write is never acceptable.
+- The to-do splitter is deterministic with a fixed precedence — newlines, then numbered markers, then the inline separators — and its two heuristic rules (drop a leading `Label:`, split on ` e `) only fire when the text already proved to be a list. Keep a heuristic gated behind proof: ungated splitting ("e" anywhere, or any `:`) mangles ordinary sentences.
 
 ### Views
 - Template names are constants in `internal/views/render.go` — never string literals at call sites.

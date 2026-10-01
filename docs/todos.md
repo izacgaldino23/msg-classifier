@@ -15,7 +15,7 @@ Backlog of what was deliberately left out of DC-005 (notes, lembretes e listas d
 - [ ] **Deadline na lista** — a lista de tarefas não aceita data (o DC-005 deixa isso para o futuro); quando existir, reusar o `Note.Date` já indexado.
 - [ ] **Marcar item como feito** — a coluna `todo_items.done` existe, mas não há caminho de escrita: falta um endpoint/mensagem para alternar o item e o serviço correspondente (`NotesRepository.UpdateItem`).
 - [ ] **Título da nota** — nota, lembrete e lista não têm título; separar título de descrição exigiria uma chamada Jev nova (o modelo só suporta choice/noul/score).
-- [ ] **Rótulo inicial no primeiro item** — `SplitTodoItems` não remove o rótulo que abre a mensagem: "Tarefas: comprar pão, leite e ovos" persiste "comprar pão" mas o conteúdo original segue a lista, e "Preciso fazer: 1. revisar contrato" deixa "Preciso fazer" grudado no primeiro item quando o texto vem em uma linha só. O comportamento está caracterizado e testado (`TestNoteServiceAddTodoKeepsLeadingLabelOnFirstItem`); corrigir exige detecção de rótulo (`:` no primeiro item) antes do split.
+- [x] **Rótulo inicial no primeiro item** — resolvido no IMP-004: `SplitTodoItems` descarta o rótulo que abre a mensagem (`Tarefas:`, `Comprar:`) quando há lista depois dele, e o " e " passa a separar itens quando a lista já se declarou lista por vírgula/ponto-e-vírgula ou por rótulo. Listas por linha ou numeração seguem com um item por linha.
 
 ## Busca (require)
 
