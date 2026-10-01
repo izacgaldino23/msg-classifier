@@ -1,9 +1,9 @@
 {{ define "resultado" }}
 <div id="resultado" class="card result-card">
 	<div class="card-header d-flex flex-wrap align-items-center gap-2">
-		<span class="badge badge-cat-{{ index .Category "choice" }}">{{ label (index .Category "choice") }}</span>
-		<span class="badge badge-kind-{{ index .Kind "choice" }}">{{ label (index .Kind "choice") }}</span>
-		<p class="text-secondary w-100 mb-0">Confiança: {{ index .Category "confidence" }}% · {{ index .Kind "confidence" }}%</p>
+		<span class="badge badge-cat-{{ .Classification.Category.Choice }}">{{ label .Classification.Category.Choice }}</span>
+		<span class="badge badge-kind-{{ .Classification.Kind.Choice }}">{{ label .Classification.Kind.Choice }}</span>
+		<p class="text-secondary w-100 mb-0">Confiança: {{ confidence .Classification.Category.Confidence }}% · {{ confidence .Classification.Kind.Confidence }}%</p>
 	</div>
 	<div class="card-body">
 		{{ if eq .Action "contact_add" }}

@@ -47,11 +47,10 @@ var (
 type DataService struct {
 	contacts *repository.ContactRepository
 	notes    *repository.NotesRepository
-	parser   *DateParser
 }
 
-func NewDataService(contacts *repository.ContactRepository, notes *repository.NotesRepository, parser *DateParser) *DataService {
-	return &DataService{contacts: contacts, notes: notes, parser: parser}
+func NewDataService(contacts *repository.ContactRepository, notes *repository.NotesRepository) *DataService {
+	return &DataService{contacts: contacts, notes: notes}
 }
 
 // ListContacts returns the contacts matching the filter, newest first. An empty
@@ -192,7 +191,7 @@ func (s *DataService) parseDate(text string) (*time.Time, error) {
 	if strings.TrimSpace(text) == "" {
 		return nil, nil
 	}
-	date, ok := s.parser.ParseDate(text, time.Now())
+	date, ok := ParseDate(text, time.Now())
 	if !ok {
 		return nil, fmt.Errorf("%w: unparseable date %q", ErrInvalidData, text)
 	}
@@ -204,7 +203,7 @@ func (s *DataService) parseTime(text string) (*string, error) {
 	if strings.TrimSpace(text) == "" {
 		return nil, nil
 	}
-	clock, ok := s.parser.ParseTime(text)
+	clock, ok := ParseTime(text)
 	if !ok {
 		return nil, fmt.Errorf("%w: unparseable time %q", ErrInvalidData, text)
 	}

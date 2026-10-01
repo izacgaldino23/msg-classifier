@@ -12,12 +12,11 @@ import (
 // NotesService handles the notes category use cases (notes, reminders, to-do lists).
 type NotesService struct {
 	extractor *NoteExtractor
-	parser    *DateParser
 	repo      *repository.NotesRepository
 }
 
-func NewNotesService(extractor *NoteExtractor, parser *DateParser, repo *repository.NotesRepository) *NotesService {
-	return &NotesService{extractor: extractor, parser: parser, repo: repo}
+func NewNotesService(extractor *NoteExtractor, repo *repository.NotesRepository) *NotesService {
+	return &NotesService{extractor: extractor, repo: repo}
 }
 
 // compile-time assertion that NotesService satisfies the CategoryHandler seam.
@@ -45,19 +44,19 @@ func (s *NotesService) Add(request *models.ReceiveMessageRequest, classification
 		return noData(classification), nil
 	}
 
-	note := &models.Note{Type: normalizeNoteType(noteType), Content: content}
+	note := &models.Note{Type: strings.ToLower(strings.TrimSpace(noteType)), Content: content}
 	items := make([]models.TodoItem, 0)
 
 	switch note.Type {
 	case models.NoteTypeNote:
 	case models.NoteTypeReminder:
 		now := time.Now()
-		date, hasDate := s.parser.ParseDate(content, now)
+		date, hasDate := ParseDate(content, now)
 		if !hasDate {
 			return noData(classification), nil
 		}
 		note.Date = &date
-		if clock, hasClock := s.parser.ParseTime(content); hasClock {
+		if clock, hasClock := ParseTime(content); hasClock {
 			note.Time = &clock
 		}
 	case models.NoteTypeTodo:
@@ -79,12 +78,6 @@ func (s *NotesService) Add(request *models.ReceiveMessageRequest, classification
 		Action:         models.ActionNoteAdd,
 		Notes:          []*models.Note{note},
 	}, nil
-}
-
-// normalizeNoteType lowercases and trims the Jev choice; an unknown sub-type is
-// returned as-is so the Add switch can reject it.
-func normalizeNoteType(choice string) string {
-	return strings.ToLower(strings.TrimSpace(choice))
 }
 
 // noData is the shared "nothing extractable" outcome of the add path.

@@ -19,6 +19,7 @@ func newTestContext() (*gin.Context, *httptest.ResponseRecorder) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	c, engine := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
 	shared := template.Must(template.New("").Funcs(FuncMap).ParseGlob("../../web/templates/layouts/*.html"))
 	shared = template.Must(shared.ParseGlob("../../web/templates/partial/*.html"))
 	pr, err := NewPagesRenderer(shared, map[string]string{

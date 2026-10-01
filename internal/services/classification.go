@@ -28,13 +28,13 @@ func NewClassificationService(client jevClient) *ClassificationService {
 // Classify runs the Jev classification and maps answers into a Classification.
 func (s *ClassificationService) Classify(request *models.ReceiveMessageRequest) (*models.Classification, error) {
 	state := jev.JevState(map[string]any{
-		"user":    request.UserID, // TODO: change this userId to user name
+		"user":    request.UserID,
 		"message": request.Message,
 	})
 
-	categoryResp, err := s.makeRequest(state, "classification.json")
+	categoryResp, err := s.jev.MakeJevRequestFromFile(state, "classification.json")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: failed to call jev with template %q: %w", ErrUpstream, "classification.json", err)
 	}
 
 	category, err := answerAsChoice(categoryResp, "classification")
@@ -57,14 +57,6 @@ func (s *ClassificationService) Classify(request *models.ReceiveMessageRequest) 
 			Confidence: kind.Confidence,
 		},
 	}, nil
-}
-
-func (s *ClassificationService) makeRequest(state jev.JevState, template string) (*jev.JevResponse, error) {
-	resp, err := s.jev.MakeJevRequestFromFile(state, template)
-	if err != nil {
-		return nil, fmt.Errorf("%w: failed to call jev with template %q: %w", ErrUpstream, template, err)
-	}
-	return resp, nil
 }
 
 // answerAsChoice extracts a choice answer with a checked assertion.

@@ -1,17 +1,9 @@
 package models
 
-import "fmt"
-
 // ReceiveMessageRequest is the inbound DTO for POST /api/message.
 type ReceiveMessageRequest struct {
 	Message string `json:"message" form:"message"`
 	UserID  string `json:"user_id" form:"user_id"`
-}
-
-// ReceiveMessageResponse is the view model for the "resultado" partial.
-type ReceiveMessageResponse struct {
-	Category map[string]any `json:"category"`
-	Kind     map[string]any `json:"kind"`
 }
 
 // Classification is the domain result with raw numeric confidences.
@@ -54,18 +46,4 @@ type UseCaseOutcome struct {
 	Notes          []*Note
 	Segments       []SegmentScore
 	SearchTerm     string
-}
-
-// ToResponse formats confidences as percent strings for display.
-func (cl *Classification) ToResponse() *ReceiveMessageResponse {
-	return &ReceiveMessageResponse{
-		Category: map[string]any{
-			"choice":     cl.Category.Choice,
-			"confidence": fmt.Sprintf("%.2f", cl.Category.Confidence*100),
-		},
-		Kind: map[string]any{
-			"choice":     cl.Kind.Choice,
-			"confidence": fmt.Sprintf("%.2f", cl.Kind.Confidence*100),
-		},
-	}
 }

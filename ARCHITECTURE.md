@@ -21,7 +21,7 @@ The codebase follows a **semantic MVC pattern** on an idiomatic Go layout:
 |---|---|
 | Language | Go 1.25.4 |
 | Web framework | [gin-gonic/gin](https://github.com/gin-gonic/gin) v1.12.0 |
-| HTMX | [donseba/go-htmx](https://github.com/donseba/go-htmx) v1.13.1 + htmx.org 2.0.10 (CDN) + response-targets extension |
+| HTMX | htmx.org 2.0.10 (CDN) + response-targets extension |
 | Env loading | [joho/godotenv](https://github.com/joho/godotenv) v1.5.1 |
 | AI API | TypeSafe System One (`https://api.typesafe.ai/v1/systemone`, model `jev-latest`) |
 | Templating | Go `html/template` (ParseGlob) |
@@ -40,7 +40,7 @@ msg-classifier/
 │   ├── config/
 │   │   └── env.go               # Env singleton (TYPESAFE_API_URL, TYPESAFE_MODEL, TS_API_KEY, DB_PATH) — single godotenv load site
 │   ├── models/                  # M — data structures
-│   │   ├── message.go           # DTOs + Classification domain struct + UseCaseOutcome/Action + ToResponse
+│   │   ├── message.go           # ReceiveMessageRequest DTO + Classification domain struct + UseCaseOutcome/Action
 │   │   ├── contact.go           # Contact entity + SegmentScore
 │   │   ├── note.go              # Note + TodoItem entities + note type constants
 │   │   ├── prompt.go            # JevPrompt entity + Flow constants + EvaluationResult + form DTOs
@@ -54,7 +54,7 @@ msg-classifier/
 │   │   ├── dispatcher.go        # Dispatcher (category → handler registry) + CategoryHandler interface
 │   │   ├── contact.go           # ContactService (add + duplicate check + NameNorm backfill; normalizeName folded in; require routing)
 │   │   ├── contact_get.go       # ContactService.Get (require flow: phone → email → name search)
-│   │   ├── dateparse.go         # DateParser (deterministic PT-BR date/time extraction)
+│   │   ├── dateparse.go         # ParseDate / ParseTime (deterministic PT-BR date/time extraction)
 │   │   ├── extraction.go        # ContactExtractor (regex phone/email + Jev Noul name fan-out)
 │   │   ├── note.go              # NotesService (struct + Handle + Add: note / reminder / todo)
 │   │   ├── note_extract.go      # NoteExtractor (Jev note_type choice call)
@@ -68,9 +68,9 @@ msg-classifier/
 │   │   ├── prompt_controller.go # /prompts routes (Page, Table, Add, Evaluate, Export)
 │   │   └── data_controller.go   # /data routes (Page, Table, Detail, Update, Delete, ItemRow)
 │   └── views/                   # V — render helpers
-│       └── render.go            # Template name constants + RenderPage/RenderResult/RenderError + prompt partial helpers + PagesRenderer (per-page template sets)
+│       ├── render.go            # Template name constants + RenderPage/RenderResult/RenderError + partial helpers + FuncMap
+│       └── pages_renderer.go    # PagesRenderer (gin.HTMLRender with a template set per page)
 ├── pkg/                         # Reusable packages
-│   ├── request.go               # ReturnJson helper ({"data": ...} / {"error": ...})
 │   └── jev/
 │       ├── jev.go               # TypeSafe Jev API client (config-injected, panic-free, embedded templates)
 │       └── requests/            # JSON prompt templates (embedded via go:embed)
@@ -108,8 +108,8 @@ msg-classifier/
 ## Core Components
 
 ### 1. Composition Root — `cmd/api/main.go`
-- `main()` builds a `gin.Default()` router, serves `web/static` via `router.Static("/static", "./web/static")`, parses `web/templates/**/*.html` (`template.Must`), installs an htmx middleware that stores an `*htmx.Handler` in the Gin context under key `"htmx"` (single htmx instance).
-- Wires dependencies: `config.GetEnv()` (single godotenv load site) → `jev.NewClient(url, token, model)` → `services.NewClassificationService(client)` → `services.NewNoteExtractor(client)` → `services.NewDispatcher` (registry: `"contact"` → `ContactService`, `"notes"` → `NotesService`) → controllers.
+- `main()` builds a `gin.Default()` router, serves `web/static` via `router.Static("/static", "./web/static")`, parses `web/templates/**/*.html` (`template.Must`) and installs `views.PagesRenderer` as `router.HTMLRender`.
+- Wires dependencies: `config.GetEnv()` (single godotenv load site) → `jev.NewClient(url, token, model)` → `services.NewClassificationService(client)` → `services.NewNoteExtractor(client)` → `services.NewDispatcher` (registry: `"contact"` → `ContactService`, `"notes"` → `NotesService`) → controllers. The contact and notes repositories are built once and shared with the data screen.
 - `db.AutoMigrate(&models.Contact{}, &models.JevPrompt{}, &models.Note{}, &models.TodoItem{})`.
 - SQLite pool is capped at one connection (`SetMaxOpenConns(1)` right after `gorm.Open`) — all DB access is serialized; the pure-Go driver (glebarez/modernc) is unstable with concurrent connections on Windows.
 - Registers routes:
@@ -126,7 +126,7 @@ msg-classifier/
   - `POST /data/:kind/:id` → `dataController.Update`
   - `POST /data/delete` → `dataController.Delete`
 - The three static `/data/*` segments are registered **before** `/data/:kind/:id` — gin's router would otherwise read `table` and `item-row` as a `:kind`.
-- Template render: shared set for `layouts/`+`partial/`, cloned per page (`index`, `prompts`, `data`) via `views.PagesRenderer`; partials render from the shared set.
+- Template render: shared set for `layouts/`+`partial/`, cloned per page (`index`, `prompts`, `data`) via `views.PagesRenderer` — Go templates have no inheritance and `{{template}}` names must be literals, so each page needs its own set to keep `page:content` isolated; partials render from the shared set.
 - Server runs on `:8080`.
 
 ### 2. Config Singleton — `internal/config/env.go`
@@ -156,36 +156,36 @@ msg-classifier/
 - The data screen added `List(filter)` / `FindByID` / `DeleteByIDs`. `List` orders `id DESC` (newest first) and falls back to all rows on an unknown filter instead of erroring, so `DataService` stays the gate that rejects one.
 
 ### 6d. Notes Service — `internal/services/note.go` + `note_get.go`
-- `NotesService` implements `CategoryHandler` for the `notes` category. `Handle` routes `require` → `Get`, everything else → `Add`. Constructor takes the `*NoteExtractor`, a `*DateParser` and the `*repository.NotesRepository`; repo errors are wrapped with `failed to persist note` / `failed to search notes`.
+- `NotesService` implements `CategoryHandler` for the `notes` category. `Handle` routes `require` → `Get`, everything else → `Add`. Constructor takes the `*NoteExtractor` and the `*repository.NotesRepository`; repo errors are wrapped with `failed to persist note` / `failed to search notes`.
 - `Add` asks Jev for the sub-type, then: **note** stores content only; **reminder** requires a date (optional time) and returns `ActionNoteNoData` when the date is unparseable; **todo** splits the content into ordered items. An unknown sub-type is also `ActionNoteNoData`. Success returns `ActionNoteAdd` carrying the saved note in `outcome.Notes`.
 - `Get` (require) picks one filter from the message, in order: a parsed date (`FindByDate`, including `ontem`), an unfinished marker (`falta`/`faltam`/`pendente`/`pendentes`/`não fiz`/`ainda não` → `FindUnfinished`), otherwise a content term (`FindByTerm`, `LOWER(content) LIKE %term%`) built by stripping PT-BR stopwords from the accent-normalized message, with a retry on the last word when the phrase misses. Found → `ActionNoteFound` + the notes list; not found → `ActionNoteNotFound`; nothing extractable → `ActionNoteNoData`.
 - Content is always the trimmed original message; the date, the time and the items live in their own columns.
 
 ### 6e. Note Extractor / Date Parser / Todo Splitter — `internal/services/note_extract.go`, `dateparse.go`, `todo_split.go`
 - `NoteExtractor.ExtractType` makes the **second** Jev call of a notes message (`note.json`, one `note_type` choice answer) reusing the `jevClient` seam and `answerAsChoice`; the raw choice is validated by the service.
-- `DateParser` is deterministic and dependency-free: `dd/mm/aaaa`, `dd/mm` (current year), `dia N` (current month), `hoje`, `amanhã`, `ontem`; times as `14h`, `14h30`, `14:00`. Every date is normalized to UTC midnight so the equality filter on `notes.date` compares identically. `now` is a parameter, not `time.Now()`, to keep the relative forms testable.
+- `ParseDate` / `ParseTime` are deterministic and dependency-free package functions (no struct, nothing to inject): `dd/mm/aaaa`, `dd/mm` (current year), `dia N` (current month), `hoje`, `amanhã`, `ontem`; times as `14h`, `14h30`, `14:00`. Every date is normalized to UTC midnight so the equality filter on `notes.date` compares identically. `now` is a parameter, not `time.Now()`, to keep the relative forms testable.
 - `SplitTodoItems` splits on newlines first, then numbered markers (`1. `, `2) `), then commas/semicolons, trimming punctuation and leading numbers/conjunctions; the service assigns `Position` from the slice order.
 
 ### 7. Models — `internal/models/message.go` + `contact.go` + `note.go`
-- `message.go`: `ReceiveMessageRequest` / `ReceiveMessageResponse` DTOs; `Classification` domain struct (`CategoryFinding` / `KindFinding` with raw numeric confidences; `KindFinding.Choice` carries the kind: `"add"` / `"require"` / `"both"`); `UseCaseOutcome` (`Classification` + `Action` + `SearchTerm`) — the seam where use-case results (extracted contact, DB confirmation, search term) flow back without signature changes; actions are `ActionNone` / `ActionContactAdd` / `ActionContactNoData` / `ActionContactFound` / `ActionContactNotFound` / `ActionContactDuplicate` / `ActionNoteAdd` / `ActionNoteNoData` / `ActionNoteFound` / `ActionNoteNotFound`; `Classification.ToResponse()` formats confidences as `%.2f` percent strings for display (successor of the former `fromJevResponse`).
+- `message.go`: `ReceiveMessageRequest` inbound DTO; `Classification` domain struct (`CategoryFinding` / `KindFinding` with raw numeric confidences; `KindFinding.Choice` carries the kind: `"add"` / `"require"` / `"both"`); `UseCaseOutcome` (`Classification` + `Action` + `SearchTerm`) — the seam where use-case results (extracted contact, DB confirmation, search term) flow back without signature changes; actions are `ActionNone` / `ActionContactAdd` / `ActionContactNoData` / `ActionContactFound` / `ActionContactNotFound` / `ActionContactDuplicate` / `ActionNoteAdd` / `ActionNoteNoData` / `ActionNoteFound` / `ActionNoteNotFound`. There is no response DTO: the result partial receives the `Classification` and formats it.
 - `contact.go`: `Contact` Gorm entity (ID, Name, `NameNorm` column, Phone/Email nullable, timestamps) and `SegmentScore` (text, noul score, included flag); `UseCaseOutcome` carries `Contact` and `Segments` (nil unless name extraction ran).
 - `note.go`: `Note` (ID, Type, Content, nullable `Date`/`Time`, `Items`, timestamps) and `TodoItem` (ID, `NoteID` FK with `ON DELETE CASCADE`, Text, `Done`, `Position`); indexes on `notes.type`, `notes.date` and `todo_items.done`. `UseCaseOutcome` also carries `Notes []*Note` (the add path returns one element); the contact constants are unchanged.
 - `data.go`: `DataForm` and `DataDeleteForm`. Both contact and note edits bind to the same `DataForm` (`Name`/`Phone`/`Email` for contacts; `Content`/`Date`/`Time` plus parallel `ItemText []string` / `ItemDone []string` slices for a to-do). `DataDeleteForm` carries `Kind`, `Filter` and `IDs []uint` — a `[]uint` form field binds repeated `ids` values. `form` tags only; nothing here is part of a JSON API.
 
-### 8. Views — `internal/views/render.go`
+### 8. Views — `internal/views/render.go` + `pages_renderer.go`
 - Template name constants (`base`, `page:content`, `resultado`, `error`, `contacts_table`, `notes_table`, `data_detail`, `data_item_row`) — no string literals at call sites.
-- `RenderPage`: renders `page:content` for htmx requests, full `base` otherwise; falls back to the full page on missing/mistyped htmx context (no panic).
+- `RenderPage`: renders `page:content` when the `HX-Request` header is `true`, full `base` otherwise. The header is the whole htmx detection there is — no middleware, no server-side htmx dependency.
 - `RenderResult` / `RenderError`: render the result or error partial; errors carry proper HTTP status so htmx swaps the error card into `#resultado`.
-- The shared template set registers `views.FuncMap` (`label` helper for PT-BR badge text, plus `dateBR`/`deref` for the data screen).
+- The shared template set registers `views.FuncMap` (`label` for PT-BR badge text, `confidence` for the percent format, plus `dateBR`/`deref` for the data screen).
 - The data screen passes templates page-scoped view models — `DataDetailData{Kind, Mode, Contact, Note}` and `ItemRowData` — rather than handing entities straight to a partial. `Mode` is `view` or `edit`, and the switch happens in the template through a single `disabled` attribute on the form's `fieldset` instead of two parallel branches.
-- `DateBR(*time.Time)` and `Deref(*string)` are template helpers, not entity methods: rendering a `*string` directly puts a pointer address (`0xc000…`) in the cell.
+- `DateBR(*time.Time)`, `Deref(*string)` and `Confidence(float64)` are template helpers, not entity methods: rendering a `*string` directly puts a pointer address (`0xc000…`) in the cell, and formatting a confidence is presentation.
 
 ### 9. Jev API Client — `pkg/jev/jev.go`
 - `Client` struct with `NewClient(apiURL, token, model)` — all configuration injected, no `internal/config` import (genuinely reusable).
 - `MakeJevRequest`: sets model, validates, POSTs JSON with `Authorization: Bearer <token>`, parses response. 30s HTTP timeout; response body closed on all paths.
 - `MakeJevRequestFromFile` / `LoadJevRequestFromFile`: load prompt templates from the embedded `requests/*.json` (via `go:embed` — no CWD-relative path dependency), inject state, delegate.
-- `HttpResponseToJevResponse`: decodes answers by `type` into typed structs; **never panics** — every assertion is checked, unknown answer types return an explicit error.
-- `validateJevRequest`: validates state, model, questions, and per-type criteria/true-false fields.
+- `HttpResponseToJevResponse`: decodes `answers` as `map[string]json.RawMessage`, reads each answer's `type` to pick the struct, then unmarshals once; answers land in `map[string]any` as `*JevAnswerChoice` / `*JevAnswerNoul` and callers type-assert. **Never panics** — unknown or missing answer types return an explicit error.
+- Two question types exist because two templates exist: `choice` and `noul`. `validateJevRequest` validates state, model, questions, and per-type criteria/true-false fields.
 
 ### 10. Jev Request Templates — `pkg/jev/requests/*.json`
 - `classification.json`: two `choice` questions — `"classification"` with 5 criteria (contact, finance, schedule, notes, other) and `"adding_or_requiring"` with descriptive criteria (add, require, both).
@@ -207,7 +207,7 @@ msg-classifier/
 - The harness reuses the exact production Jev paths — no new request-building code.
 
 ### 13. Data Screen — `internal/services/data.go` + `internal/controllers/data_controller.go`
-- `DataService` is the browse/edit/delete use case for persisted contacts and notes. It composes `ContactRepository` and `NotesRepository` directly instead of going through `ContactService`/`NotesService`, which carry classification-flow extraction logic that means nothing here. It reuses the note flow's `DateParser` so there is still one PT-BR date implementation.
+- `DataService` is the browse/edit/delete use case for persisted contacts and notes. It composes `ContactRepository` and `NotesRepository` directly instead of going through `ContactService`/`NotesService`, which carry classification-flow extraction logic that means nothing here. It reuses the note flow's `ParseDate`/`ParseTime` so there is still one PT-BR date implementation.
 - `DataService` is the filter gate: `ListContacts` takes `all`/`phone`/`email`/`name`, `ListNotes` takes `all`/`note`/`reminder`/`todo`, and anything else is `ErrInvalidFilter`. The repositories deliberately do not validate — `ContactRepository.List` falls back to all rows, and the notes side is a pair of methods (`List` / `ListByType`) the service chooses between.
 - `UpdateContact` writes name/phone/email. `UpdateNote` writes the content plus the date and time, re-parsed from the form text through the same `parseDate`/`parseTime` pair the add path uses, and rebuilds the to-do items from the parallel `ItemText`/`ItemDone` slices in one transaction. Unparseable input is `ErrInvalidData`.
 - `DataController` is HTTP-only: `Page` → `RenderPage`, while `Table`/`Detail`/`Update`/`Delete`/`ItemRow` bind, delegate and re-render. Path segments are validated before use (`path` and `renderTable` both reject an unknown `kind`); errors map to 400 (`ErrInvalidFilter`, `ErrInvalidData`, a malformed id), 404 (`repository.ErrNotFound`) or the shared 502/500 mapper.
@@ -244,7 +244,7 @@ gin router ──► MessageController.ReceiveMessage
   │     ├─► notes + add/both     → NotesService.Add
   │     │     ├─► NoteExtractor.ExtractType → Jev call #2 (note.json)
   │     │     ├─► note → repo.Create(note) (content only)
-  │     │     ├─► reminder → DateParser (date required, time optional) → repo.Create(note)
+  │     │     ├─► reminder → ParseDate (date required) + ParseTime (optional) → repo.Create(note)
   │     │     ├─► todo → SplitTodoItems → repo.Create(note, items) (transaction)
   │     │     └─► unparseable date / unknown type → outcome ActionNoteNoData
   │     ├─► notes + require     → NotesService.Get
@@ -254,7 +254,7 @@ gin router ──► MessageController.ReceiveMessage
   │     │     ├─► found → outcome ActionNoteFound + notes + SearchTerm
   │     │     └─► not found → outcome ActionNoteNotFound
   │     └─► other category      → outcome ActionNone
-  ├─► outcome.Classification.ToResponse() → ReceiveMessageResponse
+  ├─► outcome.Classification → views.ResultData
   └─► views.RenderResult ──► c.HTML(200, "resultado", ...) ──► htmx swaps #resultado innerHTML
 ```
 
@@ -349,4 +349,5 @@ go build ./cmd/api
 
 - No Dockerfile, Makefile, or CI pipeline exists yet.
 - Tests exist for `pkg/jev`, `internal/models`, `internal/config`, `internal/services`, `internal/views`, and `internal/repository` (run with `go test ./...`). `internal/controllers` has no tests — its handlers are a thin bind/render shell over `DataService`.
+- Go and template files uniformly lack a trailing newline at EOF, so `gofmt -l` always lists ~17 files. That is expected: read the real diff, not the list.
 - `.gitignore` ignores `**/*_bin.exe`, `thoughts/`, `*.db`, `.vscode`, and `exports/`.

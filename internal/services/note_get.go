@@ -30,7 +30,7 @@ var noteStopwords = map[string]bool{
 func (s *NotesService) Get(request *models.ReceiveMessageRequest, classification *models.Classification) (*models.UseCaseOutcome, error) {
 	normalized := normalizeName(request.Message)
 
-	if date, ok := s.parser.ParseDate(request.Message, time.Now()); ok {
+	if date, ok := ParseDate(request.Message, time.Now()); ok {
 		notes, err := s.repo.FindByDate(date)
 		return s.searchResult(classification, notes, err, date.Format(dateLayout))
 	}

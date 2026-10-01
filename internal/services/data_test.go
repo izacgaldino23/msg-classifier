@@ -17,7 +17,7 @@ func newDataService(t *testing.T) (*DataService, *gorm.DB) {
 	t.Helper()
 	db := newTestDB(t)
 	require.NoError(t, db.AutoMigrate(&models.Note{}, &models.TodoItem{}), "AutoMigrate(notes)")
-	service := NewDataService(repository.NewContactRepository(db), repository.NewNotesRepository(db), NewDateParser())
+	service := NewDataService(repository.NewContactRepository(db), repository.NewNotesRepository(db))
 	return service, db
 }
 

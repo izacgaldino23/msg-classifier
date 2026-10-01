@@ -1,13 +1,13 @@
 package views
 
 import (
+	"fmt"
 	"html/template"
 	"net/http"
 	"time"
 
 	"msg-classifier/internal/models"
 
-	"github.com/donseba/go-htmx"
 	"github.com/gin-gonic/gin"
 )
 
@@ -43,13 +43,12 @@ type ErrorData struct {
 
 // ResultData is the view model for the "resultado" partial.
 type ResultData struct {
-	Category   map[string]any
-	Kind       map[string]any
-	Action     models.Action
-	Contact    *models.Contact
-	Notes      []*models.Note
-	Segments   []models.SegmentScore
-	SearchTerm string
+	Classification *models.Classification
+	Action         models.Action
+	Contact        *models.Contact
+	Notes          []*models.Note
+	Segments       []models.SegmentScore
+	SearchTerm     string
 }
 
 // RenderPage renders the full page, or only its content for htmx requests.
@@ -63,11 +62,13 @@ func RenderPage(c *gin.Context, page, content string) {
 
 // RenderResult renders the "resultado" partial (HTTP 200) from the use case outcome.
 func RenderResult(c *gin.Context, outcome *models.UseCaseOutcome) {
-	data := ResultData{Action: outcome.Action, Contact: outcome.Contact, Notes: outcome.Notes, Segments: outcome.Segments, SearchTerm: outcome.SearchTerm}
-	if outcome.Classification != nil {
-		response := outcome.Classification.ToResponse()
-		data.Category = response.Category
-		data.Kind = response.Kind
+	data := ResultData{
+		Classification: outcome.Classification,
+		Action:         outcome.Action,
+		Contact:        outcome.Contact,
+		Notes:          outcome.Notes,
+		Segments:       outcome.Segments,
+		SearchTerm:     outcome.SearchTerm,
 	}
 	c.HTML(http.StatusOK, ResultTemplate, data)
 }
@@ -77,17 +78,9 @@ func RenderError(c *gin.Context, status int, message string) {
 	c.HTML(status, ErrorTemplate, ErrorData{Message: message})
 }
 
-// isHxRequest reports whether the request is an htmx request; false on any miss.
+// isHxRequest reports whether the request came from htmx; false on a direct visit.
 func isHxRequest(c *gin.Context) bool {
-	value, ok := c.Get("htmx")
-	if !ok {
-		return false
-	}
-	handler, ok := value.(*htmx.Handler)
-	if !ok {
-		return false
-	}
-	return handler.IsHxRequest()
+	return c.GetHeader("HX-Request") == "true"
 }
 
 // PromptTableData is the view model for the "prompt_table" partial.
@@ -194,9 +187,15 @@ func Deref(s *string) string {
 	return *s
 }
 
+// Confidence formats a Jev confidence as a display percentage.
+func Confidence(f float64) string {
+	return fmt.Sprintf("%.2f", f*100)
+}
+
 // FuncMap exposes template helpers to the shared template set.
 var FuncMap = template.FuncMap{
-	"label":  Label,
-	"dateBR": DateBR,
-	"deref":  Deref,
+	"label":      Label,
+	"confidence": Confidence,
+	"dateBR":     DateBR,
+	"deref":      Deref,
 }

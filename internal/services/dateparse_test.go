@@ -13,7 +13,6 @@ func testNow() time.Time {
 }
 
 func TestDateParserParseDate(t *testing.T) {
-	parser := NewDateParser()
 	now := testNow()
 
 	tests := []struct {
@@ -38,7 +37,7 @@ func TestDateParserParseDate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, ok := parser.ParseDate(tt.message, now)
+			got, ok := ParseDate(tt.message, now)
 			assert.Equal(t, tt.wantOK, ok)
 			assert.True(t, got.Equal(tt.want), "date = %v, want %v", got, tt.want)
 		})
@@ -46,18 +45,14 @@ func TestDateParserParseDate(t *testing.T) {
 }
 
 func TestDateParserParseDateAlwaysUTC(t *testing.T) {
-	parser := NewDateParser()
-
 	// A non-UTC "now" must still yield UTC midnight of the same calendar day.
-	got, ok := parser.ParseDate("hoje", time.Date(2026, 3, 15, 23, 30, 0, 0, time.FixedZone("BRT", -3*60*60)))
+	got, ok := ParseDate("hoje", time.Date(2026, 3, 15, 23, 30, 0, 0, time.FixedZone("BRT", -3*60*60)))
 	require.True(t, ok)
 	assert.Equal(t, time.Date(2026, 3, 15, 0, 0, 0, 0, time.UTC), got)
 	assert.Equal(t, time.UTC, got.Location())
 }
 
 func TestDateParserParseTime(t *testing.T) {
-	parser := NewDateParser()
-
 	tests := []struct {
 		name    string
 		message string
@@ -76,7 +71,7 @@ func TestDateParserParseTime(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, ok := parser.ParseTime(tt.message)
+			got, ok := ParseTime(tt.message)
 			assert.Equal(t, tt.wantOK, ok)
 			assert.Equal(t, tt.want, got)
 		})

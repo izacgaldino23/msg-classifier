@@ -3,7 +3,6 @@ module msg-classifier
 go 1.25.4
 
 require (
-	github.com/donseba/go-htmx v1.13.1
 	github.com/gin-gonic/gin v1.12.0
 	github.com/glebarez/sqlite v1.11.0
 	github.com/joho/godotenv v1.5.1

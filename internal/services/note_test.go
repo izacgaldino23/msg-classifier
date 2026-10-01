@@ -18,7 +18,7 @@ func newNoteService(t *testing.T, extractor *NoteExtractor) (*NotesService, *gor
 	t.Helper()
 	db := newTestDB(t)
 	require.NoError(t, db.AutoMigrate(&models.Note{}, &models.TodoItem{}), "AutoMigrate(notes)")
-	return NewNotesService(extractor, NewDateParser(), repository.NewNotesRepository(db)), db
+	return NewNotesService(extractor, repository.NewNotesRepository(db)), db
 }
 
 func noteService(t *testing.T, noteType string) (*NotesService, *gorm.DB) {

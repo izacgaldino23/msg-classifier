@@ -20,7 +20,6 @@ const httpTimeout = 30 * time.Second
 
 const (
 	ChoiceQuestionType JevQuestionType = "choice"
-	ScoreQuestionType  JevQuestionType = "score"
 	NoulQuestionType   JevQuestionType = "noul"
 )
 
@@ -50,11 +49,6 @@ type (
 		Criteria map[string]string `json:"criteria"`
 	}
 
-	JevQuestionScore struct {
-		JevQuestion
-		Criteria []string `json:"criteria"`
-	}
-
 	JevNoulCriteria struct {
 		True  string `json:"true"`
 		False string `json:"false"`
@@ -65,33 +59,18 @@ type (
 		Criteria JevNoulCriteria `json:"criteria"`
 	}
 
-	JevAnswer interface {
-		GetType() JevQuestionType
-	}
-
 	JevResponse struct {
-		Model   string               `json:"model"`
-		Answers map[string]JevAnswer `json:"answers"`
+		Model   string         `json:"model"`
+		Answers map[string]any `json:"answers"`
 	}
 
 	JevAnswerNoul struct {
-		Type JevQuestionType `json:"type"`
-		Noul float64         `json:"noul,omitempty"`
+		Noul float64 `json:"noul,omitempty"`
 	}
 
 	JevAnswerChoice struct {
-		Type          JevQuestionType    `json:"type"`
-		Choice        string             `json:"choice"`
-		Probabilities map[string]float64 `json:"probabilities"`
-		Confidence    float64            `json:"confidence"`
-	}
-
-	JevAnswerScore struct {
-		Type          JevQuestionType    `json:"type"`
-		Score         float64            `json:"score,omitempty"`
-		Legend        map[string]string  `json:"legend,omitempty"`
-		Probabilities map[string]float64 `json:"probabilities"`
-		Confidence    float64            `json:"confidence"`
+		Choice     string  `json:"choice"`
+		Confidence float64 `json:"confidence"`
 	}
 )
 
@@ -114,64 +93,52 @@ func NewClient(apiURL, token, model string) *Client {
 
 // HttpResponseToJevResponse decodes a Typesafe API body into a JevResponse.
 func HttpResponseToJevResponse(resp *http.Response) (*JevResponse, error) {
-	responseMap := make(map[string]any)
-
-	if err := json.NewDecoder(resp.Body).Decode(&responseMap); err != nil {
+	var raw struct {
+		Model   string                     `json:"model"`
+		Answers map[string]json.RawMessage `json:"answers"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
 		return nil, fmt.Errorf("failed to decode typesafe response body: %w", err)
 	}
-
-	model, ok := responseMap["model"].(string)
-	if !ok {
-		return nil, fmt.Errorf("typesafe response field %q is missing or not a string", "model")
+	if raw.Model == "" {
+		return nil, fmt.Errorf("typesafe response field %q is missing or empty", "model")
 	}
 
-	rawAnswers, ok := responseMap["answers"].(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("typesafe response field %q is missing or not an object", "answers")
-	}
-
-	jevResp := &JevResponse{Model: model, Answers: make(map[string]JevAnswer, len(rawAnswers))}
-	for key, value := range rawAnswers {
-		answer, ok := value.(map[string]any)
-		if !ok {
-			return nil, fmt.Errorf("answer %q is not a JSON object", key)
-		}
-
-		answerType, ok := answer["type"].(string)
-		if !ok {
-			return nil, fmt.Errorf("answer %q is missing a string %q field", key, "type")
-		}
-
-		jsonBytes, err := json.Marshal(answer)
+	jevResp := &JevResponse{Model: raw.Model, Answers: make(map[string]any, len(raw.Answers))}
+	for key, rawAnswer := range raw.Answers {
+		answer, err := decodeAnswer(key, rawAnswer)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal answer %q: %w", key, err)
+			return nil, err
 		}
-
-		switch answerType {
-		case string(ChoiceQuestionType):
-			choice := &JevAnswerChoice{}
-			if err := json.Unmarshal(jsonBytes, choice); err != nil {
-				return nil, fmt.Errorf("failed to decode choice answer %q: %w", key, err)
-			}
-			jevResp.Answers[key] = choice
-		case string(ScoreQuestionType):
-			score := &JevAnswerScore{}
-			if err := json.Unmarshal(jsonBytes, score); err != nil {
-				return nil, fmt.Errorf("failed to decode score answer %q: %w", key, err)
-			}
-			jevResp.Answers[key] = score
-		case string(NoulQuestionType):
-			noul := &JevAnswerNoul{}
-			if err := json.Unmarshal(jsonBytes, noul); err != nil {
-				return nil, fmt.Errorf("failed to decode noul answer %q: %w", key, err)
-			}
-			jevResp.Answers[key] = noul
-		default:
-			return nil, fmt.Errorf("unsupported answer type %q for answer %q", answerType, key)
-		}
+		jevResp.Answers[key] = answer
 	}
 
 	return jevResp, nil
+}
+
+// decodeAnswer peeks at the answer type and decodes into the matching struct.
+// It never panics: a missing or unknown type is an explicit error.
+func decodeAnswer(key string, raw json.RawMessage) (any, error) {
+	var header struct {
+		Type JevQuestionType `json:"type"`
+	}
+	if err := json.Unmarshal(raw, &header); err != nil {
+		return nil, fmt.Errorf("failed to decode answer %q: %w", key, err)
+	}
+
+	var answer any
+	switch header.Type {
+	case ChoiceQuestionType:
+		answer = &JevAnswerChoice{}
+	case NoulQuestionType:
+		answer = &JevAnswerNoul{}
+	default:
+		return nil, fmt.Errorf("unsupported answer type %q for answer %q", header.Type, key)
+	}
+	if err := json.Unmarshal(raw, answer); err != nil {
+		return nil, fmt.Errorf("failed to decode %s answer %q: %w", header.Type, key, err)
+	}
+	return answer, nil
 }
 
 // MakeJevRequest validates and POSTs a JevRequest to the Typesafe API.
@@ -266,10 +233,6 @@ func validateJevRequest(request *JevRequest) error {
 			if q.Criteria.True == "" || q.Criteria.False == "" {
 				return fmt.Errorf("true and false are required for noul question %q", name)
 			}
-		case *JevQuestionScore:
-			if len(q.Criteria) == 0 {
-				return fmt.Errorf("criteria are required for score question %q", name)
-			}
 		}
 	}
 
@@ -310,8 +273,6 @@ func LoadJevRequestFromFile(fileName string) (*JevRequest, error) {
 		switch questionType.Type {
 		case ChoiceQuestionType:
 			question = &JevQuestionChoice{}
-		case ScoreQuestionType:
-			question = &JevQuestionScore{}
 		case NoulQuestionType:
 			question = &JevQuestionNoul{}
 		default:
@@ -327,6 +288,8 @@ func LoadJevRequestFromFile(fileName string) (*JevRequest, error) {
 	return request, nil
 }
 
+// GetType returns the question type. It is declared on each question struct
+// because the type is what discriminates the polymorphic decode.
 func (r *JevQuestionChoice) GetType() JevQuestionType {
 	return ChoiceQuestionType
 }
@@ -335,30 +298,8 @@ func (r *JevQuestionNoul) GetType() JevQuestionType {
 	return NoulQuestionType
 }
 
-func (r *JevQuestionScore) GetType() JevQuestionType {
-	return ScoreQuestionType
-}
-
-func (r *JevQuestionChoice) GetInstructions() string {
+// GetInstructions returns the question instructions; it is promoted to every
+// question struct through the embedded JevQuestion.
+func (r *JevQuestion) GetInstructions() string {
 	return r.Instructions
-}
-
-func (r *JevQuestionNoul) GetInstructions() string {
-	return r.Instructions
-}
-
-func (r *JevQuestionScore) GetInstructions() string {
-	return r.Instructions
-}
-
-func (r *JevAnswerChoice) GetType() JevQuestionType {
-	return ChoiceQuestionType
-}
-
-func (r *JevAnswerNoul) GetType() JevQuestionType {
-	return NoulQuestionType
-}
-
-func (r *JevAnswerScore) GetType() JevQuestionType {
-	return ScoreQuestionType
 }

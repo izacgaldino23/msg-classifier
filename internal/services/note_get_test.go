@@ -43,7 +43,7 @@ func TestNoteServiceGetByDate(t *testing.T) {
 
 func TestNoteServiceGetByYesterday(t *testing.T) {
 	service, _ := noteService(t, models.NoteTypeNote)
-	date, ok := NewDateParser().ParseDate("ontem", time.Now())
+	date, ok := ParseDate("ontem", time.Now())
 	require.True(t, ok)
 	seedNote(t, service, &models.Note{Type: models.NoteTypeNote, Content: "anotação de ontem", Date: &date})
 

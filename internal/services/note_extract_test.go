@@ -15,8 +15,8 @@ import (
 func noteTypeResponse(choice string) *jev.JevResponse {
 	return &jev.JevResponse{
 		Model: "jev-latest",
-		Answers: map[string]jev.JevAnswer{
-			noteTypeAnswerKey: &jev.JevAnswerChoice{Type: jev.ChoiceQuestionType, Choice: choice, Confidence: 0.9},
+		Answers: map[string]any{
+			noteTypeAnswerKey: &jev.JevAnswerChoice{Choice: choice, Confidence: 0.9},
 		},
 	}
 }
@@ -45,7 +45,7 @@ func TestNoteExtractorExtractTypeUpstreamFailure(t *testing.T) {
 }
 
 func TestNoteExtractorExtractTypeMissingAnswer(t *testing.T) {
-	mock := &mockJevClient{resp: &jev.JevResponse{Model: "jev-latest", Answers: map[string]jev.JevAnswer{}}}
+	mock := &mockJevClient{resp: &jev.JevResponse{Model: "jev-latest", Answers: map[string]any{}}}
 	extractor := NewNoteExtractor(mock)
 
 	_, err := extractor.ExtractType(&models.ReceiveMessageRequest{Message: "anota isso"})
@@ -55,8 +55,8 @@ func TestNoteExtractorExtractTypeMissingAnswer(t *testing.T) {
 func TestNoteExtractorExtractTypeWrongAnswerType(t *testing.T) {
 	mock := &mockJevClient{resp: &jev.JevResponse{
 		Model: "jev-latest",
-		Answers: map[string]jev.JevAnswer{
-			noteTypeAnswerKey: &jev.JevAnswerNoul{Type: jev.NoulQuestionType, Noul: 0.9},
+		Answers: map[string]any{
+			noteTypeAnswerKey: &jev.JevAnswerNoul{Noul: 0.9},
 		},
 	}}
 	extractor := NewNoteExtractor(mock)

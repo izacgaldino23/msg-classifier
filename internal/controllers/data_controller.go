@@ -46,21 +46,7 @@ func (ctrl *DataController) Detail(c *gin.Context) {
 	if mode != "edit" {
 		mode = "view"
 	}
-	if kind == services.DataKindContact {
-		contact, err := ctrl.service.GetContact(id)
-		if err != nil {
-			renderDataError(c, err)
-			return
-		}
-		views.RenderDataDetail(c, views.DataDetailData{Kind: kind, Mode: mode, Contact: contact})
-		return
-	}
-	note, err := ctrl.service.GetNote(id)
-	if err != nil {
-		renderDataError(c, err)
-		return
-	}
-	views.RenderDataDetail(c, views.DataDetailData{Kind: kind, Mode: mode, Note: note})
+	ctrl.renderDetail(c, kind, id, mode)
 }
 
 // Update handles POST /data/:kind/:id — persists the edited record and re-renders

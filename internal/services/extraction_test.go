@@ -22,9 +22,9 @@ func (m *mockJevRequester) MakeJevRequest(request *jev.JevRequest) (*jev.JevResp
 }
 
 func noulResponse(nouls ...float64) *jev.JevResponse {
-	answers := make(map[string]jev.JevAnswer, len(nouls))
+	answers := make(map[string]any, len(nouls))
 	for i, n := range nouls {
-		answers[fmt.Sprintf("segment_%d", i)] = &jev.JevAnswerNoul{Type: jev.NoulQuestionType, Noul: n}
+		answers[fmt.Sprintf("segment_%d", i)] = &jev.JevAnswerNoul{Noul: n}
 	}
 	return &jev.JevResponse{Model: "jev-latest", Answers: answers}
 }
@@ -224,7 +224,7 @@ func TestExtractName(t *testing.T) {
 	})
 
 	t.Run("missing answer wraps ErrUpstream", func(t *testing.T) {
-		mock := &mockJevRequester{resp: &jev.JevResponse{Model: "jev-latest", Answers: map[string]jev.JevAnswer{}}}
+		mock := &mockJevRequester{resp: &jev.JevResponse{Model: "jev-latest", Answers: map[string]any{}}}
 		e := NewContactExtractor(mock)
 
 		_, err := e.ExtractName("Fulano de Tal", nil)

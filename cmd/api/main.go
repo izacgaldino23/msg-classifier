@@ -12,7 +12,6 @@ import (
 	"msg-classifier/internal/views"
 	"msg-classifier/pkg/jev"
 
-	"github.com/donseba/go-htmx"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -42,14 +41,6 @@ func main() {
 	}
 	router.HTMLRender = pagesRenderer
 
-	// Single htmx instance; controllers read it from the context per request.
-	h := htmx.New()
-
-	router.Use(func(c *gin.Context) {
-		c.Set("htmx", h.NewHandler(c.Writer, c.Request))
-		c.Next()
-	})
-
 	// Composition root: config → jev client → services → dispatcher → controllers → routes.
 	env := config.GetEnv()
 	jevClient := jev.NewClient(env.TypesafeApiUrl, env.TypesafeToken, env.TypesafeModel)
@@ -71,12 +62,16 @@ func main() {
 
 	classifier := services.NewClassificationService(jevClient)
 	extractor := services.NewContactExtractor(jevClient)
-	contactService := services.NewContactService(extractor, repository.NewContactRepository(db))
+	noteExtractor := services.NewNoteExtractor(jevClient)
+
+	contactRepo := repository.NewContactRepository(db)
+	notesRepo := repository.NewNotesRepository(db)
+
+	contactService := services.NewContactService(extractor, contactRepo)
 	if err := contactService.BackfillNameNorm(); err != nil {
 		log.Fatalf("failed to backfill name_norm: %v", err)
 	}
-	noteExtractor := services.NewNoteExtractor(jevClient)
-	notesService := services.NewNotesService(noteExtractor, services.NewDateParser(), repository.NewNotesRepository(db))
+	notesService := services.NewNotesService(noteExtractor, notesRepo)
 	dispatcher := services.NewDispatcher(map[string]services.CategoryHandler{
 		"contact": contactService,
 		"notes":   notesService,
@@ -89,11 +84,7 @@ func main() {
 	webController := controllers.NewWebController()
 	messageController := controllers.NewMessageController(classifier, dispatcher)
 
-	dataService := services.NewDataService(
-		repository.NewContactRepository(db),
-		repository.NewNotesRepository(db),
-		services.NewDateParser(),
-	)
+	dataService := services.NewDataService(contactRepo, notesRepo)
 	dataController := controllers.NewDataController(dataService)
 
 	router.GET("/", webController.Home)

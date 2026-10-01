@@ -27,9 +27,9 @@ func (m *mockJevClient) MakeJevRequestFromFile(state jev.JevState, fileName stri
 func choiceResponse(classification, kind string, confidence float64) *jev.JevResponse {
 	return &jev.JevResponse{
 		Model: "jev-latest",
-		Answers: map[string]jev.JevAnswer{
-			"classification":      &jev.JevAnswerChoice{Type: jev.ChoiceQuestionType, Choice: classification, Confidence: confidence},
-			"adding_or_requiring": &jev.JevAnswerChoice{Type: jev.ChoiceQuestionType, Choice: kind, Confidence: confidence},
+		Answers: map[string]any{
+			"classification":      &jev.JevAnswerChoice{Choice: classification, Confidence: confidence},
+			"adding_or_requiring": &jev.JevAnswerChoice{Choice: kind, Confidence: confidence},
 		},
 	}
 }
@@ -68,7 +68,7 @@ func TestClassificationServiceClassifyJevFailure(t *testing.T) {
 }
 
 func TestClassificationServiceClassifyMissingAnswer(t *testing.T) {
-	mock := &mockJevClient{resp: &jev.JevResponse{Model: "jev-latest", Answers: map[string]jev.JevAnswer{}}}
+	mock := &mockJevClient{resp: &jev.JevResponse{Model: "jev-latest", Answers: map[string]any{}}}
 	service := NewClassificationService(mock)
 
 	_, err := service.Classify(&models.ReceiveMessageRequest{Message: "oi"})
@@ -76,8 +76,8 @@ func TestClassificationServiceClassifyMissingAnswer(t *testing.T) {
 }
 
 func TestClassificationServiceClassifyWrongAnswerType(t *testing.T) {
-	mock := &mockJevClient{resp: &jev.JevResponse{Model: "jev-latest", Answers: map[string]jev.JevAnswer{
-		"classification": &jev.JevAnswerNoul{Type: jev.NoulQuestionType, Noul: 0.5},
+	mock := &mockJevClient{resp: &jev.JevResponse{Model: "jev-latest", Answers: map[string]any{
+		"classification": &jev.JevAnswerNoul{Noul: 0.5},
 	}}}
 	service := NewClassificationService(mock)
 

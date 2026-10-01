@@ -8,13 +8,8 @@ import (
 	"time"
 )
 
-// DateParser extracts PT-BR dates and times from a message. now is a parameter
-// (not time.Now()) so the relative forms are deterministic in tests.
-type DateParser struct{}
-
-func NewDateParser() *DateParser {
-	return &DateParser{}
-}
+// now is a parameter (not time.Now()) so the relative date forms are
+// deterministic in tests.
 
 var (
 	fullDatePattern   = regexp.MustCompile(`\b(\d{1,2})/(\d{1,2})/(\d{4})\b`)
@@ -31,7 +26,7 @@ const dateLayout = "02/01/2006"
 // none. Supported: dd/mm/aaaa, dd/mm (current year), "dia N" (current month),
 // "hoje", "amanhã" and "ontem". Every result is UTC midnight so the stored
 // value and the FindByDate filter compare identically in SQLite.
-func (p *DateParser) ParseDate(message string, now time.Time) (time.Time, bool) {
+func ParseDate(message string, now time.Time) (time.Time, bool) {
 	if m := fullDatePattern.FindStringSubmatch(message); m != nil {
 		return buildDate(toInt(m[1]), toInt(m[2]), toInt(m[3]))
 	}
@@ -57,7 +52,7 @@ func (p *DateParser) ParseDate(message string, now time.Time) (time.Time, bool) 
 
 // ParseTime returns the HH:MM time mentioned in the message ("14h", "14h30",
 // "14:00") or false when there is none. The time is optional for reminders.
-func (p *DateParser) ParseTime(message string) (string, bool) {
+func ParseTime(message string) (string, bool) {
 	if m := colonTimePattern.FindStringSubmatch(message); m != nil {
 		if value, ok := formatTime(toInt(m[1]), toInt(m[2])); ok {
 			return value, true

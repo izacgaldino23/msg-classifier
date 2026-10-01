@@ -9,9 +9,11 @@ Conventions observed in this codebase. Follow these when writing new code.
 | Files & directories | `snake_case` | `message_controller.go`, `classification.json`, `web/templates/partial/` |
 | Go packages | Single lowercase word | `controllers`, `services`, `models`, `views`, `config`, `jev` |
 | Exported types | PascalCase, domain prefix | `JevRequest`, `JevAnswerChoice`, `MessageController`, `ClassificationService`, `ReceiveMessageRequest` |
+| Answers in `JevResponse` | `map[string]any`, typed values | `*JevAnswerChoice`, `*JevAnswerNoul` |
 | Exported functions | PascalCase, `New*` constructors | `NewMessageController()`, `NewClassificationService()`, `NewClient()`, `GetEnv()` |
-| Unexported functions | camelCase | `answerAsChoice()`, `makeRequest()`, `isHxRequest()`, `validateJevRequest()` |
-| Constants | Exported PascalCase, grouped in `const` blocks | `ChoiceQuestionType`, `ScoreQuestionType`, `BaseTemplate`, `SourcePath` |
+| Unexported functions | camelCase | `answerAsChoice()`, `isHxRequest()`, `validateJevRequest()` |
+| Stateless helpers | package funcs, no struct to inject | `ParseDate()`, `ParseTime()` |
+| Constants | Exported PascalCase, grouped in `const` blocks | `ChoiceQuestionType`, `NoulQuestionType`, `BaseTemplate`, `SourcePath` |
 | Variables | Short, lowercase, idiomatic Go | `c` (gin.Context), `ctrl` (controller), `router`, `tmpl`, `env` |
 | Struct fields | PascalCase with JSON tags | `UserID string \`json:"user_id" form:"user_id"\`` |
 | JSON / form tags | `snake_case` | `json:"message"`, `form:"user_id"`, `json:"criteria"` |
@@ -105,9 +107,10 @@ type jevClient interface {
 ### Views
 - Template names are constants in `internal/views/render.go` — never string literals at call sites.
 - Render through `views.RenderPage` / `views.RenderResult` / `views.RenderError`, not raw `c.HTML`.
-- Pages render through `views.RenderPage(c, page, content)`; `views.PagesRenderer` clones the shared layout set per page so page blocks never collide.
+- Pages render through `views.RenderPage(c, page, content)`; `views.PagesRenderer` clones the shared layout set per page so page blocks never collide. Do not try to collapse this into one template set: Go templates have no inheritance and `{{ template }}` names must be string literals, so the block name cannot come from the view data.
 - Template name constants in `internal/views/render.go` include the harness partials: `prompt_table`, `evaluation_results`.
-- Template helpers are exposed via `views.FuncMap` (e.g., `label` for PT-BR badge text) and registered on the shared template set in `cmd/api/main.go` (`template.New("").Funcs(views.FuncMap)`).
+- Template helpers are exposed via `views.FuncMap` (e.g., `label` for PT-BR badge text, `confidence` for the percent format) and registered on the shared template set in `cmd/api/main.go` (`template.New("").Funcs(views.FuncMap)`).
+- htmx detection is `c.GetHeader("HX-Request") == "true"` in `views.isHxRequest`. There is no server-side htmx library or context middleware for it.
 
 ### Validation harness (/prompts)
 - `PromptService` reuses the production Jev paths (`ClassificationService.Classify`, `ContactExtractor.ExtractName`) — no new request-building code.
@@ -127,10 +130,10 @@ type jevClient interface {
 - A pill that both boots a table on first paint and answers clicks carries `hx-trigger="load, click"`. An explicit `hx-trigger` **replaces** htmx's default `click` trigger, so a bare `hx-trigger="load"` turns the element into a dead button once the initial load fires — tabs would never re-load their pane's default filter, and direct clicks would do nothing.
 
 ### JSON responses
-Use `pkg.ReturnJson(c, status, body)` — wraps 2xx in `{"data": ...}`, everything else in `{"error": ...}`. Currently unused by htmx routes (they render HTML partials); kept for future JSON endpoints.
+There are none. Every route renders an HTML partial; add a JSON helper on the day a JSON endpoint exists, not before.
 
 ### Jev domain types
-All TypeSafe-related types are prefixed `Jev` and implement the `JevQuestionInterface` / `JevAnswer` interfaces with `GetType()` / `GetInstructions()` methods.
+All TypeSafe-related types are prefixed `Jev`. Questions implement `JevQuestionInterface` (`GetType()` / `GetInstructions()`), and `GetInstructions` is defined once on the embedded `JevQuestion` — it promotes to every question type, so do not repeat it. Answers are plain structs in `JevResponse.Answers map[string]any`; there is no answer interface.
 
 ### Config access
 Never read `os.Getenv` directly outside `internal/config/env.go`. Config is read once at the composition root (`cmd/api/main.go`) and injected into constructors (`jev.NewClient(env.TypesafeApiUrl, env.TypesafeToken, env.TypesafeModel)`).
@@ -155,7 +158,9 @@ Never read `os.Getenv` directly outside `internal/config/env.go`. Config is read
 - Hand-written fakes for one-method Jev seams (`mockJevRequester`, `mockJevClient`).
 - Real in-memory SQLite (`newTestDB`) for repository/service integration tests.
 - Assert on sentinels with `errors.Is` (`ErrUpstream`, `repository.ErrNotFound`).
-- New to-do/note fixtures must use a fixed calendar date (`10/05/2026`) instead of "hoje"/"amanhã" so assertions never depend on the day the suite runs; relative forms are tested directly on the parser with an injected `now`.
+- New to-do/note fixtures must use a fixed calendar date (`10/05/2026`) instead of "hoje"/"amanhã" so assertions never depend on the day the suite runs; relative forms are tested directly on `ParseDate` with an injected `now`.
+- `gin.CreateTestContext` leaves `c.Request` nil, and anything that reads a header (`c.GetHeader`) panics on it. Set `c.Request = httptest.NewRequest(...)` in the test helper.
+- Source files intentionally lack a trailing newline at EOF, so `gofmt -l` always lists them. Only a real diff counts — never bulk-reformat.
 - Render tests assert on output with `strings.Contains`, and assert the absence of what must not leak: a prompt-page fragment in the data page, a pointer address in a table cell, a field that should be hidden.
 
 ## Do's and Don'ts
@@ -177,5 +182,8 @@ Never read `os.Getenv` directly outside `internal/config/env.go`. Config is read
 - Don't `panic` on parse/marshal failures — return errors.
 - Don't use unchecked type assertions on API responses without guarding.
 - Don't read env vars directly in handlers/packages — go through `internal/config`.
+- Don't add a dependency for something the stdlib or the platform already does. The one htmx helper we needed was a header comparison; the library went away.
+- Don't keep a type, interface or helper with no caller. If nothing uses it, delete it — "kept for a future endpoint" is not a reason.
+- Don't add a constructor or a struct field for a value that never changes — a package function is enough.
 - Don't add new direct dependencies without updating `go.mod` (module is `msg-classifier`, Go 1.25.4).
 - Don't commit secrets to `local.env` (e.g., `TS_API_KEY`).
