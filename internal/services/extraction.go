@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"msg-classifier/internal/models"
 	"msg-classifier/pkg/jev"
@@ -85,7 +87,7 @@ func (e *ContactExtractor) ExtractName(message string, spans []Span) (NameResult
 			},
 			Criteria: jev.JevNoulCriteria{
 				True:  "the segment is part of the person's name or reference",
-				False: "the segment is not part of the person's name or reference",
+				False: "the segment is a verb, article, preposition or other non-name word (e.g. 'salva', 'o', 'contato', 'do', 'telefone')",
 			},
 		}
 	}
@@ -102,22 +104,88 @@ func (e *ContactExtractor) ExtractName(message string, spans []Span) (NameResult
 	}
 
 	trace := make([]models.SegmentScore, 0, len(segments))
-	var nameParts []string
 	for i, segment := range segments {
 		answer, err := answerAsNoul(resp, fmt.Sprintf("segment_%d", i))
 		if err != nil {
 			return NameResult{}, fmt.Errorf("%w: %w", ErrUpstream, err)
 		}
-		included := answer.Noul > 0.5
-		trace = append(trace, models.SegmentScore{Text: segment, Score: answer.Noul, Included: included})
-		if included {
-			if trimmed := strings.Trim(segment, trimPunctuation); trimmed != "" {
+		trace = append(trace, models.SegmentScore{Text: segment, Score: answer.Noul, Included: answer.Noul > 0.5})
+	}
+
+	// Deterministic post-filter over Jev's per-segment verdicts. The Noul scores
+	// for name particles ("do"/"da"/"de") hover around the 0.5 threshold and flip
+	// between runs, so the AI verdict alone is not reproducible. Particles are
+	// resolved by position, which is deterministic:
+	//   1. Drop leading lowercase segments while a capitalized one follows - a
+	//      PT-BR proper name never starts with a function word, so an included
+	//      prefix like "do João da Silva" must become "João da Silva".
+	//   2. Rescue a particle Jev excluded when it sits between two included
+	//      capitalized segments - "José Carlos de Souza" keeps its "de", which is
+	//      a surname particle in the middle even though the same word is noise at
+	//      the start.
+	firstCap := -1
+	for i := range trace {
+		if trace[i].Included && isCapitalized(trimSegment(trace[i].Text)) {
+			firstCap = i
+			break
+		}
+	}
+	if firstCap > 0 {
+		for i := 0; i < firstCap; i++ {
+			trace[i].Included = false
+		}
+	}
+
+	for i := 1; i+1 < len(trace); i++ {
+		if trace[i].Included || !isNameParticle(trace[i].Text) {
+			continue
+		}
+		if isIncludedCapitalized(trace, i-1) && isIncludedCapitalized(trace, i+1) {
+			trace[i].Included = true
+		}
+	}
+
+	nameParts := make([]string, 0, len(trace))
+	for _, seg := range trace {
+		if seg.Included {
+			if trimmed := trimSegment(seg.Text); trimmed != "" {
 				nameParts = append(nameParts, trimmed)
 			}
 		}
 	}
 
 	return NameResult{Name: strings.TrimSpace(strings.Join(nameParts, " ")), Segments: trace}, nil
+}
+
+// nameParticles are the PT-BR particles valid inside a surname. They are noise
+// at the start of a name but legitimate between name words.
+var nameParticles = map[string]bool{
+	"de": true, "da": true, "do": true, "dos": true, "das": true,
+}
+
+// isNameParticle reports whether a segment is a PT-BR surname particle (ignoring
+// surrounding punctuation and case).
+func isNameParticle(segment string) bool {
+	return nameParticles[strings.ToLower(trimSegment(segment))]
+}
+
+// isIncludedCapitalized reports whether trace[j] is an included capitalized segment.
+func isIncludedCapitalized(trace []models.SegmentScore, j int) bool {
+	return j >= 0 && j < len(trace) && trace[j].Included && isCapitalized(trimSegment(trace[j].Text))
+}
+
+// trimSegment strips the punctuation that can surround a segment.
+func trimSegment(segment string) string {
+	return strings.Trim(segment, trimPunctuation)
+}
+
+// isCapitalized reports whether s starts with an uppercase letter.
+func isCapitalized(s string) bool {
+	if s == "" {
+		return false
+	}
+	r, _ := utf8.DecodeRuneInString(s)
+	return unicode.IsUpper(r)
 }
 
 // removeSpans deletes the given spans from the message, preserving order.

@@ -101,7 +101,17 @@ func (s *PromptService) evaluateOne(flow string, prompt models.JevPrompt) models
 		result.ObtainedResult = classification.Category.Choice + ":" + classification.Kind.Choice
 		result.Match = strings.EqualFold(result.ObtainedResult, prompt.ExpectedResult)
 	case models.FlowName:
-		nameResult, err := s.extractor.ExtractName(prompt.Message, nil)
+		// Mirror the production contact path: strip phone/email spans before the
+		// name fan-out, otherwise the email/phone itself becomes a candidate
+		// segment and can leak into the extracted name.
+		spans := make([]Span, 0, 2)
+		if _, span, ok := s.extractor.ExtractPhone(prompt.Message); ok {
+			spans = append(spans, span)
+		}
+		if _, span, ok := s.extractor.ExtractEmail(prompt.Message); ok {
+			spans = append(spans, span)
+		}
+		nameResult, err := s.extractor.ExtractName(prompt.Message, spans)
 		if err != nil {
 			result.ObtainedResult = err.Error()
 			result.Match = false

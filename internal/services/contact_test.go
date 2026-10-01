@@ -56,8 +56,10 @@ func TestContactServiceAddPersistsContact(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, models.ActionContactAdd, outcome.Action)
 	require.NotNil(t, outcome.Contact)
-	assert.Equal(t, "Fulano Tal", outcome.Contact.Name)
-	assert.Equal(t, "fulano tal", outcome.Contact.NameNorm)
+	// The mid-name particle "de" is between two capitalized segments, so the
+	// post-filter rescues it even though Jev scored it low.
+	assert.Equal(t, "Fulano de Tal", outcome.Contact.Name)
+	assert.Equal(t, "fulano de tal", outcome.Contact.NameNorm)
 	require.NotNil(t, outcome.Contact.Phone)
 	assert.Equal(t, "9292929290", *outcome.Contact.Phone)
 	assert.Nil(t, outcome.Contact.Email)
@@ -65,7 +67,7 @@ func TestContactServiceAddPersistsContact(t *testing.T) {
 
 	wantSegments := []models.SegmentScore{
 		{Text: "Fulano", Score: 0.99, Included: true},
-		{Text: "de", Score: 0.1, Included: false},
+		{Text: "de", Score: 0.1, Included: true},
 		{Text: "Tal", Score: 0.98, Included: true},
 	}
 	assert.Equal(t, wantSegments, outcome.Segments)

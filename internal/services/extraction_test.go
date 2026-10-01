@@ -102,21 +102,22 @@ func TestExtractEmail(t *testing.T) {
 
 func TestExtractName(t *testing.T) {
 	t.Run("builds noul fan-out and joins above threshold", func(t *testing.T) {
-		mock := &mockJevRequester{resp: noulResponse(0.99, 0.1, 0.98)}
+		mock := &mockJevRequester{resp: noulResponse(0.1, 0.1, 0.99, 0.98)}
 		e := NewContactExtractor(mock)
 
-		result, err := e.ExtractName("09292929290 Fulano de Tal", []Span{{Start: 0, End: 11}})
+		result, err := e.ExtractName("Cadastra o Fulano Silva", nil)
 		if err != nil {
 			t.Fatalf("ExtractName() error = %v", err)
 		}
-		if result.Name != "Fulano Tal" {
-			t.Errorf("Name = %q, want %q", result.Name, "Fulano Tal")
+		if result.Name != "Fulano Silva" {
+			t.Errorf("Name = %q, want %q", result.Name, "Fulano Silva")
 		}
 
 		wantTrace := []models.SegmentScore{
+			{Text: "Cadastra", Score: 0.1, Included: false},
+			{Text: "o", Score: 0.1, Included: false},
 			{Text: "Fulano", Score: 0.99, Included: true},
-			{Text: "de", Score: 0.1, Included: false},
-			{Text: "Tal", Score: 0.98, Included: true},
+			{Text: "Silva", Score: 0.98, Included: true},
 		}
 		if len(result.Segments) != len(wantTrace) {
 			t.Fatalf("Segments = %v, want %v", result.Segments, wantTrace)
@@ -134,14 +135,14 @@ func TestExtractName(t *testing.T) {
 		if !ok {
 			t.Fatalf("state type = %T, want map[string]any", mock.got.State)
 		}
-		if state["message"] != "09292929290 Fulano de Tal" {
+		if state["message"] != "Cadastra o Fulano Silva" {
 			t.Errorf("state message = %v, want original message", state["message"])
 		}
 		segments, ok := state["segments"].([]string)
 		if !ok {
 			t.Fatalf("state segments type = %T, want []string", state["segments"])
 		}
-		wantSegments := []string{"Fulano", "de", "Tal"}
+		wantSegments := []string{"Cadastra", "o", "Fulano", "Silva"}
 		if len(segments) != len(wantSegments) {
 			t.Fatalf("segments = %v, want %v", segments, wantSegments)
 		}
@@ -150,10 +151,10 @@ func TestExtractName(t *testing.T) {
 				t.Errorf("segments[%d] = %q, want %q", i, segments[i], wantSegments[i])
 			}
 		}
-		if len(mock.got.Questions) != 3 {
-			t.Fatalf("questions count = %d, want 3", len(mock.got.Questions))
+		if len(mock.got.Questions) != 4 {
+			t.Fatalf("questions count = %d, want 4", len(mock.got.Questions))
 		}
-		for i := 0; i < 3; i++ {
+		for i := 0; i < 4; i++ {
 			key := fmt.Sprintf("segment_%d", i)
 			q, ok := mock.got.Questions[key].(*jev.JevQuestionNoul)
 			if !ok {
@@ -168,7 +169,7 @@ func TestExtractName(t *testing.T) {
 		}
 	})
 
-	t.Run("preserves segment order", func(t *testing.T) {
+	t.Run("preserves segment order and drops leading lowercase prefix", func(t *testing.T) {
 		mock := &mockJevRequester{resp: noulResponse(0.1, 0.99, 0.98)}
 		e := NewContactExtractor(mock)
 
@@ -176,8 +177,8 @@ func TestExtractName(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ExtractName() error = %v", err)
 		}
-		if result.Name != "de Tal" {
-			t.Errorf("Name = %q, want %q", result.Name, "de Tal")
+		if result.Name != "Tal" {
+			t.Errorf("Name = %q, want %q", result.Name, "Tal")
 		}
 		wantTexts := []string{"Fulano", "de", "Tal"}
 		if len(result.Segments) != len(wantTexts) {
@@ -187,6 +188,9 @@ func TestExtractName(t *testing.T) {
 			if result.Segments[i].Text != wantTexts[i] {
 				t.Errorf("Segments[%d].Text = %q, want %q", i, result.Segments[i].Text, wantTexts[i])
 			}
+		}
+		if result.Segments[1].Included {
+			t.Error("Segments[1] (de) should be flipped to Included=false by the post-filter")
 		}
 	})
 
@@ -277,6 +281,86 @@ func TestExtractName(t *testing.T) {
 		}
 		if result.Name != "Pedro Henrique Jr." {
 			t.Errorf("Name = %q, want %q", result.Name, "Pedro Henrique Jr.")
+		}
+	})
+
+	t.Run("drops borderline leading preposition (flaky real-world case)", func(t *testing.T) {
+		message := "Salva o contato do João da Silva, telefone (11) 91234-5678"
+		probe := NewContactExtractor(&mockJevRequester{})
+		_, span, ok := probe.ExtractPhone(message)
+		if !ok {
+			t.Fatal("ExtractPhone() = false, want true")
+		}
+
+		// "do" scores above 0.5 one run and below the next — the post-filter
+		// must make the outcome identical either way.
+		for _, nouls := range [][]float64{
+			{0.1, 0.1, 0.1, 0.55, 0.99, 0.99, 0.99, 0.1}, // "do" crosses the threshold
+			{0.1, 0.1, 0.1, 0.45, 0.99, 0.99, 0.99, 0.1}, // "do" stays below
+		} {
+			mock := &mockJevRequester{resp: noulResponse(nouls...)}
+			e := NewContactExtractor(mock)
+			result, err := e.ExtractName(message, []Span{span})
+			if err != nil {
+				t.Fatalf("ExtractName() error = %v", err)
+			}
+			if result.Name != "João da Silva" {
+				t.Errorf("Name = %q, want %q", result.Name, "João da Silva")
+			}
+			for _, seg := range result.Segments {
+				if seg.Text == "do" && seg.Included {
+					t.Error("segment 'do' must be excluded by the post-filter")
+				}
+			}
+		}
+	})
+
+	t.Run("rescues mid-name particle that jev scored low", func(t *testing.T) {
+		// Segments: Contato, do, José, Carlos, de, Souza. Jev scores the mid-name
+		// particle "de" inconsistently across runs; the position-based rule makes
+		// the outcome identical either way.
+		for _, nouls := range [][]float64{
+			{0.1, 0.55, 0.99, 0.99, 0.45, 0.99}, // leading "do" included, "de" just below
+			{0.1, 0.45, 0.99, 0.99, 0.05, 0.99}, // leading "do" excluded, "de" scored very low
+		} {
+			mock := &mockJevRequester{resp: noulResponse(nouls...)}
+			e := NewContactExtractor(mock)
+
+			result, err := e.ExtractName("Contato do José Carlos de Souza", nil)
+			if err != nil {
+				t.Fatalf("ExtractName() error = %v", err)
+			}
+			// The leading "do" is always dropped (noise at the start); the "de"
+			// between two capitalized names is always kept (a surname particle).
+			if result.Name != "José Carlos de Souza" {
+				t.Errorf("Name = %q, want %q", result.Name, "José Carlos de Souza")
+			}
+		}
+	})
+
+	t.Run("keeps all-lowercase name when no capitalized segment follows", func(t *testing.T) {
+		mock := &mockJevRequester{resp: noulResponse(0.99, 0.99)}
+		e := NewContactExtractor(mock)
+
+		result, err := e.ExtractName("ana clara", nil)
+		if err != nil {
+			t.Fatalf("ExtractName() error = %v", err)
+		}
+		if result.Name != "ana clara" {
+			t.Errorf("Name = %q, want %q", result.Name, "ana clara")
+		}
+	})
+
+	t.Run("keeps mid-name particles like da and de", func(t *testing.T) {
+		mock := &mockJevRequester{resp: noulResponse(0.99, 0.99, 0.99, 0.99)}
+		e := NewContactExtractor(mock)
+
+		result, err := e.ExtractName("José Carlos de Souza", nil)
+		if err != nil {
+			t.Fatalf("ExtractName() error = %v", err)
+		}
+		if result.Name != "José Carlos de Souza" {
+			t.Errorf("Name = %q, want %q", result.Name, "José Carlos de Souza")
 		}
 	})
 }

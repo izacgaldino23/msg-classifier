@@ -143,14 +143,16 @@ func TestPromptServiceEvaluateNameAccentInsensitive(t *testing.T) {
 }
 
 func TestPromptServiceEvaluateNameMismatch(t *testing.T) {
-	mock := &mockJevRequester{resp: noulResponse(0.99, 0.1, 0.98)}
+	// A genuine mismatch: Jev includes "Maria" but drops "Clara" (no particle
+	// involved), so the obtained name differs from the expected.
+	mock := &mockJevRequester{resp: noulResponse(0.99, 0.1, 0.99)}
 	service, db := newPromptService(t, nil, NewContactExtractor(mock), nil)
-	prompt := &models.JevPrompt{Flow: models.FlowName, Message: "João da Silva", ExpectedResult: "João da Silva"}
+	prompt := &models.JevPrompt{Flow: models.FlowName, Message: "Maria Clara Oliveira", ExpectedResult: "Maria Clara Oliveira"}
 	require.NoError(t, db.Create(prompt).Error)
 
 	results, err := service.Evaluate(models.FlowName, []uint{prompt.ID})
 	require.NoError(t, err)
-	assert.Equal(t, "João Silva", results[0].ObtainedResult)
+	assert.Equal(t, "Maria Oliveira", results[0].ObtainedResult)
 	assert.False(t, results[0].Match)
 }
 
