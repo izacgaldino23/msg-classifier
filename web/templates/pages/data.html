@@ -11,6 +11,9 @@
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="tab-notes" type="button" role="tab" data-bs-toggle="tab" data-bs-target="#pane-notes" onclick="activateFilterPills('pane-notes')">Notas</button>
         </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="tab-finance" type="button" role="tab" data-bs-toggle="tab" data-bs-target="#pane-finance" onclick="activateFilterPills('pane-finance')">Finanças</button>
+        </li>
     </ul>
 
     <div class="tab-content">
@@ -29,6 +32,21 @@
                 <li class="nav-item"><button type="button" class="nav-link" data-filter-pill hx-get="/data/table?kind=notes&filter=reminder" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" onclick="markFilterPill(this)">Lembretes</button></li>
                 <li class="nav-item"><button type="button" class="nav-link" data-filter-pill hx-get="/data/table?kind=notes&filter=todo" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" onclick="markFilterPill(this)">Listas</button></li>
             </ul>
+        </div>
+        <div class="tab-pane fade" id="pane-finance" role="tabpanel" aria-labelledby="tab-finance">
+            <ul class="nav nav-pills mb-3">
+                <li class="nav-item"><button type="button" class="nav-link active" data-filter-pill data-filter="all" hx-get="/data/table?kind=transaction&filter=all" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" onclick="markFilterPill(this)">Todas</button></li>
+                <li class="nav-item"><button type="button" class="nav-link" data-filter-pill data-filter="compra" hx-get="/data/table?kind=transaction&filter=compra" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" onclick="markFilterPill(this)">Compras</button></li>
+                <li class="nav-item"><button type="button" class="nav-link" data-filter-pill data-filter="venda" hx-get="/data/table?kind=transaction&filter=venda" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" onclick="markFilterPill(this)">Vendas</button></li>
+                <li class="nav-item"><button type="button" class="nav-link" data-filter-pill data-filter="pagamento" hx-get="/data/table?kind=transaction&filter=pagamento" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" onclick="markFilterPill(this)">Pagamentos</button></li>
+                <li class="nav-item"><button type="button" class="nav-link" data-filter-pill data-filter="recebimento" hx-get="/data/table?kind=transaction&filter=recebimento" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" onclick="markFilterPill(this)">Recebimentos</button></li>
+            </ul>
+            <form id="txSearchForm" class="d-flex gap-2 mb-3" hx-get="/data/table" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" hx-trigger="input changed delay:400ms from:#txSearch, search, submit">
+                <input type="hidden" name="kind" value="transaction">
+                <input type="hidden" name="filter" value="all" id="txSearchFilter">
+                <input type="search" id="txSearch" name="search" class="form-control" placeholder="Buscar por estabelecimento, pessoa ou valor...">
+                <button type="submit" class="btn btn-primary">Buscar</button>
+            </form>
         </div>
     </div>
 
@@ -49,6 +67,12 @@
         function markFilterPill(pill) {
             pill.closest('.nav-pills').querySelectorAll('.nav-link')
                 .forEach(p => p.classList.toggle('active', p === pill));
+            // The finance search box carries its own filter, so a pill click
+            // re-points it: otherwise a search would filter a different type
+            // than the one on screen.
+            if (pill.dataset.filter) {
+                document.getElementById('txSearchFilter').value = pill.dataset.filter;
+            }
         }
 
         // Switching the outer tab must not leave the other kind's table on

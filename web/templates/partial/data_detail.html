@@ -1,10 +1,13 @@
 {{ define "data_detail" }}
 {{ $edit := eq .Mode "edit" }}
 {{ $id := 0 }}
-{{ if .Contact }}{{ $id = .Contact.ID }}{{ else }}{{ $id = .Note.ID }}{{ end }}
+{{ if .Contact }}{{ $id = .Contact.ID }}{{ else if .Transaction }}{{ $id = .Transaction.ID }}{{ else }}{{ $id = .Note.ID }}{{ end }}
 <div class="mb-3">
     {{ if .Contact }}
         <span class="badge badge-cat-contact">Contato</span>
+    {{ else if .Transaction }}
+        <span class="badge badge-cat-finance">Transação</span>
+        <span class="badge badge-tx-{{ .Transaction.Type }}">{{ label .Transaction.Type }}</span>
     {{ else }}
         <span class="badge badge-cat-notes">Nota</span>
         <span class="badge badge-note-{{ .Note.Type }}">{{ label .Note.Type }}</span>
@@ -26,6 +29,33 @@
             <div class="mb-3">
                 <label for="detail-email" class="form-label">E-mail</label>
                 <input type="text" id="detail-email" name="email" class="form-control" value="{{ deref .Contact.Email }}">
+            </div>
+        {{ else if .Transaction }}
+            <div class="mb-3">
+                <label for="detail-type" class="form-label">Tipo</label>
+                <select id="detail-type" name="type" class="form-select">
+                    <option value="compra" {{ if eq .Transaction.Type "compra" }}selected{{ end }}>{{ label "compra" }}</option>
+                    <option value="venda" {{ if eq .Transaction.Type "venda" }}selected{{ end }}>{{ label "venda" }}</option>
+                    <option value="pagamento" {{ if eq .Transaction.Type "pagamento" }}selected{{ end }}>{{ label "pagamento" }}</option>
+                    <option value="recebimento" {{ if eq .Transaction.Type "recebimento" }}selected{{ end }}>{{ label "recebimento" }}</option>
+                    <option value="transferencia" {{ if eq .Transaction.Type "transferencia" }}selected{{ end }}>{{ label "transferencia" }}</option>
+                </select>
+            </div>
+            <div class="mb-3">
+                <label for="detail-amount" class="form-label">Valor</label>
+                <input type="text" id="detail-amount" name="amount" class="form-control" value="{{ money .Transaction.Amount }}" placeholder="50,00" required>
+            </div>
+            <div class="mb-3">
+                <label for="detail-date" class="form-label">Data</label>
+                <input type="text" id="detail-date" name="date" class="form-control" value="{{ dateBR .Transaction.Date }}" placeholder="dd/mm/aaaa" required>
+            </div>
+            <div class="mb-3">
+                <label for="detail-party" class="form-label">Estabelecimento ou pessoa</label>
+                <input type="text" id="detail-party" name="party" class="form-control" value="{{ .Transaction.Party }}">
+            </div>
+            <div class="mb-3">
+                <label for="detail-tx-content" class="form-label">Mensagem original</label>
+                <textarea id="detail-tx-content" name="content" class="form-control" rows="2">{{ .Transaction.Content }}</textarea>
             </div>
         {{ else }}
             <div class="mb-3">

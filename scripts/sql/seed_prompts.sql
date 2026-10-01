@@ -36,4 +36,13 @@ INSERT INTO jev_prompts (flow, message, expected_result) VALUES
 ('note', '1. revisar contrato 2. enviar relatório 3. ligar para o cliente', 'todo'),
 ('note', 'Comprar: arroz, feijão, alho e 2 cenouras', 'todo'),
 ('note', 'Lista do mercado: óleo, açúcar e café', 'todo'),
-('note', 'Pendências: ligar para o banco, conferir o extrato e pagar a fatura', 'todo');
+('note', 'Pendências: ligar para o banco, conferir o extrato e pagar a fatura', 'todo'),
+    ('finance', 'Gastei 50 reais no supermercado hoje', 'compra'),
+    ('finance', 'Comprei pão, leite e ovos no mercado', 'compra'),
+    ('finance', 'Paguei a conta de luz, 250 reais', 'pagamento'),
+    ('finance', 'Recebi 500 reais do MoviePy, versão', 'recebimento'),
+    ('finance', 'Vendi meu notebook por 800 reais', 'venda'),
+    ('finance', 'Transferi 200 reais para a conta da minha mãe', 'transferencia'),
+    ('finance', 'Cabo de celular 20 reais hoje no cartão', 'compra'),
+    ('finance', 'Aluguel 1200 reais', 'pagamento'),
+    ('finance', 'Café na padaria 8 reais', 'compra');

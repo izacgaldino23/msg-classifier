@@ -4,9 +4,10 @@ import "time"
 
 // Flow constants identify the Jev flows the validation harness can evaluate.
 const (
-	FlowClassification = "classification"
+FlowClassification = "classification"
 	FlowName           = "name"
 	FlowNote           = "note"
+	FlowFinance        = "finance"
 )
 
 // JevPrompt is a persisted example message with its expected Jev result.

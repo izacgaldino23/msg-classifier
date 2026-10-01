@@ -22,10 +22,11 @@ const (
 	PromptTableTemplate       = "prompt_table"
 	EvaluationResultsTemplate = "evaluation_results"
 
-	contactsTableTmpl = "contacts_table"
-	notesTableTmpl    = "notes_table"
-	dataDetailTmpl    = "data_detail"
-	dataItemRowTmpl   = "data_item_row"
+	contactsTableTmpl     = "contacts_table"
+	notesTableTmpl        = "notes_table"
+	transactionsTableTmpl = "transactions_table"
+	dataDetailTmpl        = "data_detail"
+	dataItemRowTmpl       = "data_item_row"
 )
 
 const (
@@ -148,12 +149,14 @@ func Label(choice any) string {
 	return s
 }
 
-// DataDetailData is the view model for the "data_detail" partial.
+// DataDetailData is the view model for the "data_detail" partial. Only one of
+// Contact, Note or Transaction is set, matching Kind.
 type DataDetailData struct {
-	Kind    string
-	Mode    string
-	Contact *models.Contact
-	Note    *models.Note
+	Kind        string
+	Mode        string
+	Contact     *models.Contact
+	Note        *models.Note
+	Transaction *models.Transaction
 }
 
 // ItemRowData is the view model for the "data_item_row" partial — one to-do item
@@ -171,6 +174,11 @@ func RenderContactsTable(c *gin.Context, filter string, contacts []models.Contac
 // RenderNotesTable renders the "notes_table" partial (HTTP 200).
 func RenderNotesTable(c *gin.Context, filter string, notes []*models.Note) {
 	c.HTML(http.StatusOK, notesTableTmpl, gin.H{"Filter": filter, "Notes": notes})
+}
+
+// RenderTransactionsTable renders the "transactions_table" partial (HTTP 200).
+func RenderTransactionsTable(c *gin.Context, filter string, transactions []*models.Transaction) {
+	c.HTML(http.StatusOK, transactionsTableTmpl, gin.H{"Filter": filter, "Transactions": transactions})
 }
 
 // RenderDataDetail renders the "data_detail" partial (HTTP 200).

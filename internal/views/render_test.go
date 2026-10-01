@@ -507,6 +507,15 @@ func TestRenderDataPage(t *testing.T) {
 		`hx-get="/data/table?kind=contact&filter=all"`,
 		`hx-get="/data/table?kind=contact&filter=name"`,
 		`hx-get="/data/table?kind=notes&filter=todo"`,
+		`hx-get="/data/table?kind=transaction&filter=all"`,
+		`hx-get="/data/table?kind=transaction&filter=compra"`,
+		`hx-get="/data/table?kind=transaction&filter=venda"`,
+		`hx-get="/data/table?kind=transaction&filter=pagamento"`,
+		`hx-get="/data/table?kind=transaction&filter=recebimento"`,
+		`id="pane-finance"`,
+		`id="txSearchForm"`,
+		`id="txSearch"`,
+		`onclick="activateFilterPills('pane-finance')"`,
 		`id="dataPanel"`,
 		`id="data-panel-body"`,
 		`data-bs-dismiss="offcanvas"`,
@@ -516,12 +525,18 @@ func TestRenderDataPage(t *testing.T) {
 			t.Errorf("data page missing %q: %s", want, body)
 		}
 	}
+	// The finance search box posts the kind and the current filter, so a search
+	// never escapes the selected type.
+	if !strings.Contains(body, `<input type="hidden" name="kind" value="transaction">`) {
+		t.Errorf("finance search missing the kind hidden input: %s", body)
+	}
 	// Filter pill state is client-side: without these the "active" class stays
 	// hardcoded on one pill and the highlight never follows the selection.
 	for _, want := range []string{
 		`onclick="markFilterPill(this)"`,
 		`onclick="activateFilterPills('pane-contacts')"`,
 		`onclick="activateFilterPills('pane-notes')"`,
+		`onclick="activateFilterPills('pane-finance')"`,
 		"function markFilterPill(pill)",
 		"function activateFilterPills(paneId)",
 	} {
@@ -529,11 +544,11 @@ func TestRenderDataPage(t *testing.T) {
 			t.Errorf("data page missing pill behaviour %q: %s", want, body)
 		}
 	}
-	if got := strings.Count(body, "data-filter-pill"); got != 8 {
-		t.Errorf("filter pills = %d, want 8 (4 contacts + 4 notes)", got)
+	if got := strings.Count(body, "data-filter-pill"); got != 13 {
+		t.Errorf("filter pills = %d, want 13 (4 contacts + 4 notes + 5 finance)", got)
 	}
-	if got := strings.Count(body, `class="nav-link active" data-filter-pill`); got != 2 {
-		t.Errorf("pre-selected filter pills = %d, want 2 (contact Todos + notes Todas)", got)
+	if got := strings.Count(body, `class="nav-link active" data-filter-pill`); got != 3 {
+		t.Errorf("pre-selected filter pills = %d, want 3 (one Todos per tab)", got)
 	}
 	// The contacts "Todos" pill boots the table on load but must stay clickable:
 	// an explicit hx-trigger replaces htmx's default click trigger, so "load" alone
@@ -806,6 +821,57 @@ func TestRenderDataDetailNoteReminderHasDateAndTime(t *testing.T) {
 	}
 	if strings.Contains(body, "id=\"todo-items\"") {
 		t.Errorf("a reminder should not render the to-do editor: %s", body)
+	}
+}
+
+func TestRenderDataDetailTransactionViewMode(t *testing.T) {
+	c, w := newTestContext()
+	date := time.Date(2026, 5, 10, 0, 0, 0, 0, time.UTC)
+	RenderDataDetail(c, DataDetailData{
+		Kind: "transaction",
+		Mode: "view",
+		Transaction: &models.Transaction{
+			ID: 7, Type: models.TransactionTypePayment, Amount: 1234.56,
+			Date: date, Party: "Farmácia", Content: "Paguei a fatura do cartão",
+		},
+	})
+	body := w.Body.String()
+	// Every option must be rendered and the stored one selected: an empty select
+	// is what the panel looked like when the transaction branch was truncated.
+	for _, want := range []string{
+		`name="type"`, `value="compra"`, `value="venda"`, `value="pagamento"`,
+		`value="recebimento"`, `value="transferencia"`, `value="pagamento" selected`,
+		`name="amount"`, `value="R$ 1.234,56"`, `name="date"`, `value="10/05/2026"`,
+		`name="party"`, `value="Farmácia"`, `name="content"`, "Paguei a fatura do cartão",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("transaction detail missing %q: %s", want, body)
+		}
+	}
+	if !strings.Contains(body, "<fieldset disabled>") {
+		t.Errorf("view mode must disable the fieldset: %s", body)
+	}
+}
+
+func TestRenderDataDetailTransactionEditModeEnablesFieldset(t *testing.T) {
+	c, w := newTestContext()
+	date := time.Date(2026, 5, 10, 0, 0, 0, 0, time.UTC)
+	RenderDataDetail(c, DataDetailData{
+		Kind:        "transaction",
+		Mode:        "edit",
+		Transaction: &models.Transaction{ID: 7, Type: models.TransactionTypePurchase, Amount: 50, Date: date, Party: "Padaria"},
+	})
+	body := w.Body.String()
+	if strings.Contains(body, "<fieldset disabled>") {
+		t.Errorf("edit mode must enable the fieldset: %s", body)
+	}
+	if !strings.Contains(body, `value="compra" selected`) {
+		t.Errorf("the stored type must be the selected option: %s", body)
+	}
+	// The amount must round-trip through ParseAmount, so it is prefilled in the
+	// shape the parser reads ("50.00" would parse back as 5000).
+	if !strings.Contains(body, `value="R$ 50,00"`) {
+		t.Errorf("amount must be prefilled with money: %s", body)
 	}
 }
 

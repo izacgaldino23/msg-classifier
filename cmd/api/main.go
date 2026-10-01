@@ -82,13 +82,13 @@ func main() {
 	})
 
 	promptRepo := repository.NewPromptRepository(db)
-	promptService := services.NewPromptService(promptRepo, classifier, extractor, noteExtractor)
+	promptService := services.NewPromptService(promptRepo, classifier, extractor, noteExtractor, financeExtractor)
 	promptController := controllers.NewPromptController(promptService)
 
 	webController := controllers.NewWebController()
 	messageController := controllers.NewMessageController(classifier, dispatcher)
 
-	dataService := services.NewDataService(contactRepo, notesRepo)
+	dataService := services.NewDataService(contactRepo, notesRepo, transactionsRepo)
 	dataController := controllers.NewDataController(dataService)
 
 	router.GET("/", webController.Home)

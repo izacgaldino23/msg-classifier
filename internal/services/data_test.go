@@ -12,12 +12,17 @@ import (
 	"gorm.io/gorm"
 )
 
-// newDataService reuses the package newTestDB (Contact) and adds the notes schema.
+// newDataService reuses the package newTestDB (Contact) and adds the notes and
+// transactions schemas.
 func newDataService(t *testing.T) (*DataService, *gorm.DB) {
 	t.Helper()
 	db := newTestDB(t)
-	require.NoError(t, db.AutoMigrate(&models.Note{}, &models.TodoItem{}), "AutoMigrate(notes)")
-	service := NewDataService(repository.NewContactRepository(db), repository.NewNotesRepository(db))
+	require.NoError(t, db.AutoMigrate(&models.Note{}, &models.TodoItem{}, &models.Transaction{}), "AutoMigrate(notes, transactions)")
+	service := NewDataService(
+		repository.NewContactRepository(db),
+		repository.NewNotesRepository(db),
+		repository.NewTransactionRepository(db),
+	)
 	return service, db
 }
 
@@ -201,6 +206,108 @@ func TestDataServiceUpdateNoteNotFound(t *testing.T) {
 
 	_, err := service.UpdateNote(999, "x", "", "", nil, nil)
 	assert.ErrorIs(t, err, repository.ErrNotFound)
+}
+
+func TestDataServiceListTransactions(t *testing.T) {
+	service, db := newDataService(t)
+	db.Create(&models.Transaction{Type: models.TransactionTypePurchase, Amount: 50, Date: noteTestDate(), Party: "Supermercado"})
+	db.Create(&models.Transaction{Type: models.TransactionTypePayment, Amount: 120, Date: noteTestDate(), Party: "Conta"})
+
+	// "all" is the gate's own vocabulary, not a type: the repository reads a
+	// non-empty Type as an equality filter, so it must never reach the query.
+	all, err := service.ListTransactions(TransactionFilterAll, "")
+	require.NoError(t, err)
+	assert.Len(t, all, 2)
+
+	empty, err := service.ListTransactions("", "")
+	require.NoError(t, err, "an empty filter means all")
+	assert.Len(t, empty, 2)
+
+	purchases, err := service.ListTransactions(models.TransactionTypePurchase, "")
+	require.NoError(t, err)
+	require.Len(t, purchases, 1)
+	assert.Equal(t, models.TransactionTypePurchase, purchases[0].Type)
+
+	search, err := service.ListTransactions(TransactionFilterAll, "supermercado")
+	require.NoError(t, err)
+	require.Len(t, search, 1)
+	assert.Equal(t, 50.0, search[0].Amount)
+
+	_, err = service.ListTransactions("bogus", "")
+	assert.ErrorIs(t, err, ErrInvalidFilter)
+}
+
+func TestDataServiceGetTransaction(t *testing.T) {
+	service, db := newDataService(t)
+	transaction := &models.Transaction{Type: models.TransactionTypeSale, Amount: 30, Date: noteTestDate(), Party: "Fulano"}
+	require.NoError(t, db.Create(transaction).Error)
+
+	found, err := service.GetTransaction(transaction.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "Fulano", found.Party)
+
+	_, err = service.GetTransaction(transaction.ID + 99)
+	assert.ErrorIs(t, err, repository.ErrNotFound)
+}
+
+func TestDataServiceUpdateTransaction(t *testing.T) {
+	service, db := newDataService(t)
+	transaction := &models.Transaction{Type: models.TransactionTypePurchase, Amount: 50, Date: noteTestDate(), Party: "Padaria"}
+	require.NoError(t, db.Create(transaction).Error)
+
+	// The amount and date go back through the finance parsers, so an edit can
+	// never store a value the message flow would not have produced.
+	saved, err := service.UpdateTransaction(transaction.ID, models.DataForm{
+		Type: models.TransactionTypePayment, Amount: "1.234,56", Date: "12/07/2026", Party: "Farmácia",
+	})
+	require.NoError(t, err)
+
+	updated, err := service.GetTransaction(saved.ID)
+	require.NoError(t, err)
+	assert.Equal(t, models.TransactionTypePayment, updated.Type)
+	assert.InDelta(t, 1234.56, updated.Amount, 0.001)
+	assert.Equal(t, "Farmácia", updated.Party)
+	assert.Equal(t, time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC), updated.Date)
+}
+
+func TestDataServiceUpdateTransactionInvalidInput(t *testing.T) {
+	service, db := newDataService(t)
+	transaction := &models.Transaction{Type: models.TransactionTypePurchase, Amount: 50, Date: noteTestDate()}
+	require.NoError(t, db.Create(transaction).Error)
+
+	tests := []struct {
+		name string
+		form models.DataForm
+	}{
+		{"unknown type", models.DataForm{Type: "bogus", Amount: "10,00", Date: "12/07/2026"}},
+		{"unparseable amount", models.DataForm{Type: models.TransactionTypePayment, Amount: "muito", Date: "12/07/2026"}},
+		{"unparseable date", models.DataForm{Type: models.TransactionTypePayment, Amount: "10,00", Date: "quinta"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := service.UpdateTransaction(transaction.ID, tt.form)
+			assert.ErrorIs(t, err, ErrInvalidData)
+		})
+	}
+
+	_, err := service.UpdateTransaction(transaction.ID+99, models.DataForm{
+		Type: models.TransactionTypePayment, Amount: "10,00", Date: "12/07/2026",
+	})
+	assert.ErrorIs(t, err, repository.ErrNotFound)
+}
+
+func TestDataServiceDeleteTransactions(t *testing.T) {
+	service, db := newDataService(t)
+	first := &models.Transaction{Type: models.TransactionTypePurchase, Amount: 10, Date: noteTestDate()}
+	second := &models.Transaction{Type: models.TransactionTypeSale, Amount: 20, Date: noteTestDate()}
+	require.NoError(t, db.Create(first).Error)
+	require.NoError(t, db.Create(second).Error)
+
+	require.NoError(t, service.DeleteTransactions([]uint{first.ID, second.ID}))
+
+	remaining, err := service.ListTransactions(TransactionFilterAll, "")
+	require.NoError(t, err)
+	assert.Empty(t, remaining)
 }
 
 func TestDataServiceDelete(t *testing.T) {

@@ -12,8 +12,9 @@ import (
 
 // Data screen kinds — the :kind route segment.
 const (
-	DataKindContact = "contact"
-	DataKindNotes   = "notes"
+	DataKindContact      = "contact"
+	DataKindNotes        = "notes"
+	DataKindTransactions = "transaction"
 )
 
 // Filters accepted by ListContacts.
@@ -32,6 +33,87 @@ const (
 	NoteFilterTodo     = "todo"
 )
 
+// Filters accepted by ListTransactions on top of the transaction types.
+const (
+	TransactionFilterAll = "all"
+)
+
+// ListTransactions returns the transactions matching the filter and the optional
+// search term, newest first. The filter is one of the transaction types or "all";
+// an empty filter means "all" and an unknown one is ErrInvalidFilter.
+func (s *DataService) ListTransactions(filter, term string) ([]*models.Transaction, error) {
+	switch filter {
+	case "", TransactionFilterAll, models.TransactionTypePurchase, models.TransactionTypeSale,
+		models.TransactionTypePayment, models.TransactionTypeReceipt, models.TransactionTypeTransfer:
+	default:
+		return nil, fmt.Errorf("%w: transaction filter %q", ErrInvalidFilter, filter)
+	}
+	// "all" is this gate's own vocabulary, not a transaction type: the repository
+	// reads a non-empty Type as an equality filter, so "all" would match nothing.
+	if filter == "" || filter == TransactionFilterAll {
+		filter = ""
+	}
+	transactions, err := s.transactions.List(repository.TransactionFilter{Type: filter, Term: strings.TrimSpace(term)})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list transactions: %w", err)
+	}
+	return transactions, nil
+}
+
+// GetTransaction returns a transaction by id; repository.ErrNotFound propagates so
+// the controller can answer 404.
+func (s *DataService) GetTransaction(id uint) (*models.Transaction, error) {
+	transaction, err := s.transactions.FindByID(id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load transaction: %w", err)
+	}
+	return transaction, nil
+}
+
+// UpdateTransaction validates and persists the editable transaction fields. The
+// amount is re-parsed from the typed text with the same parser the add path uses,
+// and the date through the same event-date parser, so an edit can never store a
+// value the message flow would not have produced.
+func (s *DataService) UpdateTransaction(id uint, form models.DataForm) (*models.Transaction, error) {
+	transaction, err := s.GetTransaction(id)
+	if err != nil {
+		return nil, err
+	}
+	if !models.IsTransactionType(form.Type) {
+		return nil, fmt.Errorf("%w: transaction type %q", ErrInvalidData, form.Type)
+	}
+	amount, ok := ParseAmount(form.Amount)
+	if !ok || amount <= 0 {
+		return nil, fmt.Errorf("%w: transaction amount %q", ErrInvalidData, form.Amount)
+	}
+	date, ok := ParseEventDate(form.Date, time.Now())
+	if !ok {
+		return nil, fmt.Errorf("%w: unparseable date %q", ErrInvalidData, form.Date)
+	}
+	transaction.Type = form.Type
+	transaction.Amount = amount
+	transaction.Date = date
+	transaction.Party = strings.TrimSpace(form.Party)
+	if content := strings.TrimSpace(form.Content); content != "" {
+		transaction.Content = content
+	}
+	if err := s.transactions.Save(transaction); err != nil {
+		return nil, fmt.Errorf("failed to update transaction: %w", err)
+	}
+	return transaction, nil
+}
+
+// DeleteTransactions removes the given transactions in a single statement.
+func (s *DataService) DeleteTransactions(ids []uint) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	if err := s.transactions.DeleteByIDs(ids); err != nil {
+		return fmt.Errorf("failed to delete transactions: %w", err)
+	}
+	return nil
+}
+
 var (
 	// ErrInvalidFilter marks an unknown kind or filter; controllers map it to 400.
 	ErrInvalidFilter = errors.New("invalid data filter")
@@ -45,12 +127,13 @@ var (
 // flow. It reuses the package's unexported normalizeName so NameNorm stays
 // consistent with the add path.
 type DataService struct {
-	contacts *repository.ContactRepository
-	notes    *repository.NotesRepository
+	contacts     *repository.ContactRepository
+	notes        *repository.NotesRepository
+	transactions *repository.TransactionRepository
 }
 
-func NewDataService(contacts *repository.ContactRepository, notes *repository.NotesRepository) *DataService {
-	return &DataService{contacts: contacts, notes: notes}
+func NewDataService(contacts *repository.ContactRepository, notes *repository.NotesRepository, transactions *repository.TransactionRepository) *DataService {
+	return &DataService{contacts: contacts, notes: notes, transactions: transactions}
 }
 
 // ListContacts returns the contacts matching the filter, newest first. An empty

@@ -17,11 +17,11 @@ import (
 )
 
 // newPromptService reuses the package newTestDB (Contact) and adds the JevPrompt table.
-func newPromptService(t *testing.T, classifier *ClassificationService, extractor *ContactExtractor, noteExtractor *NoteExtractor) (*PromptService, *gorm.DB) {
+func newPromptService(t *testing.T, classifier *ClassificationService, extractor *ContactExtractor, noteExtractor *NoteExtractor, financeExtractor *FinanceExtractor) (*PromptService, *gorm.DB) {
 	t.Helper()
 	db := newTestDB(t)
 	require.NoError(t, db.AutoMigrate(&models.JevPrompt{}), "AutoMigrate(JevPrompt)")
-	return NewPromptService(repository.NewPromptRepository(db), classifier, extractor, noteExtractor), db
+	return NewPromptService(repository.NewPromptRepository(db), classifier, extractor, noteExtractor, financeExtractor), db
 }
 
 // failFirstJevClient fails the first Jev call, then succeeds — for per-prompt error capture.
@@ -39,7 +39,7 @@ func (m *failFirstJevClient) MakeJevRequestFromFile(state jev.JevState, fileName
 }
 
 func TestPromptServiceAdd(t *testing.T) {
-	service, db := newPromptService(t, nil, nil, nil)
+	service, db := newPromptService(t, nil, nil, nil, nil)
 
 	prompt, err := service.Add(models.FlowClassification, "salva fulano", "contact:add")
 	require.NoError(t, err)
@@ -52,14 +52,14 @@ func TestPromptServiceAdd(t *testing.T) {
 }
 
 func TestPromptServiceAddInvalidFlow(t *testing.T) {
-	service, _ := newPromptService(t, nil, nil, nil)
+	service, _ := newPromptService(t, nil, nil, nil, nil)
 
 	_, err := service.Add("bogus", "msg", "expected")
 	assert.ErrorIs(t, err, ErrInvalidPrompt)
 }
 
 func TestPromptServiceAddEmptyFields(t *testing.T) {
-	service, _ := newPromptService(t, nil, nil, nil)
+	service, _ := newPromptService(t, nil, nil, nil, nil)
 
 	_, err := service.Add(models.FlowClassification, "  ", "expected")
 	assert.ErrorIs(t, err, ErrInvalidPrompt)
@@ -69,7 +69,7 @@ func TestPromptServiceAddEmptyFields(t *testing.T) {
 }
 
 func TestPromptServiceListByFlow(t *testing.T) {
-	service, db := newPromptService(t, nil, nil, nil)
+	service, db := newPromptService(t, nil, nil, nil, nil)
 	db.Create(&models.JevPrompt{Flow: models.FlowClassification, Message: "a", ExpectedResult: "contact:add"})
 	db.Create(&models.JevPrompt{Flow: models.FlowName, Message: "b", ExpectedResult: "João"})
 
@@ -81,7 +81,7 @@ func TestPromptServiceListByFlow(t *testing.T) {
 
 func TestPromptServiceEvaluateClassification(t *testing.T) {
 	mock := &mockJevClient{resp: choiceResponse("contact", "add", 0.95)}
-	service, db := newPromptService(t, NewClassificationService(mock), nil, nil)
+	service, db := newPromptService(t, NewClassificationService(mock), nil, nil, nil)
 	prompt := &models.JevPrompt{Flow: models.FlowClassification, Message: "salva fulano", ExpectedResult: "contact:add"}
 	require.NoError(t, db.Create(prompt).Error)
 
@@ -95,7 +95,7 @@ func TestPromptServiceEvaluateClassification(t *testing.T) {
 
 func TestPromptServiceEvaluateClassificationCaseInsensitive(t *testing.T) {
 	mock := &mockJevClient{resp: choiceResponse("Contact", "Add", 0.9)}
-	service, db := newPromptService(t, NewClassificationService(mock), nil, nil)
+	service, db := newPromptService(t, NewClassificationService(mock), nil, nil, nil)
 	prompt := &models.JevPrompt{Flow: models.FlowClassification, Message: "salva fulano", ExpectedResult: "contact:add"}
 	require.NoError(t, db.Create(prompt).Error)
 
@@ -106,7 +106,7 @@ func TestPromptServiceEvaluateClassificationCaseInsensitive(t *testing.T) {
 
 func TestPromptServiceEvaluateClassificationMismatch(t *testing.T) {
 	mock := &mockJevClient{resp: choiceResponse("finance", "require", 0.9)}
-	service, db := newPromptService(t, NewClassificationService(mock), nil, nil)
+	service, db := newPromptService(t, NewClassificationService(mock), nil, nil, nil)
 	prompt := &models.JevPrompt{Flow: models.FlowClassification, Message: "quanto gastei?", ExpectedResult: "contact:add"}
 	require.NoError(t, db.Create(prompt).Error)
 
@@ -118,7 +118,7 @@ func TestPromptServiceEvaluateClassificationMismatch(t *testing.T) {
 
 func TestPromptServiceEvaluateName(t *testing.T) {
 	mock := &mockJevRequester{resp: noulResponse(0.99, 0.98, 0.98)}
-	service, db := newPromptService(t, nil, NewContactExtractor(mock), nil)
+	service, db := newPromptService(t, nil, NewContactExtractor(mock), nil, nil)
 	prompt := &models.JevPrompt{Flow: models.FlowName, Message: "João da Silva", ExpectedResult: "João da Silva"}
 	require.NoError(t, db.Create(prompt).Error)
 
@@ -133,7 +133,7 @@ func TestPromptServiceEvaluateName(t *testing.T) {
 
 func TestPromptServiceEvaluateNameAccentInsensitive(t *testing.T) {
 	mock := &mockJevRequester{resp: noulResponse(0.99, 0.98, 0.98)}
-	service, db := newPromptService(t, nil, NewContactExtractor(mock), nil)
+	service, db := newPromptService(t, nil, NewContactExtractor(mock), nil, nil)
 	prompt := &models.JevPrompt{Flow: models.FlowName, Message: "João da Silva", ExpectedResult: "JOAO DA SILVA"}
 	require.NoError(t, db.Create(prompt).Error)
 
@@ -146,7 +146,7 @@ func TestPromptServiceEvaluateNameMismatch(t *testing.T) {
 	// A genuine mismatch: Jev includes "Maria" but drops "Clara" (no particle
 	// involved), so the obtained name differs from the expected.
 	mock := &mockJevRequester{resp: noulResponse(0.99, 0.1, 0.99)}
-	service, db := newPromptService(t, nil, NewContactExtractor(mock), nil)
+	service, db := newPromptService(t, nil, NewContactExtractor(mock), nil, nil)
 	prompt := &models.JevPrompt{Flow: models.FlowName, Message: "Maria Clara Oliveira", ExpectedResult: "Maria Clara Oliveira"}
 	require.NoError(t, db.Create(prompt).Error)
 
@@ -158,7 +158,7 @@ func TestPromptServiceEvaluateNameMismatch(t *testing.T) {
 
 func TestPromptServiceEvaluateFiltersSelectedIDs(t *testing.T) {
 	mock := &mockJevClient{resp: choiceResponse("contact", "add", 0.95)}
-	service, db := newPromptService(t, NewClassificationService(mock), nil, nil)
+	service, db := newPromptService(t, NewClassificationService(mock), nil, nil, nil)
 	p1 := &models.JevPrompt{Flow: models.FlowClassification, Message: "a", ExpectedResult: "contact:add"}
 	p2 := &models.JevPrompt{Flow: models.FlowClassification, Message: "b", ExpectedResult: "contact:add"}
 	require.NoError(t, db.Create(p1).Error)
@@ -172,7 +172,7 @@ func TestPromptServiceEvaluateFiltersSelectedIDs(t *testing.T) {
 
 func TestPromptServiceEvaluateNoSelection(t *testing.T) {
 	mock := &mockJevClient{resp: choiceResponse("contact", "add", 0.95)}
-	service, db := newPromptService(t, NewClassificationService(mock), nil, nil)
+	service, db := newPromptService(t, NewClassificationService(mock), nil, nil, nil)
 	db.Create(&models.JevPrompt{Flow: models.FlowClassification, Message: "a", ExpectedResult: "contact:add"})
 
 	results, err := service.Evaluate(models.FlowClassification, []uint{999})
@@ -182,7 +182,7 @@ func TestPromptServiceEvaluateNoSelection(t *testing.T) {
 
 func TestPromptServiceEvaluatePerPromptErrorCapture(t *testing.T) {
 	mock := &failFirstJevClient{resp: choiceResponse("contact", "add", 0.95)}
-	service, db := newPromptService(t, NewClassificationService(mock), nil, nil)
+	service, db := newPromptService(t, NewClassificationService(mock), nil, nil, nil)
 	p1 := &models.JevPrompt{Flow: models.FlowClassification, Message: "primeiro", ExpectedResult: "contact:add"}
 	p2 := &models.JevPrompt{Flow: models.FlowClassification, Message: "segundo", ExpectedResult: "contact:add"}
 	require.NoError(t, db.Create(p1).Error)
@@ -203,7 +203,7 @@ func TestPromptServiceExportCSV(t *testing.T) {
 	t.Cleanup(func() { exportDir = oldDir })
 
 	mock := &mockJevClient{resp: choiceResponse("contact", "add", 0.95)}
-	service, db := newPromptService(t, NewClassificationService(mock), nil, nil)
+	service, db := newPromptService(t, NewClassificationService(mock), nil, nil, nil)
 	prompt := &models.JevPrompt{Flow: models.FlowClassification, Message: "salva fulano", ExpectedResult: "contact:add"}
 	require.NoError(t, db.Create(prompt).Error)
 
@@ -226,7 +226,7 @@ func TestPromptServiceExportCSV(t *testing.T) {
 }
 
 func TestPromptServiceAddAcceptsNoteFlow(t *testing.T) {
-	service, _ := newPromptService(t, nil, nil, nil)
+	service, _ := newPromptService(t, nil, nil, nil, nil)
 
 	prompt, err := service.Add(models.FlowNote, "comprar pão, leite e ovos", models.NoteTypeTodo)
 	require.NoError(t, err)
@@ -235,7 +235,7 @@ func TestPromptServiceAddAcceptsNoteFlow(t *testing.T) {
 
 func TestPromptServiceEvaluateNote(t *testing.T) {
 	mock := &mockJevClient{resp: noteTypeResponse(models.NoteTypeReminder)}
-	service, db := newPromptService(t, nil, nil, NewNoteExtractor(mock))
+	service, db := newPromptService(t, nil, nil, NewNoteExtractor(mock), nil)
 	prompt := &models.JevPrompt{Flow: models.FlowNote, Message: "Me lembra de pagar a conta dia 10", ExpectedResult: "reminder"}
 	require.NoError(t, db.Create(prompt).Error)
 
@@ -249,7 +249,7 @@ func TestPromptServiceEvaluateNote(t *testing.T) {
 
 func TestPromptServiceEvaluateNoteCaseInsensitive(t *testing.T) {
 	mock := &mockJevClient{resp: noteTypeResponse("Todo")}
-	service, db := newPromptService(t, nil, nil, NewNoteExtractor(mock))
+	service, db := newPromptService(t, nil, nil, NewNoteExtractor(mock), nil)
 	prompt := &models.JevPrompt{Flow: models.FlowNote, Message: "comprar pão, leite", ExpectedResult: "todo"}
 	require.NoError(t, db.Create(prompt).Error)
 
@@ -260,7 +260,7 @@ func TestPromptServiceEvaluateNoteCaseInsensitive(t *testing.T) {
 
 func TestPromptServiceEvaluateNoteMismatch(t *testing.T) {
 	mock := &mockJevClient{resp: noteTypeResponse(models.NoteTypeNote)}
-	service, db := newPromptService(t, nil, nil, NewNoteExtractor(mock))
+	service, db := newPromptService(t, nil, nil, NewNoteExtractor(mock), nil)
 	prompt := &models.JevPrompt{Flow: models.FlowNote, Message: "me lembra de pagar a conta dia 10", ExpectedResult: "reminder"}
 	require.NoError(t, db.Create(prompt).Error)
 
@@ -272,11 +272,56 @@ func TestPromptServiceEvaluateNoteMismatch(t *testing.T) {
 
 func TestPromptServiceEvaluateNoteJevFailure(t *testing.T) {
 	mock := &mockJevClient{err: errors.New("boom")}
-	service, db := newPromptService(t, nil, nil, NewNoteExtractor(mock))
+	service, db := newPromptService(t, nil, nil, NewNoteExtractor(mock), nil)
 	prompt := &models.JevPrompt{Flow: models.FlowNote, Message: "anota isso", ExpectedResult: "note"}
 	require.NoError(t, db.Create(prompt).Error)
 
 	results, err := service.Evaluate(models.FlowNote, []uint{prompt.ID})
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.False(t, results[0].Match)
+	assert.Contains(t, results[0].ObtainedResult, "boom")
+}
+
+// The finance flow resolves the transaction type through the same
+// FinanceExtractor.Extract the finance use case runs.
+func TestPromptServiceEvaluateFinanceUsesProductionPath(t *testing.T) {
+	mock := &mockJevRequester{resp: financeResponse(models.TransactionTypePurchase, 0.88)}
+	service, db := newPromptService(t, nil, nil, nil, NewFinanceExtractor(mock))
+	prompt := &models.JevPrompt{Flow: models.FlowFinance, Message: "Comprei arroz no supermercado por 50 reais", ExpectedResult: models.TransactionTypePurchase}
+	require.NoError(t, db.Create(prompt).Error)
+
+	results, err := service.Evaluate(models.FlowFinance, []uint{prompt.ID})
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.True(t, results[0].Match)
+	assert.Equal(t, models.TransactionTypePurchase, results[0].ObtainedResult)
+
+	questions := mock.got.Questions
+	assert.Len(t, questions, 2, "the harness must use the production request shape")
+	assert.Contains(t, questions, typeAnswerKey)
+	assert.Contains(t, questions, segmentKey(0))
+}
+
+func TestPromptServiceEvaluateFinanceMismatch(t *testing.T) {
+	mock := &mockJevRequester{resp: financeResponse(models.TransactionTypePurchase)}
+	service, db := newPromptService(t, nil, nil, nil, NewFinanceExtractor(mock))
+	prompt := &models.JevPrompt{Flow: models.FlowFinance, Message: "paguei a fatura", ExpectedResult: models.TransactionTypePayment}
+	require.NoError(t, db.Create(prompt).Error)
+
+	results, err := service.Evaluate(models.FlowFinance, []uint{prompt.ID})
+	require.NoError(t, err)
+	assert.Equal(t, models.TransactionTypePurchase, results[0].ObtainedResult)
+	assert.False(t, results[0].Match)
+}
+
+func TestPromptServiceEvaluateFinanceJevFailure(t *testing.T) {
+	mock := &mockJevRequester{err: errors.New("boom")}
+	service, db := newPromptService(t, nil, nil, nil, NewFinanceExtractor(mock))
+	prompt := &models.JevPrompt{Flow: models.FlowFinance, Message: "gastei 30 reais", ExpectedResult: models.TransactionTypePurchase}
+	require.NoError(t, db.Create(prompt).Error)
+
+	results, err := service.Evaluate(models.FlowFinance, []uint{prompt.ID})
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 	assert.False(t, results[0].Match)
