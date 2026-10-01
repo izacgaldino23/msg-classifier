@@ -15,8 +15,8 @@ Conventions observed in this codebase. Follow these when writing new code.
 | Variables | Short, lowercase, idiomatic Go | `c` (gin.Context), `ctrl` (controller), `router`, `tmpl`, `env` |
 | Struct fields | PascalCase with JSON tags | `UserID string \`json:"user_id" form:"user_id"\`` |
 | JSON / form tags | `snake_case` | `json:"message"`, `form:"user_id"`, `json:"criteria"` |
-| HTTP routes | lowercase | `/`, `/api/message` |
-| Template names | lowercase, `:`-namespaced blocks | `base`, `page:title`, `page:content`, `resultado`, `error` |
+| HTTP routes | lowercase | `/`, `/api/message`, `/data/:kind/:id` |
+| Template names | lowercase, `:`-namespaced blocks | `base`, `page:title`, `page:content`, `resultado`, `error`, `contacts_table`, `data_detail` |
 | Env variables | `SCREAMING_SNAKE_CASE` | `TYPESAFE_API_URL`, `TYPESAFE_MODEL`, `TS_API_KEY` |
 | Error strings | lowercase, wrapped with `%w` | `"failed to decode question %q in %q: %w"` |
 
@@ -29,7 +29,7 @@ Conventions observed in this codebase. Follow these when writing new code.
   - `models/` — DTOs and domain structs
   - `repository/` — persistence layer; structs with `New*` constructors holding `*gorm.DB`; methods return raw gorm errors; package exposes its own not-found sentinel (`ErrNotFound = gorm.ErrRecordNotFound`)
   - `services/` — business rules and orchestration; a use case that grew past one screen splits like the contact flow did (`contact.go` + `contact_get.go`, `note.go` + `note_get.go`).
-  - `views/` — template name constants + render helpers
+  - `views/` — template name constants + render helpers; page-scoped view models (`DataDetailData`) so controllers never hand entities to templates
 - **`pkg/`** — reusable packages: `pkg/request.go` (response helper), `pkg/jev/` (API client + embedded `requests/` JSON templates).
 - **`web/templates/`** — HTML templates split into `layouts/`, `pages/`, `partial/`.
 - **`scripts/sql/`** — SQL seed files (`seed_prompts.sql` wipes and re-seeds `jev_prompts`).
@@ -115,6 +115,17 @@ type jevClient interface {
 - CSV exports go to `exports/` (created on demand) via `encoding/csv` (stdlib).
 - Form DTOs (`PromptForm`, `EvaluateForm`) live in `internal/models`; `[]uint` form slices bind repeated `ids` values.
 
+### Data screen (/data)
+- A browse flow gets its own service composed from the existing repositories (`DataService`). Do **not** grow `ContactService`/`NotesService` with browse queries — those are the classification flow and their extraction logic has no meaning for browsing.
+- Filter validation belongs to the service, not the repository. The repository falls back to `all` on an unknown filter on purpose so other callers stay safe; `DataService` returns `ErrInvalidFilter` and the controller maps it to 400.
+- Register literal path segments **before** a `:param` route (`/data/table`, `/data/item-row` before `/data/:kind/:id`), or gin's router reads them as the parameter value.
+- View and edit are one template, not two: toggle `disabled` on the form's `fieldset` and swap the buttons. Two branches drift out of sync.
+- Repeat a row of markup with `{{ template "partial_name" . }}` and fetch a blank copy over htmx for "add" — never keep two copies of the same row.
+- Nullable columns (`*string`, `*time.Time`) get a `Deref`/`DateBR` template helper; rendering the pointer leaks `0xc000…` into the page.
+- Which tab/filter is selected is client-side state (`markFilterPill`). The server re-renders `#data-table` but never the pill list, so an `active` class rendered by the server cannot survive the re-render a delete triggers. Marking one pill `active` in the template is the initial state only — never the mechanism.
+- Switching an outer tab must load that pane's default filter (`activateFilterPills`), or the previous pane's table stays on screen looking like the new one. Load it **unconditionally**: Bootstrap toggles the pane's own `active` class, so a `classList.contains('active')` early return skips the load precisely when you re-select the tab that is already showing.
+- A pill that both boots a table on first paint and answers clicks carries `hx-trigger="load, click"`. An explicit `hx-trigger` **replaces** htmx's default `click` trigger, so a bare `hx-trigger="load"` turns the element into a dead button once the initial load fires — tabs would never re-load their pane's default filter, and direct clicks would do nothing.
+
 ### JSON responses
 Use `pkg.ReturnJson(c, status, body)` — wraps 2xx in `{"data": ...}`, everything else in `{"error": ...}`. Currently unused by htmx routes (they render HTML partials); kept for future JSON endpoints.
 
@@ -145,6 +156,7 @@ Never read `os.Getenv` directly outside `internal/config/env.go`. Config is read
 - Real in-memory SQLite (`newTestDB`) for repository/service integration tests.
 - Assert on sentinels with `errors.Is` (`ErrUpstream`, `repository.ErrNotFound`).
 - New to-do/note fixtures must use a fixed calendar date (`10/05/2026`) instead of "hoje"/"amanhã" so assertions never depend on the day the suite runs; relative forms are tested directly on the parser with an injected `now`.
+- Render tests assert on output with `strings.Contains`, and assert the absence of what must not leak: a prompt-page fragment in the data page, a pointer address in a table cell, a field that should be hidden.
 
 ## Do's and Don'ts
 
@@ -154,6 +166,7 @@ Never read `os.Getenv` directly outside `internal/config/env.go`. Config is read
 - Use `New*` constructors for controllers and services.
 - Keep controllers thin: bind → service → render. No business logic, no Jev types, no template literals in controllers.
 - Render through `internal/views` helpers.
+- Pass a view model from `internal/views` to a template, never an entity straight from the repository.
 - Access config through `config.GetEnv()` at the composition root and inject it.
 - Wrap errors with `%w` and lowercase messages.
 - Add JSON tags (`snake_case`) to all struct fields that cross the wire.

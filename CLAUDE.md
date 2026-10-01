@@ -4,6 +4,7 @@
 
 To learn fast, check ARCHITECTURE.md and CODE_STYLE.md.
 - `/prompts` — Jev validation harness (examples in `scripts/sql/seed_prompts.sql`, CSV exports to `exports/`).
+- `/data` — data screen (DC-006): browse/edit/delete contacts and notes, no Jev calls.
 
 ## After editing the code
 

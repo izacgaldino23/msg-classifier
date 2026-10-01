@@ -6,6 +6,8 @@ A Go web application that classifies user messages into categories (contact, fin
 
 The same `CategoryHandler` seam now also serves the **notes** flow (`NotesService`): a second Jev call (`note.json`, one `note_type` choice question) picks the sub-type (note / reminder / to-do list), a deterministic PT-BR parser extracts the reminder date and optional time and the to-do list is split into items, everything is persisted in `notes` + `todo_items` (SQLite via Gorm), and the **require** path searches by date, unfinished items or a content term.
 
+A third surface, **`/data`**, browses and edits what those two flows persisted. `DataService` composes `ContactRepository` and `NotesRepository` directly — `ContactService`/`NotesService` belong to the classification flow and are not reused here — and `DataController` exposes it as htmx partials: filter pills, a per-record edit panel and bulk delete. No Jev call happens on this screen.
+
 The codebase follows a **semantic MVC pattern** on an idiomatic Go layout:
 
 - **Model** — `internal/models` (data structures) + `internal/services` (business rules)
@@ -41,7 +43,8 @@ msg-classifier/
 │   │   ├── message.go           # DTOs + Classification domain struct + UseCaseOutcome/Action + ToResponse
 │   │   ├── contact.go           # Contact entity + SegmentScore
 │   │   ├── note.go              # Note + TodoItem entities + note type constants
-│   │   └── prompt.go            # JevPrompt entity + Flow constants + EvaluationResult + form DTOs
+│   │   ├── prompt.go            # JevPrompt entity + Flow constants + EvaluationResult + form DTOs
+│   │   └── data.go              # DataForm + DataDeleteForm (data screen forms)
 │   ├── repository/              # Persistence — all gorm queries
 │   │   ├── contact.go           # ContactRepository — all gorm queries
 │   │   ├── note.go              # NotesRepository — atomic Create(note, items), FindByDate, FindUnfinished, FindByTerm
@@ -57,11 +60,13 @@ msg-classifier/
 │   │   ├── note_extract.go      # NoteExtractor (Jev note_type choice call)
 │   │   ├── note_get.go          # NotesService.Get (require flow: date → pending → term search)
 │   │   ├── todo_split.go        # SplitTodoItems (newlines → numbered → commas/semicolons)
-│   │   └── prompt.go            # PromptService (validation harness: Add, ListByFlow, Evaluate, ExportCSV)
+│   │   ├── prompt.go            # PromptService (validation harness: Add, ListByFlow, Evaluate, ExportCSV)
+│   │   └── data.go              # DataService (browse/edit/delete over ContactRepository + NotesRepository)
 │   ├── controllers/             # C — HTTP concerns only (bind → service → render → status)
 │   │   ├── web_controller.go    # GET / handler (delegates page/partial switch to views)
 │   │   ├── message_controller.go# POST /api/message handler (bind → Classify → Dispatch → render)
-│   │   └── prompt_controller.go # /prompts routes (Page, Table, Add, Evaluate, Export)
+│   │   ├── prompt_controller.go # /prompts routes (Page, Table, Add, Evaluate, Export)
+│   │   └── data_controller.go   # /data routes (Page, Table, Detail, Update, Delete, ItemRow)
 │   └── views/                   # V — render helpers
 │       └── render.go            # Template name constants + RenderPage/RenderResult/RenderError + prompt partial helpers + PagesRenderer (per-page template sets)
 ├── pkg/                         # Reusable packages
@@ -78,11 +83,16 @@ msg-classifier/
 │       ├── layouts/base.html    # "base" layout (pt-BR, Inter, favicon, sticky navbar, page:active block)
 │       ├── pages/index.html     # home page (hero copy + form + spinner on Enviar)
 │       ├── pages/prompts.html   # "Validação Jev" page (flow select + add form + spinner)
+│       ├── pages/data.html      # "Dados" page (filter pills + table container + detail offcanvas)
 │       └── partial/
 │           ├── result.html      # "resultado" partial (badges + structured card + segment list)
 │           ├── error.html       # "error" partial (red error card for htmx swap targets)
 │           ├── prompt_table.html        # checkbox table + Avaliar button + export checkbox + spinner
 │           ├── evaluation_results.html  # expected vs obtained comparison + match badges + segment rows + CSV path
+│           ├── contacts_table.html      # contact rows + per-row "Ver" + bulk delete
+│           ├── notes_table.html         # note rows (type badge, date/time, items) + per-row "Ver" + bulk delete
+│           ├── data_detail.html         # offcanvas panel body: contact/note form in view + edit mode
+│           ├── data_item_row.html       # one to-do item row (existing rows reuse it via {{ template }})
 ├── scripts/
 │   └── sql/
 │       └── seed_prompts.sql    # wipe + re-seed jev_prompts examples
@@ -109,7 +119,14 @@ msg-classifier/
   - `GET /prompts/table` → `promptController.Table`
   - `POST /prompts` → `promptController.Add`
   - `POST /prompts/evaluate` → `promptController.Evaluate`
-- Template render: shared set for `layouts/`+`partial/`, cloned per page (`index`, `prompts`) via `views.PagesRenderer`; partials render from the shared set.
+  - `GET /data` → `dataController.Page`
+  - `GET /data/table` → `dataController.Table`
+  - `GET /data/item-row` → `dataController.ItemRow`
+  - `GET /data/:kind/:id` → `dataController.Detail`
+  - `POST /data/:kind/:id` → `dataController.Update`
+  - `POST /data/delete` → `dataController.Delete`
+- The three static `/data/*` segments are registered **before** `/data/:kind/:id` — gin's router would otherwise read `table` and `item-row` as a `:kind`.
+- Template render: shared set for `layouts/`+`partial/`, cloned per page (`index`, `prompts`, `data`) via `views.PagesRenderer`; partials render from the shared set.
 - Server runs on `:8080`.
 
 ### 2. Config Singleton — `internal/config/env.go`
@@ -132,10 +149,11 @@ msg-classifier/
 - `ContactService` implements `CategoryHandler` for the `contact` category. Constructor takes a `*ContactExtractor` and a `*repository.ContactRepository` — the repository owns all gorm queries, and the service wraps repo errors with the same context strings (`failed to check duplicate contact`, `failed to persist contact`, `failed to search contact`, `failed to load contacts for backfill`, `failed to backfill name_norm`). `Handle` routes `require` → `Get`, everything else → `Add`. `Add` extracts phone/email → neither found → `ActionContactNoData` outcome; a duplicate check (phone, then email) runs **before** name extraction — a match returns `ActionContactDuplicate` + the existing contact (no Jev call); otherwise name extraction runs and the repository inserts the contact (populating `NameNorm`) → `ActionContactAdd` outcome carrying the saved contact and the segment trace (`outcome.Segments`). `Get` (require flow) searches with phone → email → name priority; phone/email searches skip Jev entirely; name search uses `LIKE %term%` on `name_norm`; `SearchTerm` is set on the outcome and not-found is an outcome, not an error. `BackfillNameNorm()` recomputes `NameNorm` for pre-migration rows at startup.
 
 ### 6b. Contact Extractor — `internal/services/extraction.go`
-- `ContactExtractor` extracts phone (BR regex, normalized to 10/11 digits) and email (first match + span) deterministically, and the name via one dynamic Jev request with a Noul question per whitespace segment (`segment_0..N`). `ExtractName` returns a `NameResult` — the joined name plus a per-segment trace (`SegmentScore`: text, noul score, `Included` = score > 0.5, the single threshold site the join and the UI both derive from). Depends on a minimal `jevRequester` interface (`MakeJevRequest`) so tests mock the Jev call.
+- `ContactExtractor` extracts phone (BR regex, normalized to 10/11 digits) and email (first match + span) deterministically, and the name via one dynamic Jev request with a Noul question per whitespace segment (`segment_0..N`). `ExtractName` returns a `NameResult` — the joined name plus a per-segment trace (`SegmentScore`: text, noul score, `Included`). A deterministic post-filter resolves name particles by position, since the Noul scores for `do`/`da`/`de` hover around the 0.5 threshold and flip between runs: (1) drop leading lowercase segments while a capitalized one follows (a proper name never starts with a function word, so `do João da Silva` → `João da Silva`); (2) rescue a particle Jev excluded when it sits between two included capitalized segments (`José Carlos de Souza` keeps its `de`). The trace's `Included` flags are updated to match. Depends on a minimal `jevRequester` interface (`MakeJevRequest`) so tests mock the Jev call.
 
 ### 6c. Contact Repository — `internal/repository/contact.go`
 - `ContactRepository` owns all gorm queries for the `Contact` entity; `NewContactRepository(db *gorm.DB)` wraps the DB handle. Methods: `Create` (persist a new contact), `FindByPhone` / `FindByEmail` (case-insensitive) / `FindByName` (`name_norm LIKE %term%`), `ListNeedingNameNorm` (empty/NULL `name_norm`, pre-migration rows), and `Save` (backfill updates). `ErrNotFound = gorm.ErrRecordNotFound` is the not-found sentinel — services detect it with `errors.Is` without importing gorm; all other errors are returned raw and wrapped by the service with its context strings.
+- The data screen added `List(filter)` / `FindByID` / `DeleteByIDs`. `List` orders `id DESC` (newest first) and falls back to all rows on an unknown filter instead of erroring, so `DataService` stays the gate that rejects one.
 
 ### 6d. Notes Service — `internal/services/note.go` + `note_get.go`
 - `NotesService` implements `CategoryHandler` for the `notes` category. `Handle` routes `require` → `Get`, everything else → `Add`. Constructor takes the `*NoteExtractor`, a `*DateParser` and the `*repository.NotesRepository`; repo errors are wrapped with `failed to persist note` / `failed to search notes`.
@@ -152,12 +170,15 @@ msg-classifier/
 - `message.go`: `ReceiveMessageRequest` / `ReceiveMessageResponse` DTOs; `Classification` domain struct (`CategoryFinding` / `KindFinding` with raw numeric confidences; `KindFinding.Choice` carries the kind: `"add"` / `"require"` / `"both"`); `UseCaseOutcome` (`Classification` + `Action` + `SearchTerm`) — the seam where use-case results (extracted contact, DB confirmation, search term) flow back without signature changes; actions are `ActionNone` / `ActionContactAdd` / `ActionContactNoData` / `ActionContactFound` / `ActionContactNotFound` / `ActionContactDuplicate` / `ActionNoteAdd` / `ActionNoteNoData` / `ActionNoteFound` / `ActionNoteNotFound`; `Classification.ToResponse()` formats confidences as `%.2f` percent strings for display (successor of the former `fromJevResponse`).
 - `contact.go`: `Contact` Gorm entity (ID, Name, `NameNorm` column, Phone/Email nullable, timestamps) and `SegmentScore` (text, noul score, included flag); `UseCaseOutcome` carries `Contact` and `Segments` (nil unless name extraction ran).
 - `note.go`: `Note` (ID, Type, Content, nullable `Date`/`Time`, `Items`, timestamps) and `TodoItem` (ID, `NoteID` FK with `ON DELETE CASCADE`, Text, `Done`, `Position`); indexes on `notes.type`, `notes.date` and `todo_items.done`. `UseCaseOutcome` also carries `Notes []*Note` (the add path returns one element); the contact constants are unchanged.
+- `data.go`: `DataForm` and `DataDeleteForm`. Both contact and note edits bind to the same `DataForm` (`Name`/`Phone`/`Email` for contacts; `Content`/`Date`/`Time` plus parallel `ItemText []string` / `ItemDone []string` slices for a to-do). `DataDeleteForm` carries `Kind`, `Filter` and `IDs []uint` — a `[]uint` form field binds repeated `ids` values. `form` tags only; nothing here is part of a JSON API.
 
 ### 8. Views — `internal/views/render.go`
-- Template name constants (`base`, `page:content`, `resultado`, `error`) — no string literals at call sites.
+- Template name constants (`base`, `page:content`, `resultado`, `error`, `contacts_table`, `notes_table`, `data_detail`, `data_item_row`) — no string literals at call sites.
 - `RenderPage`: renders `page:content` for htmx requests, full `base` otherwise; falls back to the full page on missing/mistyped htmx context (no panic).
 - `RenderResult` / `RenderError`: render the result or error partial; errors carry proper HTTP status so htmx swaps the error card into `#resultado`.
-- The shared template set registers `views.FuncMap` (`label` helper for PT-BR badge text).
+- The shared template set registers `views.FuncMap` (`label` helper for PT-BR badge text, plus `dateBR`/`deref` for the data screen).
+- The data screen passes templates page-scoped view models — `DataDetailData{Kind, Mode, Contact, Note}` and `ItemRowData` — rather than handing entities straight to a partial. `Mode` is `view` or `edit`, and the switch happens in the template through a single `disabled` attribute on the form's `fieldset` instead of two parallel branches.
+- `DateBR(*time.Time)` and `Deref(*string)` are template helpers, not entity methods: rendering a `*string` directly puts a pointer address (`0xc000…`) in the cell.
 
 ### 9. Jev API Client — `pkg/jev/jev.go`
 - `Client` struct with `NewClient(apiURL, token, model)` — all configuration injected, no `internal/config` import (genuinely reusable).
@@ -174,12 +195,24 @@ msg-classifier/
 - `base.html`: `base` layout, `lang="pt-BR"`, loads Inter (Google Fonts) + Bootstrap 5.3 (default light theme) + Bootstrap Icons + `app.css` + htmx 2.0.10 + response-targets extension from CDNs; offcanvas-lg sidebar (fixed at lg+, drawer with hamburger below) with a `page:active` block for the active link; `hx-ext="response-targets"` + `hx-target-error="#resultado"` on `<body>` route 4xx/5xx responses into the result container.
 - `index.html`: form posting via `hx-post="/api/message"` targeting `#resultado` with `hx-swap="innerHTML"`.
 - `result.html`: `resultado` partial — a Bootstrap `<div class="card result-card">` with PT-BR category/kind badges in `card-header`, branches for add/found/not-found/duplicate/no-data (contact) and note_add/note_found/note_not_found/note_no_data (notes: type badge, content, date/time for reminders, item list with ✓/○ for to-dos), and the per-segment extraction trace as a list in `card-footer`.
-- `error.html`: `error` partial rendering a Bootstrap `card border-danger` error card (used for 400/502/500 responses).
+- `error.html`: `error` partial rendering a Bootstrap `card border-danger` error card (used for 400/404/502/500 responses).
+- `data.html`: `data` page — filter pills that each `hx-get` a table partial, an empty `#data-table` container that loads on first paint, and the `#dataPanel` offcanvas whose body is swapped per record. A `dataChanged` body event lets the delete endpoint re-render the table the user was on without a full page reload. Pill highlight state is client-side (`markFilterPill`), because the server re-renders `#data-table` but never the pill list — a server-rendered `active` class would be lost on every delete. Switching the outer tab calls `activateFilterPills`, which loads and selects that pane's default filter, so the other kind's table is never left on screen. The contacts `Todos` pill (and only it) carries `hx-trigger="load, click"` — it boots the table on first paint but must stay clickable, and an explicit `hx-trigger` replaces htmx's default `click` trigger, so `load` alone would make it a dead button. `activateFilterPills` clicks that default pill unconditionally, with no `active`-pane guard: Bootstrap toggles `active` itself, so such a guard would skip the reload exactly when the tab you re-select is the one already showing.
+- `contacts_table.html` / `notes_table.html`: row tables plus a checkbox per row (`class="data-check"`) and a bulk delete button. Both carry `kind` and `filter` in hidden inputs so the delete POST knows which table to re-render.
+- `data_detail.html`: the offcanvas panel body. One form serves both modes — `view` renders the `fieldset` disabled with an "Editar" button that fetches the same record with `mode=edit`. A reminder shows date + time, a to-do a `#todo-items` editor with add/remove rows, a plain note only the content.
+- `data_item_row.html`: a single to-do row (text input + done checkbox + delete button). Existing rows render it with `{{ template }}` and "Adicionar item" fetches the same partial from `/data/item-row` — one row markup, not two.
 
 ### 12. Prompt Service (validation harness) — `internal/services/prompt.go` + `prompt_controller.go`
-- `PromptService` orchestrates the Jev validation harness: `Add` (validates flow ∈ {classification, name, note} and non-empty fields, `ErrInvalidPrompt` → 400), `ListByFlow`, `Evaluate` (loads prompts by flow, filters to selected ids, runs the exact production paths — `ClassificationService.Classify` for classification, `ContactExtractor.ExtractName` for name — and `NoteExtractor.ExtractType` for note (expected/obtained are the sub-type, compared case-insensitively) — and compares expected vs obtained; a Jev failure for one prompt is captured in its row as the obtained result with match=false and evaluation continues), and `ExportCSV` (writes the given evaluation results to `exports/<flow>-<yyyyMMdd-HHmmss>.csv` via `encoding/csv`, folder created on demand — no re-run, the CSV mirrors the evaluation the user just saw).
+- `PromptService` orchestrates the Jev validation harness: `Add` (validates flow ∈ {classification, name, note} and non-empty fields, `ErrInvalidPrompt` → 400), `ListByFlow`, `Evaluate` (loads prompts by flow, filters to selected ids, runs the exact production paths — `ClassificationService.Classify` for classification, `ContactExtractor.ExtractName` for name (with the phone/email spans stripped first, exactly as `ContactService.Add` does, so the email/phone is never a name segment) — and `NoteExtractor.ExtractType` for note (expected/obtained are the sub-type, compared case-insensitively) — and compares expected vs obtained; a Jev failure for one prompt is captured in its row as the obtained result with match=false and evaluation continues), and `ExportCSV` (writes the given evaluation results to `exports/<flow>-<yyyyMMdd-HHmmss>.csv` via `encoding/csv`, folder created on demand — no re-run, the CSV mirrors the evaluation the user just saw).
 - `PromptController` is thin: `Page` renders the page, `Table` renders the `prompt_table` partial, `Add` persists and re-renders the table, `Evaluate` renders `evaluation_results` (and, when the form's export checkbox is set, saves the CSV first). Bind failures → 400, invalid prompt → 400, service failures → 500 (existing `renderServiceError`).
 - The harness reuses the exact production Jev paths — no new request-building code.
+
+### 13. Data Screen — `internal/services/data.go` + `internal/controllers/data_controller.go`
+- `DataService` is the browse/edit/delete use case for persisted contacts and notes. It composes `ContactRepository` and `NotesRepository` directly instead of going through `ContactService`/`NotesService`, which carry classification-flow extraction logic that means nothing here. It reuses the note flow's `DateParser` so there is still one PT-BR date implementation.
+- `DataService` is the filter gate: `ListContacts` takes `all`/`phone`/`email`/`name`, `ListNotes` takes `all`/`note`/`reminder`/`todo`, and anything else is `ErrInvalidFilter`. The repositories deliberately do not validate — `ContactRepository.List` falls back to all rows, and the notes side is a pair of methods (`List` / `ListByType`) the service chooses between.
+- `UpdateContact` writes name/phone/email. `UpdateNote` writes the content plus the date and time, re-parsed from the form text through the same `parseDate`/`parseTime` pair the add path uses, and rebuilds the to-do items from the parallel `ItemText`/`ItemDone` slices in one transaction. Unparseable input is `ErrInvalidData`.
+- `DataController` is HTTP-only: `Page` → `RenderPage`, while `Table`/`Detail`/`Update`/`Delete`/`ItemRow` bind, delegate and re-render. Path segments are validated before use (`path` and `renderTable` both reject an unknown `kind`); errors map to 400 (`ErrInvalidFilter`, `ErrInvalidData`, a malformed id), 404 (`repository.ErrNotFound`) or the shared 502/500 mapper.
+- Update and delete re-render the record or the table they were called from, reading `kind`/`filter` back off the form — no redirect and no client-side state to keep in sync.
+- No Jev call happens anywhere on this screen.
 
 ## Data Flow
 
@@ -242,6 +275,25 @@ PromptController.Evaluate → PromptService.Evaluate
   → evaluation_results partial (✓/✗ per row + CSV path when exported)
 ```
 
+```
+Browser (/data)
+  │ GET /data → page with filter pills, empty #data-table, #dataPanel offcanvas
+  ▼
+DataController.Page → views.RenderPage("data") → page boots → hx-get /data/table?kind&filter
+  ▼
+DataController.Table → DataService.ListContacts / ListNotes → contacts_table / notes_table partial
+  │ row "Ver"  → hx-get /data/:kind/:id?mode=view  → offcanvas body, fieldset disabled
+  │ "Editar"   → hx-get /data/:kind/:id?mode=edit  → same form, fieldset enabled
+  │ "Salvar"   → hx-post /data/:kind/:id → DataService.UpdateContact / UpdateNote → detail back in view mode
+  │ "Adicionar item" → hx-get /data/item-row → one blank row appended to #todo-items
+  │ checkboxes + "Apagar selecionados" → hx-post /data/delete (hx-include #data-table-form)
+  ▼
+DataController.Delete → DataService.DeleteContacts / DeleteNotes → table re-rendered for kind+filter
+```
+
+Every data-screen response is an HTML partial; no action re-renders the page itself.
+```
+
 ## Error Handling
 
 | Failure | Status | Response |
@@ -254,6 +306,8 @@ PromptController.Evaluate → PromptService.Evaluate
 | No date in a reminder / unknown note sub-type | 200 | `resultado` partial (no-data branch) |
 | Note not found | 200 | `resultado` partial (note not-found branch) |
 | Duplicate contact on save | 200 | `resultado` partial (duplicate branch) |
+| Data-screen bad filter / kind / id / form field (`ErrInvalidFilter`, `ErrInvalidData`) | 400 | `error` partial |
+| Data-screen record not found | 404 | `error` partial |
 | Database failure | 500 | `error` partial |
 | Success | 200 | `resultado` partial |
 
@@ -276,7 +330,7 @@ All responses to htmx targets are HTML partials — no JSON on this route. The r
 | `TYPESAFE_API_URL` | `local.env` | `cmd/api/main.go` → `jev.NewClient` (POST target) |
 | `TYPESAFE_MODEL` | `local.env` | `cmd/api/main.go` → `jev.NewClient` (model field) |
 | `TS_API_KEY` | environment (not in `local.env`) | `cmd/api/main.go` → `jev.NewClient` (Bearer token) |
-| DB_PATH | local.env (default contacts.db) | cmd/api/main.go → gorm.Open |
+| DB_PATH | local.env (default contacts.db) | cmd/api/main.go → gorm.Open (contacts, notes, to-dos; also the data screen) |
 
 > Note: `TS_API_KEY` is read by `internal/config/env.go` but not defined in `local.env` — it must be set in the environment or the Authorization header will be `Bearer ` (empty).
 
@@ -294,5 +348,5 @@ go build ./cmd/api
 ```
 
 - No Dockerfile, Makefile, or CI pipeline exists yet.
-- Tests exist for `pkg/jev`, `internal/models`, `internal/config`, `internal/services`, `internal/views`, and `internal/repository` (run with `go test ./...`).
+- Tests exist for `pkg/jev`, `internal/models`, `internal/config`, `internal/services`, `internal/views`, and `internal/repository` (run with `go test ./...`). `internal/controllers` has no tests — its handlers are a thin bind/render shell over `DataService`.
 - `.gitignore` ignores `**/*_bin.exe`, `thoughts/`, `*.db`, `.vscode`, and `exports/`.
