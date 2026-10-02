@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"msg-classifier/internal/jevq"
 	"msg-classifier/internal/models"
 	"msg-classifier/pkg/jev"
 
@@ -64,7 +65,7 @@ func TestClassificationServiceClassifyJevFailure(t *testing.T) {
 	service := NewClassificationService(mock)
 
 	_, err := service.Classify(&models.ReceiveMessageRequest{Message: "oi"})
-	assert.ErrorIs(t, err, ErrUpstream)
+	assert.ErrorIs(t, err, jevq.ErrUpstream)
 }
 
 func TestClassificationServiceClassifyMissingAnswer(t *testing.T) {
@@ -72,7 +73,7 @@ func TestClassificationServiceClassifyMissingAnswer(t *testing.T) {
 	service := NewClassificationService(mock)
 
 	_, err := service.Classify(&models.ReceiveMessageRequest{Message: "oi"})
-	assert.ErrorIs(t, err, ErrUpstream)
+	assert.ErrorIs(t, err, jevq.ErrUpstream)
 }
 
 func TestClassificationServiceClassifyWrongAnswerType(t *testing.T) {
@@ -82,5 +83,5 @@ func TestClassificationServiceClassifyWrongAnswerType(t *testing.T) {
 	service := NewClassificationService(mock)
 
 	_, err := service.Classify(&models.ReceiveMessageRequest{Message: "oi"})
-	assert.ErrorIs(t, err, ErrUpstream)
+	assert.ErrorIs(t, err, jevq.ErrUpstream)
 }

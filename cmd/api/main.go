@@ -9,6 +9,9 @@ import (
 	"msg-classifier/internal/models"
 	"msg-classifier/internal/repository"
 	"msg-classifier/internal/services"
+	"msg-classifier/internal/services/contact"
+	"msg-classifier/internal/services/finance"
+	"msg-classifier/internal/services/notes"
 	"msg-classifier/internal/views"
 	"msg-classifier/pkg/jev"
 
@@ -61,20 +64,20 @@ func main() {
 	}
 
 	classifier := services.NewClassificationService(jevClient)
-	extractor := services.NewContactExtractor(jevClient)
-	noteExtractor := services.NewNoteExtractor(jevClient)
-	financeExtractor := services.NewFinanceExtractor(jevClient)
+	extractor := contact.NewExtractor(jevClient)
+	noteExtractor := notes.NewExtractor(jevClient)
+	financeExtractor := finance.NewExtractor(jevClient)
 
 	contactRepo := repository.NewContactRepository(db)
 	notesRepo := repository.NewNotesRepository(db)
 	transactionsRepo := repository.NewTransactionRepository(db)
 
-	contactService := services.NewContactService(extractor, contactRepo)
+	contactService := contact.NewService(extractor, contactRepo)
 	if err := contactService.BackfillNameNorm(); err != nil {
 		log.Fatalf("failed to backfill name_norm: %v", err)
 	}
-	notesService := services.NewNotesService(noteExtractor, notesRepo)
-	financeService := services.NewFinanceService(financeExtractor, transactionsRepo)
+	notesService := notes.NewService(noteExtractor, notesRepo)
+	financeService := finance.NewService(financeExtractor, transactionsRepo)
 	dispatcher := services.NewDispatcher(map[string]services.CategoryHandler{
 		"contact": contactService,
 		"notes":   notesService,

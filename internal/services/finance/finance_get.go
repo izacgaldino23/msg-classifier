@@ -1,4 +1,4 @@
-package services
+package finance
 
 import (
 	"errors"
@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"msg-classifier/internal/models"
+	"msg-classifier/internal/ptbr"
 	"msg-classifier/internal/repository"
 )
 
@@ -43,10 +44,10 @@ var totalMarkers = []string{"quanto", "total", "soma", "gastei", "gasto", "custo
 // message asks how much, the outcome also carries the sum of what was found.
 func (s *FinanceService) Get(request *models.ReceiveMessageRequest, classification *models.Classification) (*models.UseCaseOutcome, error) {
 	content := request.Message
-	normalized := normalizeName(content)
+	normalized := ptbr.NormalizeName(content)
 
 	filter := repository.TransactionFilter{Type: transactionTypeFromMessage(normalized)}
-	if from, until, ok := ParseRange(content, time.Now()); ok {
+	if from, until, ok := ptbr.ParseRange(content, time.Now()); ok {
 		filter.From, filter.Until = from, until
 	}
 	filter.Term = financeSearchTerm(content)
@@ -103,7 +104,7 @@ func (s *FinanceService) Get(request *models.ReceiveMessageRequest, classificati
 // none ("quanto gastei no mercado" is a party search, not a type search).
 func transactionTypeFromMessage(normalized string) string {
 	for _, word := range strings.Fields(normalized) {
-		if transactionType, ok := financeTypeWords[stripPunctuation(word)]; ok {
+		if transactionType, ok := financeTypeWords[ptbr.StripPunctuation(word)]; ok {
 			return transactionType
 		}
 	}
@@ -124,9 +125,9 @@ func filterLabel(filter repository.TransactionFilter) string {
 	}
 	last := filter.Until.AddDate(0, 0, -1)
 	if filter.From.Equal(last) {
-		return filter.From.Format(dateLayout)
+		return filter.From.Format(ptbr.DateLayout)
 	}
-	return filter.From.Format(dateLayout) + " a " + last.Format(dateLayout)
+	return filter.From.Format(ptbr.DateLayout) + " a " + last.Format(ptbr.DateLayout)
 }
 
 // hasTotalMarker reports whether the message asks how much was spent.

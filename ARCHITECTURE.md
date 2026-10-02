@@ -53,23 +53,31 @@ msg-classifier/
 │   │   ├── note.go              # NotesRepository — atomic Create(note, items), FindByDate, FindUnfinished, FindByTerm
 │   │   ├── transaction.go      # TransactionRepository — Create/Find/List/Sum/Save/DeleteByIDs
 │   │   └── prompt.go            # PromptRepository — Create, ListByFlow
-│   ├── services/                # M — business rules
-│   │   ├── classification.go    # ClassificationService (single Jev call, checked answer mapping)
-│   │   ├── dispatcher.go        # Dispatcher (category → handler registry) + CategoryHandler interface
-│   │   ├── contact.go           # ContactService (add + duplicate check + NameNorm backfill; normalizeName folded in; require routing)
-│   │   ├── contact_get.go       # ContactService.Get (require flow: phone → email → name search)
-│   │   ├── dateparse.go         # ParseDate / ParseTime / ParseRange / ParseEventDate (deterministic PT-BR dates)
-│   │   ├── extraction.go        # ContactExtractor (regex phone/email + Jev Noul name fan-out) + noulSegments
-│   │   ├── money.go             # ParseAmount (PT-BR monetary forms)
-│   │   ├── note.go              # NotesService (struct + Handle + Add: note / reminder / todo)
-│   │   ├── note_extract.go      # NoteExtractor (Jev note_type choice call)
-│   │   ├── note_get.go          # NotesService.Get (require flow: date → pending → term search)
-│   │   ├── todo_split.go        # SplitTodoItems (newlines → numbered → commas/semicolons)
-│   │   ├── finance.go           # FinanceService (struct + Handle + Add)
-│   │   ├── finance_get.go       # FinanceService.Get (require flow: range → type → term, carries the total)
-│   │   ├── finance_extract.go   # FinanceExtractor (Jev transaction_type + party Noul fan-out)
-│   │   ├── prompt.go            # PromptService (validation harness: Add, ListByFlow, Evaluate, ExportCSV)
-│   │   └── data.go              # DataService (browse/edit/delete over ContactRepository + NotesRepository + TransactionRepository)
+│   ├── ptbr/                         # Deterministic PT-BR text — pure functions, no Jev, no DB
+│   │   ├── dateparse.go              # ParseDate / ParseTime / ParseRange / ParseEventDate + DateLayout + StartOfDay
+│   │   ├── money.go                  # ParseAmount (PT-BR monetary forms)
+│   │   └── text.go                   # NormalizeName (accent fold) + TrimSegment / StripPunctuation / IsCapitalized
+│   ├── jevq/                         # The Jev call layer shared by every flow
+│   │   ├── jev.go                   # ErrUpstream + the Client/Requester seams + AnswerChoice / AnswerNoul
+│   │   └── fanout.go                # Span + SegmentQuestion + NoulSegments + SegmentKey
+│   ├── services/                     # M — business rules
+│   │   ├── classification.go         # ClassificationService (single Jev call, checked answer mapping)
+│   │   ├── dispatcher.go             # Dispatcher (category → handler registry) + CategoryHandler interface
+│   │   ├── prompt.go                 # PromptService (validation harness: Add, ListByFlow, Evaluate, ExportCSV)
+│   │   ├── data.go                   # DataService (browse/edit/delete over ContactRepository + NotesRepository + TransactionRepository)
+│   │   ├── contact/                  # the contact use case, end to end
+│   │   │   ├── contact.go            # ContactService (add + duplicate check + NameNorm backfill; require routing)
+│   │   │   ├── contact_get.go        # ContactService.Get (require flow: phone → email → name search)
+│   │   │   └── extract.go            # ContactExtractor (regex phone/email + Jev Noul name fan-out) + particle post-filter
+│   │   ├── notes/                    # the notes use case, end to end
+│   │   │   ├── note.go               # NotesService (struct + Handle + Add: note / reminder / todo)
+│   │   │   ├── note_get.go           # NotesService.Get (require flow: date → pending → term search)
+│   │   │   ├── note_extract.go       # NoteExtractor (Jev note_type choice call)
+│   │   │   └── todo_split.go         # SplitTodoItems (newlines → numbered → commas/semicolons)
+│   │   └── finance/                  # the finance use case, end to end
+│   │       ├── finance.go            # FinanceService (struct + Handle + Add)
+│   │       ├── finance_get.go        # FinanceService.Get (require flow: range → type → term, carries the total)
+│   │       └── finance_extract.go    # FinanceExtractor (Jev transaction_type + party Noul fan-out)
 │   ├── controllers/             # C — HTTP concerns only (bind → service → render → status)
 │   │   ├── web_controller.go    # GET / handler (delegates page/partial switch to views)
 │   │   ├── message_controller.go# POST /api/message handler (bind → Classify → Dispatch → render)
@@ -121,7 +129,7 @@ msg-classifier/
 
 ### 1. Composition Root — `cmd/api/main.go`
 - `main()` builds a `gin.Default()` router, serves `web/static` via `router.Static("/static", "./web/static")`, parses `web/templates/**/*.html` (`template.Must`) and installs `views.PagesRenderer` as `router.HTMLRender`.
-- Wires dependencies: `config.GetEnv()` (single godotenv load site) → `jev.NewClient(url, token, model)` → `services.NewClassificationService(client)` → `services.NewNoteExtractor(client)` → `services.NewFinanceExtractor(client)` → `services.NewDispatcher` (registry: `"contact"` → `ContactService`, `"notes"` → `NotesService`, `"finance"` → `FinanceService`) → controllers. The contact, notes and transaction repositories are built once and shared with the data screen.
+- Wires dependencies: `config.GetEnv()` (single godotenv load site) → `jev.NewClient(url, token, model)` → `services.NewClassificationService(client)` → `notes.NewExtractor(client)` → `finance.NewExtractor(client)` → `services.NewDispatcher` (registry: `"contact"` → `ContactService`, `"notes"` → `NotesService`, `"finance"` → `FinanceService`) → controllers. The contact, notes and transaction repositories are built once and shared with the data screen.
 - `db.AutoMigrate(&models.Contact{}, &models.JevPrompt{}, &models.Note{}, &models.TodoItem{}, &models.Transaction{})`.
 - SQLite pool is capped at one connection (`SetMaxOpenConns(1)` right after `gorm.Open`) — all DB access is serialized; the pure-Go driver (glebarez/modernc) is unstable with concurrent connections on Windows.
 - Registers routes:
@@ -146,10 +154,10 @@ msg-classifier/
 
 ### 3. Controllers — `internal/controllers/`
 - `WebController.Home`: delegates to `views.RenderPage` — the htmx page/partial switch lives in the view layer.
-- `MessageController.ReceiveMessage`: binds `ReceiveMessageRequest` (failure → 400 error partial) → calls `ClassificationService.Classify` → calls `Dispatcher.Dispatch` → maps errors via `renderServiceError` (`errors.Is(err, services.ErrUpstream)` → 502, else 500) → renders result or error partial. No business logic, no Jev types, no template name literals.
+- `MessageController.ReceiveMessage`: binds `ReceiveMessageRequest` (failure → 400 error partial) → calls `ClassificationService.Classify` → calls `Dispatcher.Dispatch` → maps errors via `renderServiceError` (`errors.Is(err, jevq.ErrUpstream)` → 502, else 500) → renders result or error partial. No business logic, no Jev types, no template name literals.
 
 ### 4. Classification Service — `internal/services/classification.go`
-- `ClassificationService.Classify`: builds Jev state `{user, message}`, makes **one** Jev call (`classification.json`, which contains both the `classification` and the `adding_or_requiring` choice questions), extracts answers with checked assertions (`answerAsChoice`), returns a domain `Classification`.
+- `ClassificationService.Classify`: builds Jev state `{user, message}`, makes **one** Jev call (`classification.json`, which contains both the `classification` and the `adding_or_requiring` choice questions), extracts answers with checked assertions (`jevq.AnswerChoice`), returns a domain `Classification`.
 - `ErrUpstream` sentinel marks failures originating from the Jev/TypeSafe API or its responses; controllers map it to HTTP 502.
 - The `jevClient` interface (defined at the service boundary) makes the service unit-testable without HTTP.
 
@@ -157,36 +165,36 @@ msg-classifier/
 - `CategoryHandler` interface: `Handle(request, classification) (*models.UseCaseOutcome, error)` — the seam for category-specific use cases.
 - `Dispatcher` holds a `map[string]CategoryHandler` keyed by `Category.Choice`; `Dispatch` looks up the handler, falling back to an `ActionNone` outcome on a miss. Adding a category = new service implementing `CategoryHandler` + one wiring line in `main.go`.
 
-### 6. Contact Service — `internal/services/contact.go` + `contact_get.go`
+### 6. Contact Service — `internal/services/contact/contact.go` + `contact_get.go`
 - `ContactService` implements `CategoryHandler` for the `contact` category. Constructor takes a `*ContactExtractor` and a `*repository.ContactRepository` — the repository owns all gorm queries, and the service wraps repo errors with the same context strings (`failed to check duplicate contact`, `failed to persist contact`, `failed to search contact`, `failed to load contacts for backfill`, `failed to backfill name_norm`). `Handle` routes `require` → `Get`, everything else → `Add`. `Add` extracts phone/email → neither found → `ActionContactNoData` outcome; a duplicate check (phone, then email) runs **before** name extraction — a match returns `ActionContactDuplicate` + the existing contact (no Jev call); otherwise name extraction runs and the repository inserts the contact (populating `NameNorm`) → `ActionContactAdd` outcome carrying the saved contact and the segment trace (`outcome.Segments`). `Get` (require flow) searches with phone → email → name priority; phone/email searches skip Jev entirely; name search uses `LIKE %term%` on `name_norm`; `SearchTerm` is set on the outcome and not-found is an outcome, not an error. `BackfillNameNorm()` recomputes `NameNorm` for pre-migration rows at startup.
 
-### 6b. Contact Extractor — `internal/services/extraction.go`
+### 6b. Contact Extractor — `internal/services/contact/extract.go`
 - `ContactExtractor` extracts phone (BR regex, normalized to 10/11 digits) and email (first match + span) deterministically, and the name via one dynamic Jev request with a Noul question per whitespace segment (`segment_0..N`). `ExtractName` returns a `NameResult` — the joined name plus a per-segment trace (`SegmentScore`: text, noul score, `Included`). A deterministic post-filter resolves name particles by position, since the Noul scores for `do`/`da`/`de` hover around the 0.5 threshold and flip between runs: (1) drop leading lowercase segments while a capitalized one follows (a proper name never starts with a function word, so `do João da Silva` → `João da Silva`); (2) rescue a particle Jev excluded when it sits between two included capitalized segments (`José Carlos de Souza` keeps its `de`). The trace's `Included` flags are updated to match. Depends on a minimal `jevRequester` interface (`MakeJevRequest`) so tests mock the Jev call.
 
 ### 6c. Contact Repository — `internal/repository/contact.go`
 - `ContactRepository` owns all gorm queries for the `Contact` entity; `NewContactRepository(db *gorm.DB)` wraps the DB handle. Methods: `Create` (persist a new contact), `FindByPhone` / `FindByEmail` (case-insensitive) / `FindByName` (`name_norm LIKE %term%`), `ListNeedingNameNorm` (empty/NULL `name_norm`, pre-migration rows), and `Save` (backfill updates). `ErrNotFound = gorm.ErrRecordNotFound` is the not-found sentinel — services detect it with `errors.Is` without importing gorm; all other errors are returned raw and wrapped by the service with its context strings.
 - The data screen added `List(filter)` / `FindByID` / `DeleteByIDs`. `List` orders `id DESC` (newest first) and falls back to all rows on an unknown filter instead of erroring, so `DataService` stays the gate that rejects one.
 
-### 6d. Notes Service — `internal/services/note.go` + `note_get.go`
+### 6d. Notes Service — `internal/services/notes/note.go` + `note_get.go`
 - `NotesService` implements `CategoryHandler` for the `notes` category. `Handle` routes `require` → `Get`, everything else → `Add`. Constructor takes the `*NoteExtractor` and the `*repository.NotesRepository`; repo errors are wrapped with `failed to persist note` / `failed to search notes`.
 - `Add` asks Jev for the sub-type, then: **note** stores content only; **reminder** requires a date (optional time) and returns `ActionNoteNoData` when the date is unparseable; **todo** splits the content into ordered items. An unknown sub-type is also `ActionNoteNoData`. Success returns `ActionNoteAdd` carrying the saved note in `outcome.Notes`.
 - `Get` (require) picks one filter from the message, in order: a parsed date (`FindByDate`, including `ontem`), an unfinished marker (`falta`/`faltam`/`pendente`/`pendentes`/`não fiz`/`ainda não` → `FindUnfinished`), otherwise a content term (`FindByTerm`, `LOWER(content) LIKE %term%`) built by stripping PT-BR stopwords from the accent-normalized message, with a retry on the last word when the phrase misses. Found → `ActionNoteFound` + the notes list; not found → `ActionNoteNotFound`; nothing extractable → `ActionNoteNoData`.
 - Content is always the trimmed original message; the date, the time and the items live in their own columns.
 
-### 6e. Note Extractor / Date Parser / Todo Splitter — `internal/services/note_extract.go`, `dateparse.go`, `todo_split.go`
-- `NoteExtractor.ExtractType` makes the **second** Jev call of a notes message (`note.json`, one `note_type` choice answer) reusing the `jevClient` seam and `answerAsChoice`; the raw choice is validated by the service.
+### 6e. Note Extractor / Date Parser / Todo Splitter — `internal/services/notes/note_extract.go`, `todo_split.go`, `internal/ptbr/dateparse.go`
+- `NoteExtractor.ExtractType` makes the **second** Jev call of a notes message (`note.json`, one `note_type` choice answer) reusing the `jevq.Client` seam and `jevq.AnswerChoice`; the raw choice is validated by the service.
 - `ParseDate` / `ParseTime` are deterministic and dependency-free package functions (no struct, nothing to inject): `dd/mm/aaaa`, `dd/mm` (current year), `dia N` (current month), `hoje`, `amanhã`, `ontem`; times as `14h`, `14h30`, `14:00`. Every date is normalized to UTC midnight so the equality filter on `notes.date` compares identically. `now` is a parameter, not `time.Now()`, to keep the relative forms testable.
 - `SplitTodoItems` splits on newlines first, then numbered markers (`1. `, `2) `), then commas/semicolons, trimming punctuation and leading numbers/conjunctions; the service assigns `Position` from the slice order. Two more rules, both gated on the same "this is a list" signal (a `,`/`;` survived, or a label was dropped): a leading marker (`Comprar:`, `Tarefas:`) is dropped when a list follows it — a bare `Tarefas:` is left with nothing, which the service answers as no-data — and the `e` conjunction separates items only in an inline list. Line and numbered lists keep one item per line, and a single statement like `comprar pão e leite` stays one item.
 
-### 6f. Finance Service — `internal/services/finance.go` + `finance_get.go`
+### 6f. Finance Service — `internal/services/finance/finance.go` + `finance_get.go`
 - `FinanceService` implements `CategoryHandler` for the `finance` category. `Handle` routes `require` → `Get`, everything else → `Add`. Constructor takes the `*FinanceExtractor` and the `*repository.TransactionRepository`; repo errors are wrapped with `failed to persist transaction` / `failed to search transactions`.
 - `Add` asks Jev for the transaction type, parses the amount with `ParseAmount` (no amount → `ActionTransactionNoData` saying what is missing) and the date with `ParseEventDate`, defaulting to today when the message carries none. The repository inserts the transaction and the outcome carries it in `outcome.Transaction`.
 - `Get` (require) builds one composed `repository.TransactionFilter` — the type named in the message (`financeTypeWords`: comprei/vendi/paguei/recebi/transferi…), the `ParseRange` window (`From`/`Until`, which is how "esse mês" and "semana passada" are answered), and the content term — because "quanto gastei com mercado esse mês" is all three at once. A multi-word term that misses is retried with the term dropped (grammar vs. name, see the ponytail note); a single-word miss stays a miss. Found → `ActionTransactionFound` + the list; not found → `ActionTransactionNotFound`; nothing extractable → `ActionTransactionNoData`. `SearchTerm` carries a human-readable `filterLabel` so the partial can show what was searched for.
 - When the message asks how much (`quanto`, `total`, …) the outcome carries `outcome.Total` from `TransactionRepository.Sum(filter)` and the partial shows it.
 - Amounts are always stored positive — the transaction type carries the direction, so a `recebimento` is not a negative number and `Sum` is a plain sum per filter rather than a signed one.
 
-### 6g. Finance Extractor / Money Parser — `internal/services/finance_extract.go`, `money.go`
-- `FinanceExtractor.Extract` makes **one** dynamic Jev request carrying two question kinds: a `transaction_type` choice plus a `segment_N` Noul fan-out over the party candidate, so the party refines in the same round trip. The party candidate is regex-anchored on the preposition that introduces an establishment ("no"/"na"/"do"/"da"/"para o"…) and junk-filtered; `segmentKey`/`noulSegments` are shared with the contact name extraction rather than reimplemented. If the mixed request fails and there were segments to fan out, it retries with the type question alone and continues without a party — the type is what matters.
+### 6g. Finance Extractor / Money Parser — `internal/services/finance/finance_extract.go`, `internal/ptbr/money.go`
+- `FinanceExtractor.Extract` makes **one** dynamic Jev request carrying two question kinds: a `transaction_type` choice plus a `segment_N` Noul fan-out over the party candidate, so the party refines in the same round trip. The party candidate is regex-anchored on the preposition that introduces an establishment ("no"/"na"/"do"/"da"/"para o"…) and junk-filtered; `SegmentKey`/`NoulSegments` are shared with the contact name extraction rather than reimplemented. If the mixed request fails and there were segments to fan out, it retries with the type question alone and continues without a party — the type is what matters.
 - `ParseAmount` matches the PT-BR monetary forms in order — `R$ 50,00`, `50 reais`, then a bare number carrying a decimal or thousands separator. Requiring one of those markers is what stops "3 vezes de 300 reais" reading the installment count as the amount and "10/10/2023" reading as money. Dots are thousands separators and the comma is the decimal mark, so the same parser accepts what the UI renders through `views.MoneyBRL`.
 - ponytail: the party is a regex-anchored guess refined by the fan-out, not a parse of the sentence — a candidate with no preposition yields no party, and a preposition introducing something else is caught by the junk wordlist. Asking Jev to return the party as a quoted substring is the way past it.
 
@@ -206,7 +214,7 @@ msg-classifier/
 - `RenderResult` / `RenderError`: render the result or error partial; errors carry proper HTTP status so htmx swaps the error card into `#resultado`.
 - The shared template set registers `views.FuncMap` (`label` for PT-BR badge text, `confidence` for the percent format, `money` for the amount, plus `dateBR`/`deref` for the data screen).
 - The data screen passes templates page-scoped view models — `DataDetailData{Kind, Mode, Contact, Note, Transaction}` and `ItemRowData` — rather than handing entities straight to a partial. `Mode` is `view` or `edit`, and the switch happens in the template through a single `disabled` attribute on the form's `fieldset` instead of two parallel branches.
-- `DateBR(*time.Time)`, `Deref(*string)`, `Confidence(float64)` and `MoneyBRL(float64)` are template helpers, not entity methods: rendering a `*string` directly puts a pointer address (`0xc000…`) in the cell, and formatting a confidence or an amount is presentation. `MoneyBRL` emits `"R$ 1.234,56"` — the same shape `services.ParseAmount` reads back, which is why the transaction edit field is prefilled with `money` rather than `printf "%.2f"` (a bare `50.00` would parse back as 5000).
+- `DateBR(*time.Time)`, `Deref(*string)`, `Confidence(float64)` and `MoneyBRL(float64)` are template helpers, not entity methods: rendering a `*string` directly puts a pointer address (`0xc000…`) in the cell, and formatting a confidence or an amount is presentation. `MoneyBRL` emits `"R$ 1.234,56"` — the same shape `ptbr.ParseAmount` reads back, which is why the transaction edit field is prefilled with `money` rather than `printf "%.2f"` (a bare `50.00` would parse back as 5000).
 
 ### 9. Jev API Client — `pkg/jev/jev.go`
 - `Client` struct with `NewClient(apiURL, token, model)` — all configuration injected, no `internal/config` import (genuinely reusable).
@@ -393,6 +401,6 @@ go build ./cmd/api
 ```
 
 - No Dockerfile, Makefile, or CI pipeline exists yet.
-- Tests exist for `pkg/jev`, `internal/models`, `internal/config`, `internal/services`, `internal/views`, and `internal/repository` (run with `go test ./...`). `internal/controllers` has no tests — its handlers are a thin bind/render shell over `DataService`.
+- Tests exist for `pkg/jev`, `internal/models`, `internal/config`, `internal/ptbr`, `internal/services` (+ its `contact`, `notes` and `finance` subpackages), `internal/views`, and `internal/repository` (run with `go test ./...`). `internal/controllers` has no tests — its handlers are a thin bind/render shell over `DataService`. `internal/jevq` has none either: it is answer decoding and request assembly over `pkg/jev`, exercised through the four flows.
 - Go and template files uniformly lack a trailing newline at EOF, so `gofmt -l` always lists ~17 files. That is expected: read the real diff, not the list.
 - `.gitignore` ignores `**/*_bin.exe`, `thoughts/`, `*.db`, `.vscode`, and `exports/`.

@@ -1,13 +1,13 @@
-package services
+package notes
 
 import (
 	"errors"
 	"fmt"
 	"strings"
 	"time"
-	"unicode"
 
 	"msg-classifier/internal/models"
+	"msg-classifier/internal/ptbr"
 	"msg-classifier/internal/repository"
 )
 
@@ -28,11 +28,11 @@ var noteStopwords = map[string]bool{
 // Get searches stored notes (require flow). Filter priority: a date in the
 // message (including "ontem"), then unfinished to-do items, then a content term.
 func (s *NotesService) Get(request *models.ReceiveMessageRequest, classification *models.Classification) (*models.UseCaseOutcome, error) {
-	normalized := normalizeName(request.Message)
+	normalized := ptbr.NormalizeName(request.Message)
 
-	if date, ok := ParseDate(request.Message, time.Now()); ok {
+	if date, ok := ptbr.ParseDate(request.Message, time.Now()); ok {
 		notes, err := s.repo.FindByDate(date)
-		return s.searchResult(classification, notes, err, date.Format(dateLayout))
+		return s.searchResult(classification, notes, err, date.Format(ptbr.DateLayout))
 	}
 
 	if hasUnfinishedMarker(normalized) {
@@ -95,26 +95,13 @@ func searchTerm(normalized string) string {
 	words := strings.Fields(normalized)
 	kept := make([]string, 0, len(words))
 	for _, word := range words {
-		word = stripPunctuation(word)
+		word = ptbr.StripPunctuation(word)
 		if word == "" || noteStopwords[word] {
 			continue
 		}
 		kept = append(kept, word)
 	}
 	return strings.Join(kept, " ")
-}
-
-// stripPunctuation keeps letters and digits only, so a trailing "?" cannot leak
-// into the LIKE term and miss every row.
-func stripPunctuation(s string) string {
-	var b strings.Builder
-	b.Grow(len(s))
-	for _, r := range s {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
 }
 
 // lastWord returns the final word of a multi-word term.

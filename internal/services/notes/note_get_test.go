@@ -1,10 +1,11 @@
-package services
+package notes
 
 import (
 	"testing"
 	"time"
 
 	"msg-classifier/internal/models"
+	"msg-classifier/internal/ptbr"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -43,7 +44,7 @@ func TestNoteServiceGetByDate(t *testing.T) {
 
 func TestNoteServiceGetByYesterday(t *testing.T) {
 	service, _ := noteService(t, models.NoteTypeNote)
-	date, ok := ParseDate("ontem", time.Now())
+	date, ok := ptbr.ParseDate("ontem", time.Now())
 	require.True(t, ok)
 	seedNote(t, service, &models.Note{Type: models.NoteTypeNote, Content: "anotação de ontem", Date: &date})
 

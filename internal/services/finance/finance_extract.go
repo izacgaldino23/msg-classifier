@@ -1,4 +1,4 @@
-package services
+package finance
 
 import (
 	"fmt"
@@ -6,7 +6,9 @@ import (
 	"strings"
 	"unicode"
 
+	"msg-classifier/internal/jevq"
 	"msg-classifier/internal/models"
+	"msg-classifier/internal/ptbr"
 	"msg-classifier/pkg/jev"
 )
 
@@ -51,10 +53,10 @@ var partyJunk = map[string]bool{
 
 // partySegmentQuestion asks whether each segment of the candidate names the shop
 // or the person on the other side.
-var partySegmentQuestion = segmentQuestion{
-	prompt:        "Is `segments[%d]` part of the name of the establishment or of the person involved in the transaction in `message`?",
-	trueCriteria:  "the segment names the shop, the establishment or the person involved ('supermercado', 'padaria', 'farmácia', 'Fulano')",
-	falseCriteria: "the segment is a verb, an article, a preposition, an amount, or an abstract noun ('comprei', 'no', '50', 'reais', 'valor', 'conta')",
+var partySegmentQuestion = jevq.SegmentQuestion{
+	Prompt:        "Is `segments[%d]` part of the name of the establishment or of the person involved in the transaction in `message`?",
+	TrueCriteria:  "the segment names the shop, the establishment or the person involved ('supermercado', 'padaria', 'farmácia', 'Fulano')",
+	FalseCriteria: "the segment is a verb, an article, a preposition, an amount, or an abstract noun ('comprei', 'no', '50', 'reais', 'valor', 'conta')",
 }
 
 // partyCandidate is the span after a preposition: the raw text for the fallback
@@ -75,10 +77,10 @@ type FinanceResult struct {
 // FinanceExtractor asks Jev for the transaction type and, in the same request,
 // which words of the establishment candidate are actually the shop or the person.
 type FinanceExtractor struct {
-	jev jevRequester
+	jev jevq.Requester
 }
 
-func NewFinanceExtractor(client jevRequester) *FinanceExtractor {
+func NewExtractor(client jevq.Requester) *FinanceExtractor {
 	return &FinanceExtractor{jev: client}
 }
 
@@ -96,20 +98,20 @@ func (e *FinanceExtractor) Extract(message string) (FinanceResult, error) {
 	candidate := partyCandidateFrom(message)
 	extra := map[string]jev.JevQuestionInterface{typeAnswerKey: typeQuestion()}
 
-	resp, trace, err := noulSegments(e.jev, message, candidate.Segments, partySegmentQuestion, extra)
+	resp, trace, err := jevq.NoulSegments(e.jev, message, candidate.Segments, partySegmentQuestion, extra)
 	if err != nil && len(candidate.Segments) > 0 {
 		// The party fan-out rides along with the type question, but a request mixing
 		// both question kinds could be rejected. The type is what matters, so retry
 		// without the fan-out and carry on without a party.
-		resp, trace, err = noulSegments(e.jev, message, nil, partySegmentQuestion, extra)
+		resp, trace, err = jevq.NoulSegments(e.jev, message, nil, partySegmentQuestion, extra)
 	}
 	if err != nil {
 		return FinanceResult{}, err
 	}
 
-	answer, err := answerAsChoice(resp, typeAnswerKey)
+	answer, err := jevq.AnswerChoice(resp, typeAnswerKey)
 	if err != nil {
-		return FinanceResult{}, fmt.Errorf("%w: %w", ErrUpstream, err)
+		return FinanceResult{}, fmt.Errorf("%w: %w", jevq.ErrUpstream, err)
 	}
 
 	transactionType := answer.Choice
@@ -170,11 +172,11 @@ func partyWindow(span string) (partyCandidate, bool) {
 		if len(candidate.Segments) == partyWindowWords {
 			break
 		}
-		trimmed := trimSegment(word)
+		trimmed := ptbr.TrimSegment(word)
 		if trimmed == "" {
 			continue
 		}
-		normalized := strings.ToLower(normalizeName(trimmed))
+		normalized := strings.ToLower(ptbr.NormalizeName(trimmed))
 		if partyStops[normalized] {
 			break
 		}
@@ -198,7 +200,7 @@ func containsDigit(text string) bool {
 // counts as junk, so it never reaches the fan-out).
 func isJunkParty(segments []string) bool {
 	for _, segment := range segments {
-		if !partyJunk[strings.ToLower(normalizeName(segment))] {
+		if !partyJunk[strings.ToLower(ptbr.NormalizeName(segment))] {
 			return false
 		}
 	}
@@ -210,7 +212,7 @@ func joinIncluded(trace []models.SegmentScore) string {
 	parts := make([]string, 0, len(trace))
 	for _, segment := range trace {
 		if segment.Included {
-			if trimmed := trimSegment(segment.Text); trimmed != "" {
+			if trimmed := ptbr.TrimSegment(segment.Text); trimmed != "" {
 				parts = append(parts, trimmed)
 			}
 		}

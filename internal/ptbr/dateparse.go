@@ -1,4 +1,4 @@
-package services
+package ptbr
 
 import (
 	"fmt"
@@ -36,8 +36,8 @@ var monthsByName = map[string]time.Month{
 	"outubro": time.October, "novembro": time.November, "dezembro": time.December,
 }
 
-// dateLayout is the PT-BR display format used for the search term.
-const dateLayout = "02/01/2006"
+// DateLayout is the PT-BR display format used for the search term.
+const DateLayout = "02/01/2006"
 
 // ParseDate returns the date mentioned in the message, or false when there is
 // none. Supported: dd/mm/aaaa, dd/mm (current year), DD-MM-YYYY,
@@ -58,7 +58,7 @@ func ParseDate(message string, now time.Time) (time.Time, bool) {
 		return buildDate(toInt(m[1]), toInt(m[2]), toInt(m[3]))
 	}
 
-	normalized := normalizeName(message)
+	normalized := NormalizeName(message)
 	if m := longDatePattern.FindStringSubmatch(normalized); m != nil {
 		return buildDate(toInt(m[1]), int(monthsByName[m[2]]), toInt(m[3]))
 	}
@@ -68,11 +68,11 @@ func ParseDate(message string, now time.Time) (time.Time, bool) {
 
 	switch {
 	case strings.Contains(normalized, "hoje"):
-		return startOfDay(now), true
+		return StartOfDay(now), true
 	case strings.Contains(normalized, "amanha"):
-		return startOfDay(now.AddDate(0, 0, 1)), true
+		return StartOfDay(now.AddDate(0, 0, 1)), true
 	case strings.Contains(normalized, "ontem"):
-		return startOfDay(now.AddDate(0, 0, -1)), true
+		return StartOfDay(now.AddDate(0, 0, -1)), true
 	}
 
 	if m := dayOfMonthPattern.FindStringSubmatch(normalized); m != nil {
@@ -92,8 +92,8 @@ func ParseRange(message string, now time.Time) (from, until time.Time, ok bool) 
 		return date, date.AddDate(0, 0, 1), true
 	}
 
-	normalized := normalizeName(message)
-	today := startOfDay(now)
+	normalized := NormalizeName(message)
+	today := StartOfDay(now)
 	switch {
 	case strings.Contains(normalized, "hoje"):
 		return today, today.AddDate(0, 0, 1), true
@@ -162,7 +162,6 @@ func monthStart(year int, month time.Month, offset int) time.Time {
 	return time.Date(year, month, 1, 0, 0, 0, 0, time.UTC).AddDate(0, offset, 0)
 }
 
-
 // ParseTime returns the HH:MM time mentioned in the message ("14h", "14h30",
 // "14:00") or false when there is none. The time is optional for reminders.
 func ParseTime(message string) (string, bool) {
@@ -196,8 +195,8 @@ func buildDate(day, month, year int) (time.Time, bool) {
 	return date, true
 }
 
-// startOfDay truncates a time to the UTC midnight of its calendar day.
-func startOfDay(t time.Time) time.Time {
+// StartOfDay truncates a time to the UTC midnight of its calendar day.
+func StartOfDay(t time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
 }
 

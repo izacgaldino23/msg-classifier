@@ -1,4 +1,4 @@
-package services
+package notes
 
 import (
 	"fmt"
@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"msg-classifier/internal/models"
+	"msg-classifier/internal/ptbr"
 	"msg-classifier/internal/repository"
 )
 
@@ -15,12 +16,9 @@ type NotesService struct {
 	repo      *repository.NotesRepository
 }
 
-func NewNotesService(extractor *NoteExtractor, repo *repository.NotesRepository) *NotesService {
+func NewService(extractor *NoteExtractor, repo *repository.NotesRepository) *NotesService {
 	return &NotesService{extractor: extractor, repo: repo}
 }
-
-// compile-time assertion that NotesService satisfies the CategoryHandler seam.
-var _ CategoryHandler = (*NotesService)(nil)
 
 // Handle routes notes messages to the add or the get use case.
 func (s *NotesService) Handle(request *models.ReceiveMessageRequest, classification *models.Classification) (*models.UseCaseOutcome, error) {
@@ -51,12 +49,12 @@ func (s *NotesService) Add(request *models.ReceiveMessageRequest, classification
 	case models.NoteTypeNote:
 	case models.NoteTypeReminder:
 		now := time.Now()
-		date, hasDate := ParseDate(content, now)
+		date, hasDate := ptbr.ParseDate(content, now)
 		if !hasDate {
 			return noData(classification), nil
 		}
 		note.Date = &date
-		if clock, hasClock := ParseTime(content); hasClock {
+		if clock, hasClock := ptbr.ParseTime(content); hasClock {
 			note.Time = &clock
 		}
 	case models.NoteTypeTodo:

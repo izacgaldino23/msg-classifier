@@ -7,8 +7,12 @@ import (
 	"strings"
 	"testing"
 
+	"msg-classifier/internal/jevq"
 	"msg-classifier/internal/models"
 	"msg-classifier/internal/repository"
+	"msg-classifier/internal/services/contact"
+	"msg-classifier/internal/services/finance"
+	"msg-classifier/internal/services/notes"
 	"msg-classifier/pkg/jev"
 
 	"github.com/stretchr/testify/assert"
@@ -17,7 +21,7 @@ import (
 )
 
 // newPromptService reuses the package newTestDB (Contact) and adds the JevPrompt table.
-func newPromptService(t *testing.T, classifier *ClassificationService, extractor *ContactExtractor, noteExtractor *NoteExtractor, financeExtractor *FinanceExtractor) (*PromptService, *gorm.DB) {
+func newPromptService(t *testing.T, classifier *ClassificationService, extractor *contact.ContactExtractor, noteExtractor *notes.NoteExtractor, financeExtractor *finance.FinanceExtractor) (*PromptService, *gorm.DB) {
 	t.Helper()
 	db := newTestDB(t)
 	require.NoError(t, db.AutoMigrate(&models.JevPrompt{}), "AutoMigrate(JevPrompt)")
@@ -118,7 +122,7 @@ func TestPromptServiceEvaluateClassificationMismatch(t *testing.T) {
 
 func TestPromptServiceEvaluateName(t *testing.T) {
 	mock := &mockJevRequester{resp: noulResponse(0.99, 0.98, 0.98)}
-	service, db := newPromptService(t, nil, NewContactExtractor(mock), nil, nil)
+	service, db := newPromptService(t, nil, contact.NewExtractor(mock), nil, nil)
 	prompt := &models.JevPrompt{Flow: models.FlowName, Message: "João da Silva", ExpectedResult: "João da Silva"}
 	require.NoError(t, db.Create(prompt).Error)
 
@@ -133,7 +137,7 @@ func TestPromptServiceEvaluateName(t *testing.T) {
 
 func TestPromptServiceEvaluateNameAccentInsensitive(t *testing.T) {
 	mock := &mockJevRequester{resp: noulResponse(0.99, 0.98, 0.98)}
-	service, db := newPromptService(t, nil, NewContactExtractor(mock), nil, nil)
+	service, db := newPromptService(t, nil, contact.NewExtractor(mock), nil, nil)
 	prompt := &models.JevPrompt{Flow: models.FlowName, Message: "João da Silva", ExpectedResult: "JOAO DA SILVA"}
 	require.NoError(t, db.Create(prompt).Error)
 
@@ -146,7 +150,7 @@ func TestPromptServiceEvaluateNameMismatch(t *testing.T) {
 	// A genuine mismatch: Jev includes "Maria" but drops "Clara" (no particle
 	// involved), so the obtained name differs from the expected.
 	mock := &mockJevRequester{resp: noulResponse(0.99, 0.1, 0.99)}
-	service, db := newPromptService(t, nil, NewContactExtractor(mock), nil, nil)
+	service, db := newPromptService(t, nil, contact.NewExtractor(mock), nil, nil)
 	prompt := &models.JevPrompt{Flow: models.FlowName, Message: "Maria Clara Oliveira", ExpectedResult: "Maria Clara Oliveira"}
 	require.NoError(t, db.Create(prompt).Error)
 
@@ -235,7 +239,7 @@ func TestPromptServiceAddAcceptsNoteFlow(t *testing.T) {
 
 func TestPromptServiceEvaluateNote(t *testing.T) {
 	mock := &mockJevClient{resp: noteTypeResponse(models.NoteTypeReminder)}
-	service, db := newPromptService(t, nil, nil, NewNoteExtractor(mock), nil)
+	service, db := newPromptService(t, nil, nil, notes.NewExtractor(mock), nil)
 	prompt := &models.JevPrompt{Flow: models.FlowNote, Message: "Me lembra de pagar a conta dia 10", ExpectedResult: "reminder"}
 	require.NoError(t, db.Create(prompt).Error)
 
@@ -249,7 +253,7 @@ func TestPromptServiceEvaluateNote(t *testing.T) {
 
 func TestPromptServiceEvaluateNoteCaseInsensitive(t *testing.T) {
 	mock := &mockJevClient{resp: noteTypeResponse("Todo")}
-	service, db := newPromptService(t, nil, nil, NewNoteExtractor(mock), nil)
+	service, db := newPromptService(t, nil, nil, notes.NewExtractor(mock), nil)
 	prompt := &models.JevPrompt{Flow: models.FlowNote, Message: "comprar pão, leite", ExpectedResult: "todo"}
 	require.NoError(t, db.Create(prompt).Error)
 
@@ -260,7 +264,7 @@ func TestPromptServiceEvaluateNoteCaseInsensitive(t *testing.T) {
 
 func TestPromptServiceEvaluateNoteMismatch(t *testing.T) {
 	mock := &mockJevClient{resp: noteTypeResponse(models.NoteTypeNote)}
-	service, db := newPromptService(t, nil, nil, NewNoteExtractor(mock), nil)
+	service, db := newPromptService(t, nil, nil, notes.NewExtractor(mock), nil)
 	prompt := &models.JevPrompt{Flow: models.FlowNote, Message: "me lembra de pagar a conta dia 10", ExpectedResult: "reminder"}
 	require.NoError(t, db.Create(prompt).Error)
 
@@ -272,7 +276,7 @@ func TestPromptServiceEvaluateNoteMismatch(t *testing.T) {
 
 func TestPromptServiceEvaluateNoteJevFailure(t *testing.T) {
 	mock := &mockJevClient{err: errors.New("boom")}
-	service, db := newPromptService(t, nil, nil, NewNoteExtractor(mock), nil)
+	service, db := newPromptService(t, nil, nil, notes.NewExtractor(mock), nil)
 	prompt := &models.JevPrompt{Flow: models.FlowNote, Message: "anota isso", ExpectedResult: "note"}
 	require.NoError(t, db.Create(prompt).Error)
 
@@ -284,10 +288,10 @@ func TestPromptServiceEvaluateNoteJevFailure(t *testing.T) {
 }
 
 // The finance flow resolves the transaction type through the same
-// FinanceExtractor.Extract the finance use case runs.
+// finance.FinanceExtractor.Extract the finance use case runs.
 func TestPromptServiceEvaluateFinanceUsesProductionPath(t *testing.T) {
 	mock := &mockJevRequester{resp: financeResponse(models.TransactionTypePurchase, 0.88)}
-	service, db := newPromptService(t, nil, nil, nil, NewFinanceExtractor(mock))
+	service, db := newPromptService(t, nil, nil, nil, finance.NewExtractor(mock))
 	prompt := &models.JevPrompt{Flow: models.FlowFinance, Message: "Comprei arroz no supermercado por 50 reais", ExpectedResult: models.TransactionTypePurchase}
 	require.NoError(t, db.Create(prompt).Error)
 
@@ -299,13 +303,13 @@ func TestPromptServiceEvaluateFinanceUsesProductionPath(t *testing.T) {
 
 	questions := mock.got.Questions
 	assert.Len(t, questions, 2, "the harness must use the production request shape")
-	assert.Contains(t, questions, typeAnswerKey)
-	assert.Contains(t, questions, segmentKey(0))
+	assert.Contains(t, questions, "transaction_type")
+	assert.Contains(t, questions, jevq.SegmentKey(0))
 }
 
 func TestPromptServiceEvaluateFinanceMismatch(t *testing.T) {
 	mock := &mockJevRequester{resp: financeResponse(models.TransactionTypePurchase)}
-	service, db := newPromptService(t, nil, nil, nil, NewFinanceExtractor(mock))
+	service, db := newPromptService(t, nil, nil, nil, finance.NewExtractor(mock))
 	prompt := &models.JevPrompt{Flow: models.FlowFinance, Message: "paguei a fatura", ExpectedResult: models.TransactionTypePayment}
 	require.NoError(t, db.Create(prompt).Error)
 
@@ -317,7 +321,7 @@ func TestPromptServiceEvaluateFinanceMismatch(t *testing.T) {
 
 func TestPromptServiceEvaluateFinanceJevFailure(t *testing.T) {
 	mock := &mockJevRequester{err: errors.New("boom")}
-	service, db := newPromptService(t, nil, nil, nil, NewFinanceExtractor(mock))
+	service, db := newPromptService(t, nil, nil, nil, finance.NewExtractor(mock))
 	prompt := &models.JevPrompt{Flow: models.FlowFinance, Message: "gastei 30 reais", ExpectedResult: models.TransactionTypePurchase}
 	require.NoError(t, db.Create(prompt).Error)
 

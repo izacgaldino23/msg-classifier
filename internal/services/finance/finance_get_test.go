@@ -1,10 +1,11 @@
-package services
+package finance
 
 import (
 	"testing"
 	"time"
 
 	"msg-classifier/internal/models"
+	"msg-classifier/internal/ptbr"
 	"msg-classifier/internal/repository"
 
 	"github.com/stretchr/testify/assert"
@@ -20,7 +21,7 @@ func financeRequireClassification() *models.Classification {
 
 func seedTransactions(t *testing.T, repo *repository.TransactionRepository) {
 	t.Helper()
-	today := startOfDay(time.Now())
+	today := ptbr.StartOfDay(time.Now())
 	rows := []*models.Transaction{
 		{Type: models.TransactionTypePurchase, Amount: 50, Date: today, Party: "supermercado", Content: "mercado de hoje"},
 		{Type: models.TransactionTypePurchase, Amount: 30, Date: today.AddDate(0, 0, -1), Party: "padaria", Content: "padaria de ontem"},
@@ -36,7 +37,7 @@ func newFinanceGetService(t *testing.T) (*FinanceService, *repository.Transactio
 	db := newFinanceTestDB(t)
 	repo := repository.NewTransactionRepository(db)
 	seedTransactions(t, repo)
-	return NewFinanceService(NewFinanceExtractor(&mockJevRequester{}), repo), repo
+	return NewService(NewExtractor(&mockJevRequester{}), repo), repo
 }
 
 func TestFinanceServiceGetFilters(t *testing.T) {
@@ -113,6 +114,11 @@ func TestFinanceServiceGetTotalRespectsTheFilter(t *testing.T) {
 }
 
 func TestFinanceServiceGetFilterLabel(t *testing.T) {
+	// "esse mês" spans whole days: ParseRange answers the first through the last
+	// day of the current month, not a month counted from today.
+	monthFirst := ptbr.StartOfDay(time.Now())
+	monthFirst = time.Date(monthFirst.Year(), monthFirst.Month(), 1, 0, 0, 0, 0, time.UTC)
+
 	tests := []struct {
 		name    string
 		message string
@@ -120,8 +126,8 @@ func TestFinanceServiceGetFilterLabel(t *testing.T) {
 	}{
 		{"term wins", "quanto gastei no supermercado", "supermercado"},
 		{"type when no term", "mostre os pagamentos", "pagamento"},
-		{"period when nothing else", "quanto gastei ontem", startOfDay(time.Now()).AddDate(0, 0, -1).Format(dateLayout)},
-		{"period of many days", "quanto gastei esse mes", startOfDay(time.Now()).Format(dateLayout) + " a " + startOfDay(time.Now()).AddDate(0, 1, -1).Format(dateLayout)},
+		{"period when nothing else", "quanto gastei ontem", ptbr.StartOfDay(time.Now()).AddDate(0, 0, -1).Format(ptbr.DateLayout)},
+		{"period of many days", "quanto gastei esse mes", monthFirst.Format(ptbr.DateLayout) + " a " + monthFirst.AddDate(0, 1, -1).Format(ptbr.DateLayout)},
 	}
 
 	for _, tt := range tests {

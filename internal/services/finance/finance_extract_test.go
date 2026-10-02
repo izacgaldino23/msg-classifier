@@ -1,9 +1,10 @@
-package services
+package finance
 
 import (
 	"errors"
 	"testing"
 
+	"msg-classifier/internal/jevq"
 	"msg-classifier/internal/models"
 	"msg-classifier/pkg/jev"
 )
@@ -14,7 +15,7 @@ func financeResponse(choice string, nouls ...float64) *jev.JevResponse {
 		typeAnswerKey: &jev.JevAnswerChoice{Choice: choice, Confidence: 0.9},
 	}
 	for i, noul := range nouls {
-		answers[segmentKey(i)] = &jev.JevAnswerNoul{Noul: noul}
+		answers[jevq.SegmentKey(i)] = &jev.JevAnswerNoul{Noul: noul}
 	}
 	return &jev.JevResponse{Model: "jev-latest", Answers: answers}
 }
@@ -95,7 +96,7 @@ func TestFinanceExtractorExtract(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mock := &mockJevRequester{resp: tt.resp}
-			result, err := NewFinanceExtractor(mock).Extract(tt.message)
+			result, err := NewExtractor(mock).Extract(tt.message)
 			if err != nil {
 				t.Fatalf("Extract(%q) error = %v", tt.message, err)
 			}
@@ -114,7 +115,7 @@ func TestFinanceExtractorExtract(t *testing.T) {
 func TestFinanceExtractorAsksTypeAndPartyInOneCall(t *testing.T) {
 	mock := &mockJevRequester{resp: financeResponse(models.TransactionTypePurchase, 0.9)}
 
-	if _, err := NewFinanceExtractor(mock).Extract("comprei no supermercado por 50 reais"); err != nil {
+	if _, err := NewExtractor(mock).Extract("comprei no supermercado por 50 reais"); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 	if mock.calls != 1 {
@@ -123,8 +124,8 @@ func TestFinanceExtractorAsksTypeAndPartyInOneCall(t *testing.T) {
 	if _, ok := mock.got.Questions[typeAnswerKey].(*jev.JevQuestionChoice); !ok {
 		t.Errorf("missing the %q choice question, got %T", typeAnswerKey, mock.got.Questions[typeAnswerKey])
 	}
-	if _, ok := mock.got.Questions[segmentKey(0)].(*jev.JevQuestionNoul); !ok {
-		t.Errorf("missing the segment noul question, got %T", mock.got.Questions[segmentKey(0)])
+	if _, ok := mock.got.Questions[jevq.SegmentKey(0)].(*jev.JevQuestionNoul); !ok {
+		t.Errorf("missing the segment noul question, got %T", mock.got.Questions[jevq.SegmentKey(0)])
 	}
 }
 
@@ -133,7 +134,7 @@ func TestFinanceExtractorAsksTypeAndPartyInOneCall(t *testing.T) {
 func TestFinanceExtractorFallsBackToTypeOnly(t *testing.T) {
 	mock := &mockJevRequester{failFirst: true, resp: financeResponse(models.TransactionTypePayment)}
 
-	result, err := NewFinanceExtractor(mock).Extract("paguei 1200 reais do aluguel")
+	result, err := NewExtractor(mock).Extract("paguei 1200 reais do aluguel")
 	if err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
@@ -146,7 +147,7 @@ func TestFinanceExtractorFallsBackToTypeOnly(t *testing.T) {
 	if mock.calls != 2 {
 		t.Fatalf("Jev calls = %d, want 2", mock.calls)
 	}
-	if _, ok := mock.got.Questions[segmentKey(0)]; ok {
+	if _, ok := mock.got.Questions[jevq.SegmentKey(0)]; ok {
 		t.Error("the retry must not carry the party fan-out")
 	}
 }
@@ -154,8 +155,8 @@ func TestFinanceExtractorFallsBackToTypeOnly(t *testing.T) {
 func TestFinanceExtractorUpstreamErrors(t *testing.T) {
 	mock := &mockJevRequester{err: errors.New("boom")}
 
-	_, err := NewFinanceExtractor(mock).Extract("comprei por 50 reais no mercado")
-	if !errors.Is(err, ErrUpstream) {
+	_, err := NewExtractor(mock).Extract("comprei por 50 reais no mercado")
+	if !errors.Is(err, jevq.ErrUpstream) {
 		t.Fatalf("error = %v, want ErrUpstream", err)
 	}
 }
@@ -164,8 +165,8 @@ func TestFinanceExtractorUpstreamErrors(t *testing.T) {
 func TestFinanceExtractorMissingTypeAnswer(t *testing.T) {
 	mock := &mockJevRequester{resp: &jev.JevResponse{Answers: map[string]any{}}}
 
-	_, err := NewFinanceExtractor(mock).Extract("comprei por 50 reais no mercado")
-	if !errors.Is(err, ErrUpstream) {
+	_, err := NewExtractor(mock).Extract("comprei por 50 reais no mercado")
+	if !errors.Is(err, jevq.ErrUpstream) {
 		t.Fatalf("error = %v, want ErrUpstream", err)
 	}
 }

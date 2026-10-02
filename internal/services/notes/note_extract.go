@@ -1,8 +1,9 @@
-package services
+package notes
 
 import (
 	"fmt"
 
+	"msg-classifier/internal/jevq"
 	"msg-classifier/internal/models"
 	"msg-classifier/pkg/jev"
 )
@@ -13,14 +14,13 @@ const noteTypeAnswerKey = "note_type"
 // noteTypeTemplate is the embedded template that asks for the sub-type.
 const noteTypeTemplate = "note.json"
 
-// NoteExtractor asks Jev which sub-type a notes message is. It reuses the jevClient
-// seam from classification.go: the note flow is template-file based, exactly like
-// the classification call.
+// NoteExtractor asks Jev which sub-type a notes message is. It reuses the jevq.Client
+// seam: the note flow is template-file based, exactly like the classification call.
 type NoteExtractor struct {
-	jev jevClient
+	jev jevq.Client
 }
 
-func NewNoteExtractor(client jevClient) *NoteExtractor {
+func NewExtractor(client jevq.Client) *NoteExtractor {
 	return &NoteExtractor{jev: client}
 }
 
@@ -34,12 +34,12 @@ func (e *NoteExtractor) ExtractType(request *models.ReceiveMessageRequest) (stri
 
 	resp, err := e.jev.MakeJevRequestFromFile(state, noteTypeTemplate)
 	if err != nil {
-		return "", fmt.Errorf("%w: failed to call jev with template %q: %w", ErrUpstream, noteTypeTemplate, err)
+		return "", fmt.Errorf("%w: failed to call jev with template %q: %w", jevq.ErrUpstream, noteTypeTemplate, err)
 	}
 
-	answer, err := answerAsChoice(resp, noteTypeAnswerKey)
+	answer, err := jevq.AnswerChoice(resp, noteTypeAnswerKey)
 	if err != nil {
-		return "", fmt.Errorf("%w: %w", ErrUpstream, err)
+		return "", fmt.Errorf("%w: %w", jevq.ErrUpstream, err)
 	}
 	return answer.Choice, nil
 }

@@ -1,4 +1,4 @@
-package services
+package finance
 
 import (
 	"fmt"
@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"msg-classifier/internal/models"
+	"msg-classifier/internal/ptbr"
 	"msg-classifier/internal/repository"
 )
 
@@ -16,12 +17,9 @@ type FinanceService struct {
 	repo      *repository.TransactionRepository
 }
 
-func NewFinanceService(extractor *FinanceExtractor, repo *repository.TransactionRepository) *FinanceService {
+func NewService(extractor *FinanceExtractor, repo *repository.TransactionRepository) *FinanceService {
 	return &FinanceService{extractor: extractor, repo: repo}
 }
-
-// compile-time assertion that FinanceService satisfies the CategoryHandler seam.
-var _ CategoryHandler = (*FinanceService)(nil)
 
 // Handle routes finance messages to the add or the get use case.
 func (s *FinanceService) Handle(request *models.ReceiveMessageRequest, classification *models.Classification) (*models.UseCaseOutcome, error) {
@@ -40,15 +38,15 @@ func (s *FinanceService) Add(request *models.ReceiveMessageRequest, classificati
 	if content == "" {
 		return financeNoData(classification, "mensagem"), nil
 	}
-	amount, hasAmount := ParseAmount(content)
+	amount, hasAmount := ptbr.ParseAmount(content)
 	if !hasAmount {
 		return financeNoData(classification, "o valor"), nil
 	}
 
 	now := time.Now()
-	date, hasDate := ParseEventDate(content, now)
+	date, hasDate := ptbr.ParseEventDate(content, now)
 	if !hasDate {
-		date = startOfDay(now)
+		date = ptbr.StartOfDay(now)
 	}
 
 	result, err := s.extractor.Extract(content)

@@ -1,9 +1,10 @@
-package services
+package contact
 
 import (
 	"errors"
 	"testing"
 
+	"msg-classifier/internal/jevq"
 	"msg-classifier/internal/models"
 	"msg-classifier/internal/repository"
 
@@ -16,7 +17,7 @@ func TestContactServiceGetByPhone(t *testing.T) {
 	db.Create(&models.Contact{Name: "Fulano Tal", Phone: strPtr("9292929290")})
 
 	mock := &mockJevRequester{}
-	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
+	service := NewService(NewExtractor(mock), repository.NewContactRepository(db))
 
 	outcome, err := service.Get(&models.ReceiveMessageRequest{Message: "09292929290"}, &models.Classification{})
 	require.NoError(t, err)
@@ -31,7 +32,7 @@ func TestContactServiceGetByPhone(t *testing.T) {
 func TestContactServiceGetByPhoneNotFound(t *testing.T) {
 	db := newTestDB(t)
 	mock := &mockJevRequester{}
-	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
+	service := NewService(NewExtractor(mock), repository.NewContactRepository(db))
 
 	outcome, err := service.Get(&models.ReceiveMessageRequest{Message: "09292929290"}, &models.Classification{})
 	require.NoError(t, err)
@@ -45,7 +46,7 @@ func TestContactServiceGetByEmail(t *testing.T) {
 	db.Create(&models.Contact{Name: "Fulano", Email: strPtr("X@Y.COM")})
 
 	mock := &mockJevRequester{}
-	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
+	service := NewService(NewExtractor(mock), repository.NewContactRepository(db))
 
 	outcome, err := service.Get(&models.ReceiveMessageRequest{Message: "email x@y.com"}, &models.Classification{})
 	require.NoError(t, err)
@@ -59,7 +60,7 @@ func TestContactServiceGetByEmail(t *testing.T) {
 func TestContactServiceGetByEmailNotFound(t *testing.T) {
 	db := newTestDB(t)
 	mock := &mockJevRequester{}
-	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
+	service := NewService(NewExtractor(mock), repository.NewContactRepository(db))
 
 	outcome, err := service.Get(&models.ReceiveMessageRequest{Message: "email x@y.com"}, &models.Classification{})
 	require.NoError(t, err)
@@ -72,7 +73,7 @@ func TestContactServiceGetByName(t *testing.T) {
 	db.Create(&models.Contact{Name: "Fulano Tal", NameNorm: "fulano tal"})
 
 	mock := &mockJevRequester{resp: noulResponse(0.1, 0.1, 0.99, 0.1, 0.99)}
-	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
+	service := NewService(NewExtractor(mock), repository.NewContactRepository(db))
 
 	outcome, err := service.Get(&models.ReceiveMessageRequest{Message: "Número de fulano de tal"}, &models.Classification{})
 	require.NoError(t, err)
@@ -88,7 +89,7 @@ func TestContactServiceGetByNameNotFound(t *testing.T) {
 	db.Create(&models.Contact{Name: "Fulano Tal", NameNorm: "fulano tal"})
 
 	mock := &mockJevRequester{resp: noulResponse(0.99, 0.99, 0.99, 0.99, 0.99)}
-	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
+	service := NewService(NewExtractor(mock), repository.NewContactRepository(db))
 
 	outcome, err := service.Get(&models.ReceiveMessageRequest{Message: "Número de fulano de tal"}, &models.Classification{})
 	require.NoError(t, err)
@@ -99,7 +100,7 @@ func TestContactServiceGetByNameNotFound(t *testing.T) {
 func TestContactServiceGetNoData(t *testing.T) {
 	db := newTestDB(t)
 	mock := &mockJevRequester{resp: noulResponse(0.1, 0.1)}
-	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
+	service := NewService(NewExtractor(mock), repository.NewContactRepository(db))
 
 	outcome, err := service.Get(&models.ReceiveMessageRequest{Message: "qualquer coisa"}, &models.Classification{})
 	require.NoError(t, err)
@@ -110,10 +111,10 @@ func TestContactServiceGetNoData(t *testing.T) {
 func TestContactServiceGetJevFailure(t *testing.T) {
 	db := newTestDB(t)
 	mock := &mockJevRequester{err: errors.New("boom")}
-	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
+	service := NewService(NewExtractor(mock), repository.NewContactRepository(db))
 
 	_, err := service.Get(&models.ReceiveMessageRequest{Message: "Número de fulano de tal"}, &models.Classification{})
-	assert.ErrorIs(t, err, ErrUpstream)
+	assert.ErrorIs(t, err, jevq.ErrUpstream)
 }
 
 func TestContactServiceGetDBFailure(t *testing.T) {
@@ -123,7 +124,7 @@ func TestContactServiceGetDBFailure(t *testing.T) {
 	require.NoError(t, sqlDB.Close())
 
 	mock := &mockJevRequester{}
-	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
+	service := NewService(NewExtractor(mock), repository.NewContactRepository(db))
 
 	_, err = service.Get(&models.ReceiveMessageRequest{Message: "09292929290"}, &models.Classification{})
 	require.Error(t, err)

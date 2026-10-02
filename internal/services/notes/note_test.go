@@ -1,10 +1,11 @@
-package services
+package notes
 
 import (
 	"errors"
 	"testing"
 	"time"
 
+	"msg-classifier/internal/jevq"
 	"msg-classifier/internal/models"
 	"msg-classifier/internal/repository"
 
@@ -18,12 +19,12 @@ func newNoteService(t *testing.T, extractor *NoteExtractor) (*NotesService, *gor
 	t.Helper()
 	db := newTestDB(t)
 	require.NoError(t, db.AutoMigrate(&models.Note{}, &models.TodoItem{}), "AutoMigrate(notes)")
-	return NewNotesService(extractor, repository.NewNotesRepository(db)), db
+	return NewService(extractor, repository.NewNotesRepository(db)), db
 }
 
 func noteService(t *testing.T, noteType string) (*NotesService, *gorm.DB) {
 	t.Helper()
-	return newNoteService(t, NewNoteExtractor(&mockJevClient{resp: noteTypeResponse(noteType)}))
+	return newNoteService(t, NewExtractor(&mockJevClient{resp: noteTypeResponse(noteType)}))
 }
 
 func TestNoteServiceAddNote(t *testing.T) {
@@ -172,10 +173,10 @@ func TestNoteServiceAddEmptyMessage(t *testing.T) {
 }
 
 func TestNoteServiceAddJevFailure(t *testing.T) {
-	service, _ := newNoteService(t, NewNoteExtractor(&mockJevClient{err: errors.New("boom")}))
+	service, _ := newNoteService(t, NewExtractor(&mockJevClient{err: errors.New("boom")}))
 
 	_, err := service.Add(&models.ReceiveMessageRequest{Message: "anota isso"}, &models.Classification{})
-	assert.ErrorIs(t, err, ErrUpstream)
+	assert.ErrorIs(t, err, jevq.ErrUpstream)
 }
 
 func TestNoteServiceAddDBFailure(t *testing.T) {

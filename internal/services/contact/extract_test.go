@@ -1,4 +1,4 @@
-package services
+package contact
 
 import (
 	"errors"
@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"msg-classifier/internal/jevq"
 	"msg-classifier/internal/models"
 	"msg-classifier/pkg/jev"
 )
@@ -62,7 +63,7 @@ func TestExtractPhone(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := NewContactExtractor(&mockJevRequester{})
+			e := NewExtractor(&mockJevRequester{})
 			got, span, ok := e.ExtractPhone(tt.message)
 			if ok != tt.wantOK {
 				t.Fatalf("ExtractPhone(%q) ok = %v, want %v", tt.message, ok, tt.wantOK)
@@ -93,7 +94,7 @@ func TestExtractEmail(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := NewContactExtractor(&mockJevRequester{})
+			e := NewExtractor(&mockJevRequester{})
 			got, span, ok := e.ExtractEmail(tt.message)
 			if ok != tt.wantOK {
 				t.Fatalf("ExtractEmail(%q) ok = %v, want %v", tt.message, ok, tt.wantOK)
@@ -111,7 +112,7 @@ func TestExtractEmail(t *testing.T) {
 func TestExtractName(t *testing.T) {
 	t.Run("builds noul fan-out and joins above threshold", func(t *testing.T) {
 		mock := &mockJevRequester{resp: noulResponse(0.1, 0.1, 0.99, 0.98)}
-		e := NewContactExtractor(mock)
+		e := NewExtractor(mock)
 
 		result, err := e.ExtractName("Cadastra o Fulano Silva", nil)
 		if err != nil {
@@ -179,7 +180,7 @@ func TestExtractName(t *testing.T) {
 
 	t.Run("preserves segment order and drops leading lowercase prefix", func(t *testing.T) {
 		mock := &mockJevRequester{resp: noulResponse(0.1, 0.99, 0.98)}
-		e := NewContactExtractor(mock)
+		e := NewExtractor(mock)
 
 		result, err := e.ExtractName("Fulano de Tal", nil)
 		if err != nil {
@@ -204,9 +205,9 @@ func TestExtractName(t *testing.T) {
 
 	t.Run("no segments skips jev call", func(t *testing.T) {
 		mock := &mockJevRequester{}
-		e := NewContactExtractor(mock)
+		e := NewExtractor(mock)
 
-		result, err := e.ExtractName("09292929290", []Span{{Start: 0, End: 11}})
+		result, err := e.ExtractName("09292929290", []jevq.Span{{Start: 0, End: 11}})
 		if err != nil {
 			t.Fatalf("ExtractName() error = %v", err)
 		}
@@ -221,37 +222,37 @@ func TestExtractName(t *testing.T) {
 		}
 	})
 
-	t.Run("jev failure wraps ErrUpstream", func(t *testing.T) {
+	t.Run("jev failure wraps jevq.ErrUpstream", func(t *testing.T) {
 		mock := &mockJevRequester{err: errors.New("boom")}
-		e := NewContactExtractor(mock)
+		e := NewExtractor(mock)
 
 		_, err := e.ExtractName("Fulano de Tal", nil)
-		if !errors.Is(err, ErrUpstream) {
-			t.Errorf("ExtractName() error = %v, want wrapped ErrUpstream", err)
+		if !errors.Is(err, jevq.ErrUpstream) {
+			t.Errorf("ExtractName() error = %v, want wrapped jevq.ErrUpstream", err)
 		}
 	})
 
-	t.Run("missing answer wraps ErrUpstream", func(t *testing.T) {
+	t.Run("missing answer wraps jevq.ErrUpstream", func(t *testing.T) {
 		mock := &mockJevRequester{resp: &jev.JevResponse{Model: "jev-latest", Answers: map[string]any{}}}
-		e := NewContactExtractor(mock)
+		e := NewExtractor(mock)
 
 		_, err := e.ExtractName("Fulano de Tal", nil)
-		if !errors.Is(err, ErrUpstream) {
-			t.Errorf("ExtractName() error = %v, want wrapped ErrUpstream", err)
+		if !errors.Is(err, jevq.ErrUpstream) {
+			t.Errorf("ExtractName() error = %v, want wrapped jevq.ErrUpstream", err)
 		}
 	})
 
 	t.Run("trims punctuation from included segments", func(t *testing.T) {
 		message := "Salva o contato do João da Silva, telefone (11) 91234-5678"
-		probe := NewContactExtractor(&mockJevRequester{})
+		probe := NewExtractor(&mockJevRequester{})
 		_, span, ok := probe.ExtractPhone(message)
 		if !ok {
 			t.Fatal("ExtractPhone() = false, want true")
 		}
 
 		mock := &mockJevRequester{resp: noulResponse(0.1, 0.1, 0.1, 0.1, 0.99, 0.99, 0.99, 0.1)}
-		e := NewContactExtractor(mock)
-		result, err := e.ExtractName(message, []Span{span})
+		e := NewExtractor(mock)
+		result, err := e.ExtractName(message, []jevq.Span{span})
 		if err != nil {
 			t.Fatalf("ExtractName() error = %v", err)
 		}
@@ -262,15 +263,15 @@ func TestExtractName(t *testing.T) {
 
 	t.Run("trims trailing comma before email", func(t *testing.T) {
 		message := "Salva a Ana Paula, email ana@exemplo.com"
-		probe := NewContactExtractor(&mockJevRequester{})
+		probe := NewExtractor(&mockJevRequester{})
 		_, span, ok := probe.ExtractEmail(message)
 		if !ok {
 			t.Fatal("ExtractEmail() = false, want true")
 		}
 
 		mock := &mockJevRequester{resp: noulResponse(0.1, 0.1, 0.99, 0.99, 0.1)}
-		e := NewContactExtractor(mock)
-		result, err := e.ExtractName(message, []Span{span})
+		e := NewExtractor(mock)
+		result, err := e.ExtractName(message, []jevq.Span{span})
 		if err != nil {
 			t.Fatalf("ExtractName() error = %v", err)
 		}
@@ -281,7 +282,7 @@ func TestExtractName(t *testing.T) {
 
 	t.Run("keeps periods in name endings like Jr.", func(t *testing.T) {
 		mock := &mockJevRequester{resp: noulResponse(0.1, 0.1, 0.99, 0.99, 0.99)}
-		e := NewContactExtractor(mock)
+		e := NewExtractor(mock)
 
 		result, err := e.ExtractName("Cadastra o Pedro Henrique Jr.", nil)
 		if err != nil {
@@ -294,7 +295,7 @@ func TestExtractName(t *testing.T) {
 
 	t.Run("drops borderline leading preposition (flaky real-world case)", func(t *testing.T) {
 		message := "Salva o contato do João da Silva, telefone (11) 91234-5678"
-		probe := NewContactExtractor(&mockJevRequester{})
+		probe := NewExtractor(&mockJevRequester{})
 		_, span, ok := probe.ExtractPhone(message)
 		if !ok {
 			t.Fatal("ExtractPhone() = false, want true")
@@ -307,8 +308,8 @@ func TestExtractName(t *testing.T) {
 			{0.1, 0.1, 0.1, 0.45, 0.99, 0.99, 0.99, 0.1}, // "do" stays below
 		} {
 			mock := &mockJevRequester{resp: noulResponse(nouls...)}
-			e := NewContactExtractor(mock)
-			result, err := e.ExtractName(message, []Span{span})
+			e := NewExtractor(mock)
+			result, err := e.ExtractName(message, []jevq.Span{span})
 			if err != nil {
 				t.Fatalf("ExtractName() error = %v", err)
 			}
@@ -332,7 +333,7 @@ func TestExtractName(t *testing.T) {
 			{0.1, 0.45, 0.99, 0.99, 0.05, 0.99}, // leading "do" excluded, "de" scored very low
 		} {
 			mock := &mockJevRequester{resp: noulResponse(nouls...)}
-			e := NewContactExtractor(mock)
+			e := NewExtractor(mock)
 
 			result, err := e.ExtractName("Contato do José Carlos de Souza", nil)
 			if err != nil {
@@ -348,7 +349,7 @@ func TestExtractName(t *testing.T) {
 
 	t.Run("keeps all-lowercase name when no capitalized segment follows", func(t *testing.T) {
 		mock := &mockJevRequester{resp: noulResponse(0.99, 0.99)}
-		e := NewContactExtractor(mock)
+		e := NewExtractor(mock)
 
 		result, err := e.ExtractName("ana clara", nil)
 		if err != nil {
@@ -361,7 +362,7 @@ func TestExtractName(t *testing.T) {
 
 	t.Run("keeps mid-name particles like da and de", func(t *testing.T) {
 		mock := &mockJevRequester{resp: noulResponse(0.99, 0.99, 0.99, 0.99)}
-		e := NewContactExtractor(mock)
+		e := NewExtractor(mock)
 
 		result, err := e.ExtractName("José Carlos de Souza", nil)
 		if err != nil {

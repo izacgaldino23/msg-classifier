@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 
+	"msg-classifier/internal/jevq"
 	"msg-classifier/internal/models"
 	"msg-classifier/internal/services"
 	"msg-classifier/internal/views"
@@ -47,7 +48,7 @@ func (ctrl *MessageController) ReceiveMessage(c *gin.Context) {
 
 // renderServiceError maps a service error to the error partial.
 func renderServiceError(c *gin.Context, err error) {
-	if errors.Is(err, services.ErrUpstream) {
+	if errors.Is(err, jevq.ErrUpstream) {
 		views.RenderError(c, http.StatusBadGateway, err.Error())
 		return
 	}

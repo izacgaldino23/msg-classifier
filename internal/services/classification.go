@@ -1,27 +1,19 @@
 package services
 
 import (
-	"errors"
 	"fmt"
 
+	"msg-classifier/internal/jevq"
 	"msg-classifier/internal/models"
 	"msg-classifier/pkg/jev"
 )
 
-// ErrUpstream marks Jev/TypeSafe API failures; controllers map it to HTTP 502.
-var ErrUpstream = errors.New("upstream classification failed")
-
-// jevClient is the service boundary, allowing unit tests without HTTP.
-type jevClient interface {
-	MakeJevRequestFromFile(state jev.JevState, fileName string) (*jev.JevResponse, error)
-}
-
 // ClassificationService runs the Jev classification per message.
 type ClassificationService struct {
-	jev jevClient
+	jev jevq.Client
 }
 
-func NewClassificationService(client jevClient) *ClassificationService {
+func NewClassificationService(client jevq.Client) *ClassificationService {
 	return &ClassificationService{jev: client}
 }
 
@@ -34,17 +26,17 @@ func (s *ClassificationService) Classify(request *models.ReceiveMessageRequest) 
 
 	categoryResp, err := s.jev.MakeJevRequestFromFile(state, "classification.json")
 	if err != nil {
-		return nil, fmt.Errorf("%w: failed to call jev with template %q: %w", ErrUpstream, "classification.json", err)
+		return nil, fmt.Errorf("%w: failed to call jev with template %q: %w", jevq.ErrUpstream, "classification.json", err)
 	}
 
-	category, err := answerAsChoice(categoryResp, "classification")
+	category, err := jevq.AnswerChoice(categoryResp, "classification")
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrUpstream, err)
+		return nil, fmt.Errorf("%w: %w", jevq.ErrUpstream, err)
 	}
 
-	kind, err := answerAsChoice(categoryResp, "adding_or_requiring")
+	kind, err := jevq.AnswerChoice(categoryResp, "adding_or_requiring")
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrUpstream, err)
+		return nil, fmt.Errorf("%w: %w", jevq.ErrUpstream, err)
 	}
 
 	return &models.Classification{
@@ -57,17 +49,4 @@ func (s *ClassificationService) Classify(request *models.ReceiveMessageRequest) 
 			Confidence: kind.Confidence,
 		},
 	}, nil
-}
-
-// answerAsChoice extracts a choice answer with a checked assertion.
-func answerAsChoice(resp *jev.JevResponse, key string) (*jev.JevAnswerChoice, error) {
-	answer, ok := resp.Answers[key]
-	if !ok {
-		return nil, fmt.Errorf("missing answer %q in jev response", key)
-	}
-	choice, ok := answer.(*jev.JevAnswerChoice)
-	if !ok {
-		return nil, fmt.Errorf("answer %q has type %T, want *jev.JevAnswerChoice", key, answer)
-	}
-	return choice, nil
 }

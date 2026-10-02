@@ -155,7 +155,7 @@ Never read `os.Getenv` directly outside `internal/config/env.go`. Config is read
 - Return errors up the stack; controllers convert them to HTTP responses.
 - Wrap errors with context: `fmt.Errorf("failed to decode question %q in %q: %w", name, fileName, err)`.
 - Error strings should be **lowercase** (Go convention).
-- Use sentinel errors for status mapping: `errors.Is(err, services.ErrUpstream)` → 502, anything else → 500, bind failure → 400.
+- Use sentinel errors for status mapping: `errors.Is(err, jevq.ErrUpstream)` → 502, anything else → 500, bind failure → 400.
 - **Never panic in the request path.** Check every type assertion (`value, ok := ...`); missing or mistyped data becomes a descriptive error.
 - All responses to htmx targets are HTML partials (result or error) — do not mix JSON errors into htmx routes.
 

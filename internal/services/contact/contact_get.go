@@ -1,10 +1,11 @@
-package services
+package contact
 
 import (
 	"errors"
 	"fmt"
 
 	"msg-classifier/internal/models"
+	"msg-classifier/internal/ptbr"
 	"msg-classifier/internal/repository"
 )
 
@@ -27,7 +28,7 @@ func (s *ContactService) Get(request *models.ReceiveMessageRequest, classificati
 	if err != nil {
 		return nil, err
 	}
-	term := normalizeName(nameResult.Name)
+	term := ptbr.NormalizeName(nameResult.Name)
 	if term == "" {
 		return &models.UseCaseOutcome{Classification: classification, Action: models.ActionContactNoData}, nil
 	}

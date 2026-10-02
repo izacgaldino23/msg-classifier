@@ -1,9 +1,10 @@
-package services
+package contact
 
 import (
 	"errors"
 	"testing"
 
+	"msg-classifier/internal/jevq"
 	"msg-classifier/internal/models"
 	"msg-classifier/internal/repository"
 
@@ -24,33 +25,10 @@ func newTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-func TestNormalizeName(t *testing.T) {
-	tests := []struct {
-		name string
-		in   string
-		want string
-	}{
-		{"empty", "", ""},
-		{"whitespace only", "   ", ""},
-		{"case", "FULANO", "fulano"},
-		{"accent", "João", "joao"},
-		{"cedilla", "José da Conceição", "jose da conceicao"},
-		{"mixed accents", "MARIA CLÁUDIA", "maria claudia"},
-		{"collapse whitespace", "  Fulano   de  Tal ", "fulano de tal"},
-		{"tabs and newlines", "Fulano\tde\nTal", "fulano de tal"},
-		{"already normalized", "fulano de tal", "fulano de tal"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, normalizeName(tt.in))
-		})
-	}
-}
-
 func TestContactServiceAddPersistsContact(t *testing.T) {
 	db := newTestDB(t)
 	mock := &mockJevRequester{resp: noulResponse(0.99, 0.1, 0.98)}
-	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
+	service := NewService(NewExtractor(mock), repository.NewContactRepository(db))
 
 	outcome, err := service.Add(&models.ReceiveMessageRequest{Message: "09292929290 Fulano de Tal"}, &models.Classification{})
 	require.NoError(t, err)
@@ -80,7 +58,7 @@ func TestContactServiceAddPersistsContact(t *testing.T) {
 func TestContactServiceAddNoData(t *testing.T) {
 	db := newTestDB(t)
 	mock := &mockJevRequester{}
-	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
+	service := NewService(NewExtractor(mock), repository.NewContactRepository(db))
 
 	outcome, err := service.Add(&models.ReceiveMessageRequest{Message: "sem dados aqui"}, &models.Classification{})
 	require.NoError(t, err)
@@ -97,7 +75,7 @@ func TestContactServiceAddNoData(t *testing.T) {
 func TestContactServiceAddEmailOnly(t *testing.T) {
 	db := newTestDB(t)
 	mock := &mockJevRequester{resp: noulResponse(0.1, 0.1, 0.1, 0.99, 0.1)}
-	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
+	service := NewService(NewExtractor(mock), repository.NewContactRepository(db))
 
 	outcome, err := service.Add(&models.ReceiveMessageRequest{Message: "salva contato do fulano email x@y.com"}, &models.Classification{})
 	require.NoError(t, err)
@@ -114,10 +92,10 @@ func TestContactServiceAddEmailOnly(t *testing.T) {
 func TestContactServiceAddJevFailure(t *testing.T) {
 	db := newTestDB(t)
 	mock := &mockJevRequester{err: errors.New("boom")}
-	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
+	service := NewService(NewExtractor(mock), repository.NewContactRepository(db))
 
 	_, err := service.Add(&models.ReceiveMessageRequest{Message: "09292929290 Fulano de Tal"}, &models.Classification{})
-	assert.ErrorIs(t, err, ErrUpstream)
+	assert.ErrorIs(t, err, jevq.ErrUpstream)
 }
 
 func TestContactServiceAddDBFailure(t *testing.T) {
@@ -127,7 +105,7 @@ func TestContactServiceAddDBFailure(t *testing.T) {
 	require.NoError(t, sqlDB.Close())
 
 	mock := &mockJevRequester{resp: noulResponse(0.99)}
-	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
+	service := NewService(NewExtractor(mock), repository.NewContactRepository(db))
 
 	_, err = service.Add(&models.ReceiveMessageRequest{Message: "09292929290 Fulano"}, &models.Classification{})
 	require.Error(t, err)
@@ -139,7 +117,7 @@ func TestContactServiceAddDuplicatePhone(t *testing.T) {
 	db.Create(&models.Contact{Name: "Fulano", Phone: strPtr("9292929290")})
 
 	mock := &mockJevRequester{}
-	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
+	service := NewService(NewExtractor(mock), repository.NewContactRepository(db))
 
 	outcome, err := service.Add(&models.ReceiveMessageRequest{Message: "09292929290 Fulano de Tal"}, &models.Classification{})
 	require.NoError(t, err)
@@ -159,7 +137,7 @@ func TestContactServiceAddDuplicateEmail(t *testing.T) {
 	db.Create(&models.Contact{Name: "Fulano", Email: strPtr("X@Y.COM")})
 
 	mock := &mockJevRequester{}
-	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
+	service := NewService(NewExtractor(mock), repository.NewContactRepository(db))
 
 	outcome, err := service.Add(&models.ReceiveMessageRequest{Message: "salva fulano email x@y.com"}, &models.Classification{})
 	require.NoError(t, err)
@@ -174,7 +152,7 @@ func TestContactServiceBackfillNameNorm(t *testing.T) {
 	db.Create(&models.Contact{Name: "João da Silva"})            // pre-migration row: empty NameNorm
 	db.Create(&models.Contact{Name: "Maria", NameNorm: "maria"}) // already filled
 
-	service := NewContactService(NewContactExtractor(&mockJevRequester{}), repository.NewContactRepository(db))
+	service := NewService(NewExtractor(&mockJevRequester{}), repository.NewContactRepository(db))
 	require.NoError(t, service.BackfillNameNorm())
 
 	var joao models.Contact
@@ -191,7 +169,7 @@ func TestContactServiceHandleRequireRoutesToGet(t *testing.T) {
 	db.Create(&models.Contact{Name: "Fulano", Phone: strPtr("9292929290")})
 
 	mock := &mockJevRequester{}
-	service := NewContactService(NewContactExtractor(mock), repository.NewContactRepository(db))
+	service := NewService(NewExtractor(mock), repository.NewContactRepository(db))
 
 	outcome, err := service.Handle(&models.ReceiveMessageRequest{Message: "09292929290"}, &models.Classification{Kind: models.KindFinding{Choice: "require"}})
 	require.NoError(t, err)

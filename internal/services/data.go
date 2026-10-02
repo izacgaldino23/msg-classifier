@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"msg-classifier/internal/models"
+	"msg-classifier/internal/ptbr"
 	"msg-classifier/internal/repository"
 )
 
@@ -82,11 +83,11 @@ func (s *DataService) UpdateTransaction(id uint, form models.DataForm) (*models.
 	if !models.IsTransactionType(form.Type) {
 		return nil, fmt.Errorf("%w: transaction type %q", ErrInvalidData, form.Type)
 	}
-	amount, ok := ParseAmount(form.Amount)
+	amount, ok := ptbr.ParseAmount(form.Amount)
 	if !ok || amount <= 0 {
 		return nil, fmt.Errorf("%w: transaction amount %q", ErrInvalidData, form.Amount)
 	}
-	date, ok := ParseEventDate(form.Date, time.Now())
+	date, ok := ptbr.ParseEventDate(form.Date, time.Now())
 	if !ok {
 		return nil, fmt.Errorf("%w: unparseable date %q", ErrInvalidData, form.Date)
 	}
@@ -204,7 +205,7 @@ func (s *DataService) UpdateContact(id uint, name, phone, email string) (*models
 		return nil, fmt.Errorf("%w: contact name is required", ErrInvalidData)
 	}
 	contact.Name = trimmed
-	contact.NameNorm = normalizeName(trimmed)
+	contact.NameNorm = ptbr.NormalizeName(trimmed)
 	contact.Phone = optionalString(phone)
 	contact.Email = optionalString(email)
 	if err := s.contacts.Save(contact); err != nil {
@@ -274,7 +275,7 @@ func (s *DataService) parseDate(text string) (*time.Time, error) {
 	if strings.TrimSpace(text) == "" {
 		return nil, nil
 	}
-	date, ok := ParseDate(text, time.Now())
+	date, ok := ptbr.ParseDate(text, time.Now())
 	if !ok {
 		return nil, fmt.Errorf("%w: unparseable date %q", ErrInvalidData, text)
 	}
@@ -286,7 +287,7 @@ func (s *DataService) parseTime(text string) (*string, error) {
 	if strings.TrimSpace(text) == "" {
 		return nil, nil
 	}
-	clock, ok := ParseTime(text)
+	clock, ok := ptbr.ParseTime(text)
 	if !ok {
 		return nil, fmt.Errorf("%w: unparseable time %q", ErrInvalidData, text)
 	}

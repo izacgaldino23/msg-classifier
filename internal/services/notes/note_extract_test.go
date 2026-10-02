@@ -1,9 +1,10 @@
-package services
+package notes
 
 import (
 	"errors"
 	"testing"
 
+	"msg-classifier/internal/jevq"
 	"msg-classifier/internal/models"
 	"msg-classifier/pkg/jev"
 
@@ -23,7 +24,7 @@ func noteTypeResponse(choice string) *jev.JevResponse {
 
 func TestNoteExtractorExtractType(t *testing.T) {
 	mock := &mockJevClient{resp: noteTypeResponse(models.NoteTypeReminder)}
-	extractor := NewNoteExtractor(mock)
+	extractor := NewExtractor(mock)
 
 	choice, err := extractor.ExtractType(&models.ReceiveMessageRequest{Message: "me lembra dia 10", UserID: "u1"})
 	require.NoError(t, err)
@@ -38,18 +39,18 @@ func TestNoteExtractorExtractType(t *testing.T) {
 
 func TestNoteExtractorExtractTypeUpstreamFailure(t *testing.T) {
 	mock := &mockJevClient{err: errors.New("boom")}
-	extractor := NewNoteExtractor(mock)
+	extractor := NewExtractor(mock)
 
 	_, err := extractor.ExtractType(&models.ReceiveMessageRequest{Message: "anota isso"})
-	assert.ErrorIs(t, err, ErrUpstream)
+	assert.ErrorIs(t, err, jevq.ErrUpstream)
 }
 
 func TestNoteExtractorExtractTypeMissingAnswer(t *testing.T) {
 	mock := &mockJevClient{resp: &jev.JevResponse{Model: "jev-latest", Answers: map[string]any{}}}
-	extractor := NewNoteExtractor(mock)
+	extractor := NewExtractor(mock)
 
 	_, err := extractor.ExtractType(&models.ReceiveMessageRequest{Message: "anota isso"})
-	assert.ErrorIs(t, err, ErrUpstream)
+	assert.ErrorIs(t, err, jevq.ErrUpstream)
 }
 
 func TestNoteExtractorExtractTypeWrongAnswerType(t *testing.T) {
@@ -59,8 +60,8 @@ func TestNoteExtractorExtractTypeWrongAnswerType(t *testing.T) {
 			noteTypeAnswerKey: &jev.JevAnswerNoul{Noul: 0.9},
 		},
 	}}
-	extractor := NewNoteExtractor(mock)
+	extractor := NewExtractor(mock)
 
 	_, err := extractor.ExtractType(&models.ReceiveMessageRequest{Message: "anota isso"})
-	assert.ErrorIs(t, err, ErrUpstream)
+	assert.ErrorIs(t, err, jevq.ErrUpstream)
 }

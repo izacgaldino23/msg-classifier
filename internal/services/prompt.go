@@ -9,8 +9,13 @@ import (
 	"strings"
 	"time"
 
+	"msg-classifier/internal/jevq"
 	"msg-classifier/internal/models"
+	"msg-classifier/internal/ptbr"
 	"msg-classifier/internal/repository"
+	"msg-classifier/internal/services/contact"
+	"msg-classifier/internal/services/finance"
+	"msg-classifier/internal/services/notes"
 )
 
 // ErrInvalidPrompt marks invalid Add input (unknown flow or empty fields);
@@ -27,12 +32,12 @@ var exportDir = "exports"
 type PromptService struct {
 	repo             *repository.PromptRepository
 	classifier       *ClassificationService
-	extractor        *ContactExtractor
-	noteExtractor    *NoteExtractor
-	financeExtractor *FinanceExtractor
+	extractor        *contact.ContactExtractor
+	noteExtractor    *notes.NoteExtractor
+	financeExtractor *finance.FinanceExtractor
 }
 
-func NewPromptService(repo *repository.PromptRepository, classifier *ClassificationService, extractor *ContactExtractor, noteExtractor *NoteExtractor, financeExtractor *FinanceExtractor) *PromptService {
+func NewPromptService(repo *repository.PromptRepository, classifier *ClassificationService, extractor *contact.ContactExtractor, noteExtractor *notes.NoteExtractor, financeExtractor *finance.FinanceExtractor) *PromptService {
 	return &PromptService{repo: repo, classifier: classifier, extractor: extractor, noteExtractor: noteExtractor, financeExtractor: financeExtractor}
 }
 
@@ -105,7 +110,7 @@ func (s *PromptService) evaluateOne(flow string, prompt models.JevPrompt) models
 		// Mirror the production contact path: strip phone/email spans before the
 		// name fan-out, otherwise the email/phone itself becomes a candidate
 		// segment and can leak into the extracted name.
-		spans := make([]Span, 0, 2)
+		spans := make([]jevq.Span, 0, 2)
 		if _, span, ok := s.extractor.ExtractPhone(prompt.Message); ok {
 			spans = append(spans, span)
 		}
@@ -120,7 +125,7 @@ func (s *PromptService) evaluateOne(flow string, prompt models.JevPrompt) models
 		}
 		result.ObtainedResult = nameResult.Name
 		result.Segments = nameResult.Segments
-		result.Match = normalizeName(prompt.ExpectedResult) == normalizeName(nameResult.Name)
+		result.Match = ptbr.NormalizeName(prompt.ExpectedResult) == ptbr.NormalizeName(nameResult.Name)
 	case models.FlowNote:
 		noteType, err := s.noteExtractor.ExtractType(&models.ReceiveMessageRequest{Message: prompt.Message})
 		if err != nil {

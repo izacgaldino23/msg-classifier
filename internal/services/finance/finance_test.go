@@ -1,11 +1,13 @@
-package services
+package finance
 
 import (
 	"errors"
 	"testing"
 	"time"
 
+	"msg-classifier/internal/jevq"
 	"msg-classifier/internal/models"
+	"msg-classifier/internal/ptbr"
 	"msg-classifier/internal/repository"
 	"msg-classifier/pkg/jev"
 
@@ -47,7 +49,7 @@ func TestFinanceServiceAdd(t *testing.T) {
 			want: models.Transaction{
 				Type:    models.TransactionTypePurchase,
 				Amount:  50,
-				Date:    startOfDay(time.Now()),
+				Date:    ptbr.StartOfDay(time.Now()),
 				Party:   "supermercado",
 				Content: "Comprei pão, leite e ovos no supermercado. O total foi de 50 reais.",
 			},
@@ -59,7 +61,7 @@ func TestFinanceServiceAdd(t *testing.T) {
 			want: models.Transaction{
 				Type:    models.TransactionTypePurchase,
 				Amount:  300,
-				Date:    startOfDay(time.Now()),
+				Date:    ptbr.StartOfDay(time.Now()),
 				Party:   "cartão",
 				Content: "Compra parcelada em 3 vezes de 300 reais no cartão",
 			},
@@ -83,7 +85,7 @@ func TestFinanceServiceAdd(t *testing.T) {
 			want: models.Transaction{
 				Type:    models.TransactionTypePurchase,
 				Amount:  80,
-				Date:    startOfDay(time.Now()).AddDate(0, 0, -1),
+				Date:    ptbr.StartOfDay(time.Now()).AddDate(0, 0, -1),
 				Party:   "padaria",
 				Content: "Gastei 80 reais na padaria semana passada",
 			},
@@ -95,7 +97,7 @@ func TestFinanceServiceAdd(t *testing.T) {
 			want: models.Transaction{
 				Type:    models.TransactionTypePurchase,
 				Amount:  20,
-				Date:    startOfDay(time.Now()),
+				Date:    ptbr.StartOfDay(time.Now()),
 				Party:   "mercado",
 				Content: "comprei 20 reais no mercado",
 			},
@@ -105,7 +107,7 @@ func TestFinanceServiceAdd(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			db := newFinanceTestDB(t)
-			service := NewFinanceService(NewFinanceExtractor(&mockJevRequester{resp: tt.resp}), repository.NewTransactionRepository(db))
+			service := NewService(NewExtractor(&mockJevRequester{resp: tt.resp}), repository.NewTransactionRepository(db))
 
 			outcome, err := service.Handle(&models.ReceiveMessageRequest{Message: tt.message}, financeClassification())
 			require.NoError(t, err)
@@ -132,7 +134,7 @@ func TestFinanceServiceAdd(t *testing.T) {
 func TestFinanceServiceAddWithoutAmount(t *testing.T) {
 	db := newFinanceTestDB(t)
 	mock := &mockJevRequester{}
-	service := NewFinanceService(NewFinanceExtractor(mock), repository.NewTransactionRepository(db))
+	service := NewService(NewExtractor(mock), repository.NewTransactionRepository(db))
 
 	outcome, err := service.Handle(&models.ReceiveMessageRequest{Message: "comprei pão no supermercado"}, financeClassification())
 	require.NoError(t, err)
@@ -150,10 +152,10 @@ func TestFinanceServiceAddWithoutAmount(t *testing.T) {
 func TestFinanceServiceAddPropagatesUpstreamError(t *testing.T) {
 	db := newFinanceTestDB(t)
 	mock := &mockJevRequester{err: errors.New("boom")}
-	service := NewFinanceService(NewFinanceExtractor(mock), repository.NewTransactionRepository(db))
+	service := NewService(NewExtractor(mock), repository.NewTransactionRepository(db))
 
 	_, err := service.Handle(&models.ReceiveMessageRequest{Message: "comprei 50 reais"}, financeClassification())
-	assert.ErrorIs(t, err, ErrUpstream)
+	assert.ErrorIs(t, err, jevq.ErrUpstream)
 }
 
 // The repository failure must be wrapped with the service context, like every other
@@ -162,7 +164,7 @@ func TestFinanceServiceAddWrapsRepositoryError(t *testing.T) {
 	db := newFinanceTestDB(t)
 	require.NoError(t, db.Migrator().DropTable(&models.Transaction{}))
 	mock := &mockJevRequester{resp: financeResponse(models.TransactionTypePurchase)}
-	service := NewFinanceService(NewFinanceExtractor(mock), repository.NewTransactionRepository(db))
+	service := NewService(NewExtractor(mock), repository.NewTransactionRepository(db))
 
 	_, err := service.Handle(&models.ReceiveMessageRequest{Message: "comprei 50 reais no mercado"}, financeClassification())
 	require.Error(t, err)
