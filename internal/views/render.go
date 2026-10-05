@@ -43,19 +43,6 @@ type ErrorData struct {
 	Message string `json:"message"`
 }
 
-// ResultData is the view model for the "resultado" partial.
-type ResultData struct {
-	Classification *models.Classification
-	Action         models.Action
-	Contact        *models.Contact
-	Notes          []*models.Note
-	Transactions   []*models.Transaction
-	Segments       []models.SegmentScore
-	SearchTerm     string
-	Total          float64
-	Missing        string
-}
-
 // PageData is the view model for the "base" layout — it carries the page name
 // so the layout can mark the active nav link without a per-page template block.
 type PageData struct {
@@ -72,19 +59,10 @@ func RenderPage(c *gin.Context, page, content string) {
 }
 
 // RenderResult renders the "resultado" partial (HTTP 200) from the use case outcome.
+// The outcome goes to the template as-is: UseCaseOutcome already exposes every field
+// the partial reads, so a view model here would be a second copy to keep in sync.
 func RenderResult(c *gin.Context, outcome *models.UseCaseOutcome) {
-	data := ResultData{
-		Classification: outcome.Classification,
-		Action:         outcome.Action,
-		Contact:        outcome.Contact,
-		Notes:          outcome.Notes,
-		Transactions:   outcome.Transactions,
-		Segments:       outcome.Segments,
-		SearchTerm:     outcome.SearchTerm,
-		Total:          outcome.Total,
-		Missing:        outcome.Missing,
-	}
-	c.HTML(http.StatusOK, ResultTemplate, data)
+	c.HTML(http.StatusOK, ResultTemplate, outcome)
 }
 
 // RenderError renders the "error" partial with the given HTTP status.
