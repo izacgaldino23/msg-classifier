@@ -1,50 +1,33 @@
 {{ define "evaluation_results" }}
-<div id="evaluation" class="card">
-    <div class="card-body">
-        <p><strong>Fluxo:</strong> {{ .Flow }}</p>
-        {{ if .CsvPath }}<p><strong>CSV exportado:</strong> {{ .CsvPath }}</p>{{ end }}
-        {{ if .Results }}
-        <div class="table-responsive">
-            <table class="table table-hover">
-                <thead>
-                    <tr>
-                        <th>Mensagem</th>
-                        <th>Esperado</th>
-                        <th>Obtido</th>
-                        <th>Resultado</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {{ range .Results }}
-                    <tr>
-                        <td>{{ .Message }}</td>
-                        <td>{{ .ExpectedResult }}</td>
-                        <td>{{ .ObtainedResult }}</td>
-                        <td><span class="badge badge-match-{{ if .Match }}ok{{ else }}no{{ end }}">{{ if .Match }}✓{{ else }}✗{{ end }}</span></td>
-                    </tr>
-                    {{ if .Segments }}
-                    <tr>
-                        <td colspan="4">
-                            <small><strong>Extração:</strong></small>
-                            <ul class="segment-trace">
-                            {{ range .Segments }}
-                                <li>
-                                    <span class="segment-text">{{ .Text }}</span>
-                                    <span class="score-pill">{{ printf "%.2f" .Score }}</span>
-                                    <span class="segment-mark {{ if .Included }}ok{{ else }}no{{ end }}" aria-hidden="true">{{ if .Included }}✓{{ else }}✗{{ end }}</span>
-                                </li>
-                            {{ end }}
-                            </ul>
-                        </td>
-                    </tr>
-                    {{ end }}
-                    {{ end }}
-                </tbody>
-            </table>
-        </div>
-        {{ else }}
-        <p>Nenhum prompt selecionado.</p>
-        {{ end }}
-    </div>
-</div>
+<wa-card>
+	<div slot="header" class="wa-cluster wa-justify-content-space-between">
+		<strong>Resultados — {{ .Flow }}</strong>
+		{{ if .CsvPath }}<span class="wa-caption-s wa-color-text-quiet">CSV: <code>{{ .CsvPath }}</code></span>{{ end }}
+	</div>
+	<div class="wa-stack">
+		{{ range .Results }}
+		<wa-card size="small">
+			<div slot="header" class="wa-cluster wa-justify-content-space-between wa-gap-s">
+				<wa-badge variant="{{ if .Match }}success{{ else }}danger{{ end }}">{{ if .Match }}✓ igual{{ else }}✗ diferente{{ end }}</wa-badge>
+				<span class="wa-caption-s wa-color-text-quiet">#{{ .PromptID }}</span>
+			</div>
+			<div class="wa-stack wa-gap-s">
+				<p class="wa-caption-s wa-color-text-quiet">esperado: <strong>{{ .ExpectedResult }}</strong> · obtido: <strong>{{ .ObtainedResult }}</strong></p>
+				<p class="wa-body-s">{{ .Message }}</p>
+				{{ if .Segments }}
+				<ul class="segment-trace wa-list-plain">
+					{{ range .Segments }}
+					<li>
+						<span class="segment-text">{{ .Text }}</span>
+						<span class="score-pill">{{ printf "%.2f" .Score }}</span>
+						<span class="segment-mark {{ if .Included }}ok{{ else }}no{{ end }}" aria-hidden="true">{{ if .Included }}✓{{ else }}○{{ end }}</span>
+					</li>
+					{{ end }}
+				</ul>
+				{{ end }}
+			</div>
+		</wa-card>
+		{{ end }}
+	</div>
+</wa-card>
 {{ end }}

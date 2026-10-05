@@ -56,13 +56,19 @@ type ResultData struct {
 	Missing        string
 }
 
+// PageData is the view model for the "base" layout — it carries the page name
+// so the layout can mark the active nav link without a per-page template block.
+type PageData struct {
+	Page string
+}
+
 // RenderPage renders the full page, or only its content for htmx requests.
 func RenderPage(c *gin.Context, page, content string) {
 	if isHxRequest(c) {
 		c.HTML(http.StatusOK, content, nil)
 		return
 	}
-	c.HTML(http.StatusOK, page, nil)
+	c.HTML(http.StatusOK, page, PageData{Page: page})
 }
 
 // RenderResult renders the "resultado" partial (HTTP 200) from the use case outcome.
@@ -227,6 +233,23 @@ func MoneyBRL(amount float64) string {
 	return "R$ " + string(grouped) + "," + decimals
 }
 
+// BadgeVariant returns the Web Awesome <wa-badge> variant carrying a choice's
+// tone. Web Awesome ships brand / neutral / success / warning / danger only, so
+// the informational tones (notes, recebimento) share brand.
+func BadgeVariant(choice any) string {
+	s, _ := choice.(string)
+	switch s {
+	case "contact", "require", "note", "notes", "venda", "recebimento":
+		return "brand"
+	case "finance", "add", "todo", "compra":
+		return "success"
+	case "schedule", "both", "reminder", "pagamento":
+		return "warning"
+	default:
+		return "neutral"
+	}
+}
+
 // FuncMap exposes template helpers to the shared template set.
 var FuncMap = template.FuncMap{
 	"label":      Label,
@@ -234,4 +257,5 @@ var FuncMap = template.FuncMap{
 	"confidence": Confidence,
 	"dateBR":     DateBR,
 	"deref":      Deref,
+	"badge":      BadgeVariant,
 }

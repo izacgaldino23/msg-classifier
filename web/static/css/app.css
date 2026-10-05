@@ -1,255 +1,125 @@
-/* app.css — custom layer over Bootstrap 5.3 (loaded after bootstrap.min.css) */
+/* MSG Classifier - camada custom sobre o Web Awesome.
+ * Bootstrap foi removido: o tema, native.css e utilities.css vem do CDN.
+ * Aqui so fica o que nenhum componente faz: identidade, traces e tabelas. */
 
-/* 1. Theme tokens + compact scale */
-:root,
-[data-bs-theme="dark"] {
-	--bs-font-sans-serif: "Inter", system-ui, -apple-system, sans-serif;
-	--bs-body-font-size: 0.92rem;
-	--bs-border-radius: 0.75rem;
-}
-
-h1 { font-size: 1.75rem; }
-h2 { font-size: 1.5rem; }
-h3 { font-size: 1.25rem; }
-h4 { font-size: 1.125rem; }
-h5 { font-size: 1rem; }
-h6 { font-size: 0.875rem; }
-
-.form-control,
-.form-select,
-.btn {
-	font-size: 0.92rem;
-}
-
-.card {
-	--bs-card-spacer-y: 0.75rem;
-	--bs-card-spacer-x: 0.75rem;
-}
-
-/* 2. Layout — narrow centered content column (~760px) */
-.content-wrapper {
-	max-width: 760px;
-	margin: 0 auto;
-	padding: 1.5rem 1rem;
-}
-
-/* Layout wrapper - fills the viewport so the sidebar spans the full page height */
-.app-layout {
-	min-height: 100vh;
-}
-
-/* 3. Sidebar (offcanvas-lg: drawer < lg, static column >= lg) */
-.offcanvas-lg.sidebar {
-	--bs-offcanvas-width: 280px;
-}
-
-@media (min-width: 992px) {
-	.offcanvas-lg.sidebar {
-		flex-grow: 0;
-		width: 280px !important;
-		border-right: 1px solid var(--bs-border-color) !important;
-		background-color: var(--bs-body-bg) !important;
-	}
-
-	.offcanvas-lg.sidebar .offcanvas-body {
-		padding: 1rem;
-	}
-}
-
-.sidebar-nav .nav-link {
-	padding: 0.5rem 0.75rem;
-	border-radius: 0.5rem;
-	transition: background-color 0.15s ease-in-out;
-}
-
-.sidebar-nav .nav-link:hover {
-	background-color: var(--bs-secondary-bg-subtle);
-}
-
-/* Active nav — page:active mechanism (body class + attribute selectors) */
-body.page-home .sidebar-nav a[href="/"],
-body.page-prompts .sidebar-nav a[href="/prompts"],
-body.page-dados .sidebar-nav a[href="/data"] {
-	background-color: var(--bs-primary-bg-subtle);
-	color: var(--bs-primary);
-}
-
-/* 4. Brand */
+/* ── marca ── */
 .brand {
 	display: inline-flex;
 	align-items: center;
-	gap: 0.5rem;
-	font-weight: 600;
+	gap: var(--wa-space-2xs);
+	color: inherit;
 	text-decoration: none;
-	color: var(--bs-body-color);
 }
-
 .brand-mark {
-	width: 1.5rem;
-	height: 1.5rem;
-	border-radius: 0.4rem;
-	background: linear-gradient(135deg, var(--bs-primary), var(--bs-info));
+	width: 1.75rem;
+	height: 1.75rem;
+	border-radius: var(--wa-border-radius-s);
+	background: linear-gradient(135deg, var(--wa-color-brand-fill-loud), var(--wa-color-cyan-50));
 }
 
-/* 5. Badges — semantic classes mapped to Bootstrap palette */
-.badge {
-	display: inline-flex;
+/* ── resultado ── */
+.result-conf { margin-inline-start: auto; }
+.row-label {
+	display: flex;
 	align-items: center;
-	gap: 0.25rem;
-	border-radius: 999px;
-	padding: 0.15rem 0.6rem;
-	font-size: 0.75rem;
-	font-weight: 600;
-	line-height: 1.4;
+	justify-content: space-between;
+	gap: var(--wa-space-s);
+	padding-block: var(--wa-space-3xs);
+}
+.row-label > :first-child {
+	color: var(--wa-color-text-quiet);
+	font-size: var(--wa-font-size-s);
+	white-space: nowrap;
+}
+.result-card [slot="footer"] {
+	font-size: var(--wa-font-size-s);
+	color: var(--wa-color-text-quiet);
+}
+.tx-total {
+	font-weight: var(--wa-font-weight-semibold);
+	font-size: var(--wa-font-size-l);
+	color: var(--wa-color-brand-on-normal);
 }
 
-.badge-cat-contact { background-color: var(--bs-primary-bg-subtle); color: var(--bs-primary); }
-.badge-cat-finance { background-color: var(--bs-success-bg-subtle); color: var(--bs-success); }
-.badge-cat-schedule { background-color: var(--bs-warning-bg-subtle); color: var(--bs-warning); }
-.badge-cat-notes { background-color: var(--bs-info-bg-subtle); color: var(--bs-info); }
-.badge-cat-other { background-color: var(--bs-secondary-bg-subtle); color: var(--bs-secondary); }
-.badge-kind-add { background-color: var(--bs-success-bg-subtle); color: var(--bs-success); }
-.badge-kind-require { background-color: var(--bs-warning-bg-subtle); color: var(--bs-warning); }
-.badge-kind-both { background-color: var(--bs-primary-bg-subtle); color: var(--bs-primary); }
-.badge-note-note { background-color: var(--bs-secondary-bg-subtle); color: var(--bs-secondary); }
-.badge-note-reminder { background-color: var(--bs-warning-bg-subtle); color: var(--bs-warning); }
-.badge-note-todo { background-color: var(--bs-info-bg-subtle); color: var(--bs-info); }
-.badge-tx-compra { background-color: var(--bs-primary-bg-subtle); color: var(--bs-primary); }
-.badge-tx-venda { background-color: var(--bs-success-bg-subtle); color: var(--bs-success); }
-.badge-tx-pagamento { background-color: var(--bs-danger-bg-subtle); color: var(--bs-danger); }
-.badge-tx-recebimento { background-color: var(--bs-success-bg-subtle); color: var(--bs-success); }
-.badge-tx-transferencia { background-color: var(--bs-info-bg-subtle); color: var(--bs-info); }
-.badge-match-ok { background-color: var(--bs-success-bg-subtle); color: var(--bs-success); }
-.badge-match-no { background-color: var(--bs-danger-bg-subtle); color: var(--bs-danger); }
+/* ── notas e to-do ── */
+.note-content { white-space: pre-line; }
+.todo-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--wa-space-3xs);
+}
+.todo-item { display: flex; align-items: baseline; gap: var(--wa-space-xs); }
+.todo-item.done .todo-mark { color: var(--wa-color-success-on-normal); }
+.todo-item.done .todo-text {
+	text-decoration: line-through;
+	color: var(--wa-color-text-quiet);
+}
 
-/* 6. Result / note rows */
+/* ── trace de extracao ── */
+.segment-trace {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--wa-space-3xs);
+	font-size: var(--wa-font-size-s);
+}
+.segment-text { font-family: var(--wa-font-family-code); }
+.score-pill {
+	font-variant-numeric: tabular-nums;
+	color: var(--wa-color-text-quiet);
+}
+.segment-mark.ok { color: var(--wa-color-success-on-normal); }
+.segment-mark.no { color: var(--wa-color-text-quiet); }
+
+/* ── tela de dados ── */
 .contact-row,
 .note-row {
 	display: flex;
 	align-items: center;
-	gap: 0.5rem;
-	padding: 0.2rem 0;
+	justify-content: space-between;
+	gap: var(--wa-space-xs);
+	font-size: var(--wa-font-size-s);
+	color: var(--wa-color-text-quiet);
+}
+.phone-link { font-family: var(--wa-font-family-code); }
+.detail-body { padding-bottom: var(--wa-space-l); }
+.sidebar-nav a {
+	display: block;
+	padding: var(--wa-space-2xs) var(--wa-space-s);
+	border-radius: var(--wa-border-radius-s);
+	color: var(--wa-color-text-quiet);
+	text-decoration: none;
+}
+.sidebar-nav a:hover { background: var(--wa-color-surface-lowered); }
+.sidebar-nav a.active {
+	background: var(--wa-color-brand-fill-quiet);
+	color: var(--wa-color-brand-on-quiet);
+	font-weight: var(--wa-font-weight-semibold);
+}
+.table-actions { display: flex; justify-content: flex-end; gap: var(--wa-space-xs); }
+.filter-pills { display: flex; flex-wrap: wrap; gap: var(--wa-space-xs); }
+.filter-pill { flex: 0 0 auto; }
+.todo-item-row { display: flex; align-items: center; gap: var(--wa-space-2xs); }
+.todo-item-row wa-input { flex: 1 1 auto; }
+.todo-item-row input[type="hidden"] { display: none; }
+
+/* view: o mesmo form serve para os dois modos, entao e o fieldset que
+ * desabilita tudo. O Web Awesome pinta o estado disabled; aqui so reforca. */
+fieldset:disabled wa-input,
+fieldset:disabled wa-select,
+fieldset:disabled wa-textarea {
+	opacity: 0.55;
 }
 
-.contact-row .row-label,
-.note-row .row-label {
-	color: var(--bs-secondary-color);
-	min-width: 5rem;
-}
-
-.tx-total {
-	font-size: 1.25rem;
-	font-weight: 600;
-	color: var(--bs-body-color);
-}
-
-/* 7. Segment trace */
-.segment-trace {
-	list-style: none;
-	margin: 0.5rem 0 0;
-	padding: 0;
-	display: flex;
-	flex-direction: column;
-	gap: 0.25rem;
-}
-
-.segment-trace li {
-	display: flex;
-	align-items: center;
-	gap: 0.5rem;
-}
-
-.segment-trace .segment-text {
-	flex: 1;
-}
-
-.score-pill {
-	border-radius: 999px;
-	background: rgba(0, 0, 0, 0.06);
-	padding: 0.05rem 0.5rem;
-	font-size: 0.75rem;
-	font-variant-numeric: tabular-nums;
-}
-
-.segment-mark.ok { color: var(--bs-success); }
-.segment-mark.no { color: var(--bs-danger); }
-
-/* 8. Notes */
-.note-list {
-	list-style: none;
-	margin: 0.5rem 0 0;
-	padding: 0;
-	display: flex;
-	flex-direction: column;
-	gap: 0.5rem;
-}
-
-.note-list > li {
-	border: 1px solid var(--bs-border-color);
-	border-radius: var(--bs-border-radius);
-	padding: 0.5rem 0.75rem;
-}
-
-.note-content {
-	flex: 1;
-}
-
-.todo-list {
-	list-style: none;
-	margin: 0.35rem 0 0;
-	padding: 0;
-	display: flex;
-	flex-direction: column;
-	gap: 0.2rem;
-}
-
-.todo-item {
-	display: flex;
-	align-items: center;
-	gap: 0.5rem;
-}
-
-.todo-item.done {
-	color: var(--bs-secondary-color);
-	text-decoration: line-through;
-}
-
-.todo-mark {
-	color: var(--bs-primary);
-	font-weight: 700;
-}
-
-/* 9. Loading states (htmx) */
-.htmx-indicator {
-	display: none;
-}
-
-button.htmx-request .htmx-indicator {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.4rem;
-}
-
-button.htmx-request .button-label {
-	display: none;
-}
-
-/* 10. htmx transitions */
-.htmx-swapping {
-	opacity: 0;
-	transition: opacity 150ms ease-out;
-}
-
-.htmx-settling {
-	animation: fadeIn 200ms ease-in;
-}
-
-@keyframes fadeIn {
-	from { opacity: 0; transform: translateY(4px); }
-	to { opacity: 1; transform: none; }
-}
-
-/* 11. Compact message textarea */
-textarea.form-control {
-	min-height: 6rem;
-}
+/* htmx: o spinner fica oculto por padrao e so aparece durante o request,
+ * porque o Web Awesome nao tem o par hx-indicator/htmx-indicator do Bootstrap. */
+.htmx-indicator { display: none; }
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator { display: inline-flex; }
+.htmx-swapping { opacity: 0.5; transition: opacity 100ms ease-in; }
+.htmx-settling { opacity: 1; transition: opacity 200ms ease-out; }

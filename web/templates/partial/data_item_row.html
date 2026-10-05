@@ -1,16 +1,10 @@
 {{ define "data_item_row" }}
-<div class="row g-2 align-items-center mb-2 todo-item-row">
-    <div class="col">
-        <input type="text" name="item_text" class="form-control" value="{{ .Text }}" placeholder="Item da lista" {{ if not .Done }}required{{ end }}>
-    </div>
-    <div class="col-auto">
-        <input type="checkbox" class="form-check-input" onchange="this.nextElementSibling.value = this.checked ? '1' : '0'" {{ if .Done }}checked{{ end }} aria-label="Item concluído">
-        <input type="hidden" name="item_done" value="{{ if .Done }}1{{ else }}0{{ end }}">
-    </div>
-    <div class="col-auto">
-        <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.todo-item-row').remove()" aria-label="Remover item">
-            <i class="bi bi-trash"></i>
-        </button>
-    </div>
+<div class="todo-item-row">
+    <wa-input name="item_text" value="{{ .Text }}" placeholder="Item da lista" size="small" {{ if not .Done }}required{{ end }}></wa-input>
+    <wa-checkbox onchange="this.nextElementSibling.value = this.checked ? '1' : '0'" {{ if .Done }}checked{{ end }} aria-label="Item concluído"></wa-checkbox>
+    <input type="hidden" name="item_done" value="{{ if .Done }}1{{ else }}0{{ end }}">
+    <wa-button size="s" variant="neutral" appearance="outlined" onclick="this.closest('.todo-item-row').remove()" aria-label="Remover item">
+        <wa-icon name="trash-can" label="Remover item"></wa-icon>
+    </wa-button>
 </div>
 {{ end }}

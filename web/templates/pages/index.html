@@ -1,26 +1,23 @@
 {{ define "page:title" }}Home{{ end }}
 {{ define "page:content" }}
-<div>
-    <section class="mb-4">
-        <h1 class="mb-1">Classificador de Mensagens</h1>
-        <p class="text-secondary mb-0">Envie uma mensagem e veja a categoria, a ação e os contatos extraídos.</p>
+<div class="wa-stack wa-gap-l">
+    <section class="wa-stack wa-gap-xs">
+        <h1 class="wa-heading-m">Classificador de Mensagens</h1>
+        <p class="wa-color-text-quiet">Envie uma mensagem e veja a categoria, a ação e os contatos extraídos.</p>
     </section>
 
-    <form hx-post="/api/message" hx-target="#resultado" hx-swap="innerHTML">
-        <div class="mb-3">
-            <label for="message" class="form-label">Mensagem:</label>
-            <input type="text" id="message" name="message" class="form-control" required>
-        </div>
+    <form hx-post="/api/message" hx-target="#resultado" hx-swap="innerHTML" class="wa-stack wa-gap-m">
+        <wa-input name="message" label="Mensagem:" type="text" required></wa-input>
 
         <!-- User id is still mocked; hidden until a real session supplies it. -->
         <input type="hidden" name="user_id" value="12345">
 
-        <button type="submit" class="btn btn-primary" hx-indicator="this" hx-disabled-elt="this">
-            <span class="button-label">Enviar</span>
-            <span class="htmx-indicator" aria-hidden="true"><span class="spinner-border spinner-border-sm me-2"></span>Classificando…</span>
-        </button>
+        <wa-button type="submit" variant="brand" hx-indicator="#msg-spinner" hx-disabled-elt="this">
+            Enviar
+        </wa-button>
+        <wa-spinner id="msg-spinner" class="htmx-indicator" aria-hidden="true"></wa-spinner>
     </form>
 
-    <div id="resultado" class="mt-4"></div>
+    <div id="resultado"></div>
 </div>
 {{ end }}

@@ -2,7 +2,7 @@
 
 ## Overview
 
-A Go web application that classifies user messages into categories (contact, finance, schedule, notes, other) and determines whether a message is a request to add or require something. Classification is performed by the **TypeSafe System One API** (Jev model) via one AI request per message (a single template with two choice questions). After classification, a **Dispatcher** routes the message to a category-specific use case; the contact flow implements both the **add** path (regex extraction of phone/email, Jev Noul name extraction, duplicate detection on save, and SQLite persistence via Gorm) and the **require** path (search by phone/email/name). The frontend is a server-rendered htmx page styled with Bootstrap 5.3 (no JS build step).
+A Go web application that classifies user messages into categories (contact, finance, schedule, notes, other) and determines whether a message is a request to add or require something. Classification is performed by the **TypeSafe System One API** (Jev model) via one AI request per message (a single template with two choice questions). After classification, a **Dispatcher** routes the message to a category-specific use case; the contact flow implements both the **add** path (regex extraction of phone/email, Jev Noul name extraction, duplicate detection on save, and SQLite persistence via Gorm) and the **require** path (search by phone/email/name). The frontend is a server-rendered htmx page styled with Web Awesome 3.14.0 (no JS build step).
 
 The same `CategoryHandler` seam now also serves the **notes** flow (`NotesService`): a second Jev call (`note.json`, one `note_type` choice question) picks the sub-type (note / reminder / to-do list), a deterministic PT-BR parser extracts the reminder date and optional time and the to-do list is split into items, everything is persisted in `notes` + `todo_items` (SQLite via Gorm), and the **require** path searches by date, unfinished items or a content term.
 
@@ -27,7 +27,7 @@ The codebase follows a **semantic MVC pattern** on an idiomatic Go layout:
 | Env loading | [joho/godotenv](https://github.com/joho/godotenv) v1.5.1 |
 | AI API | TypeSafe System One (`https://api.typesafe.ai/v1/systemone`, model `jev-latest`) |
 | Templating | Go `html/template` (ParseGlob) |
-| CSS | Bootstrap 5.3 (CDN, default light theme) + Bootstrap Icons (CDN) + custom layer (web/static/css/app.css) |
+| CSS | Web Awesome 3.14.0 (CDN: theme + native + utilities) + custom layer (web/static/css/app.css) |
 | Database | SQLite via [glebarez/sqlite](https://github.com/glebarez/sqlite) (pure-Go, zero CGO) |
 | ORM | [gorm.io/gorm](https://gorm.io) |
 
@@ -94,12 +94,12 @@ msg-classifier/
 │           └── note.json            # one choice question: "note_type" (note / reminder / todo)
 ├── web/
 │   ├── static/
-│   │   └── css/app.css        # custom layer over Bootstrap 5.3 (tokens, badges, sidebar, spinner, tables)
+│   │   └── css/app.css        # custom layer over Web Awesome (tokens, pills, sidebar, htmx indicator, tables)
 │   └── templates/
-│       ├── layouts/base.html    # "base" layout (pt-BR, Inter, favicon, sticky navbar, page:active block)
+│       ├── layouts/base.html    # "base" layout (pt-BR, wa-page shell, favicon, nav slot)
 │       ├── pages/index.html     # home page (hero copy + form + spinner on Enviar)
 │       ├── pages/prompts.html   # "Validação Jev" page (flow select + add form + spinner)
-│       ├── pages/data.html      # "Dados" page (filter pills + table container + detail offcanvas)
+│       ├── pages/data.html      # "Dados" page (wa-tab-group + filter pills + table container + detail drawer)
 │       └── partial/
 │           ├── result.html      # "resultado" partial (badges + structured card + segment list)
 │           ├── error.html       # "error" partial (red error card for htmx swap targets)
@@ -108,7 +108,7 @@ msg-classifier/
 │           ├── contacts_table.html      # contact rows + per-row "Ver" + bulk delete
 │           ├── notes_table.html         # note rows (type badge, date/time, items) + per-row "Ver" + bulk delete
 │           ├── transactions_table.html  # transaction rows (type badge, date, amount, party) + per-row "Ver" + bulk delete
-│           ├── data_detail.html         # offcanvas panel body: contact/note/transaction form in view + edit mode
+│           ├── data_detail.html         # drawer panel body: contact/note/transaction form in view + edit mode
 │           ├── data_item_row.html       # one to-do item row (existing rows reuse it via {{ template }})
 ├── scripts/
 │   └── sql/
@@ -229,13 +229,16 @@ msg-classifier/
 - The finance flow has **no** JSON template: its question count depends on how many words the party candidate has, so `finance_extract.go` builds the request in code (`typeQuestion()` + one `segment_N` per candidate word) and sends it through `MakeJevRequest`.
 
 ### 11. HTML Templates — `web/templates/`
-- `base.html`: `base` layout, `lang="pt-BR"`, loads Inter (Google Fonts) + Bootstrap 5.3 (default light theme) + Bootstrap Icons + `app.css` + htmx 2.0.10 + response-targets extension from CDNs; offcanvas-lg sidebar (fixed at lg+, drawer with hamburger below) with a `page:active` block for the active link; `hx-ext="response-targets"` + `hx-target-error="#resultado"` on `<body>` route 4xx/5xx responses into the result container.
+- `base.html`: `base` layout, `lang="pt-BR"`, Web Awesome 3.14.0 CSS from CDN (theme + native + utilities) + `app.css`, htmx 2.0.10 + response-targets extension from CDN, and the Web Awesome loader as a `type="module"` script. The body is a `<wa-page mobile-breakpoint="992px">` whose `slot="navigation"` carries the brand + nav; the page name marks the active link with `class="active"` (the `page:active` block is gone — `views.PageData.Page` is available directly). `hx-ext="response-targets"` + `hx-target-error="#resultado"` on `<body>` route 4xx/5xx responses into the result container.
+- Layout and typography are Web Awesome **CSS utility classes** (`wa-stack`, `wa-cluster`, `wa-gap-*`, `wa-align-items-*`, `wa-justify-content-*`, `wa-heading-*`, `wa-body-*`, `wa-color-text-quiet`, `wa-list-plain`, `wa-form-control-label`, `wa-tabular-nums`) — there are no `wa-stack`/`wa-cluster` *elements*. Tables are plain `<table>` styled by `native.css`.
+- Every `<wa-button>` that submits a form carries an explicit `type="submit"`: Web Awesome defaults `type` to `button`, so omitting it silently turns a submit into a no-op.
+- Loading feedback stays htmx's: `hx-indicator` + `.htmx-indicator` (see app.css) with a `<wa-spinner>`; buttons also carry `hx-disabled-elt="this"`.
 - `index.html`: form posting via `hx-post="/api/message"` targeting `#resultado` with `hx-swap="innerHTML"`.
-- `result.html`: `resultado` partial — a Bootstrap `<div class="card result-card">` with PT-BR category/kind badges in `card-header`, branches for add/found/not-found/duplicate/no-data (contact), note_add/note_found/note_not_found/note_no_data (notes: type badge, content, date/time for reminders, item list with ✓/○ for to-dos) and transaction_add/transaction_found/transaction_not_found/transaction_no_data (finance: type badge, amount through `money`, date, party, the original message, and a `Total:` line when the outcome carries one), and the per-segment extraction trace as a list in `card-footer`.
-- `error.html`: `error` partial rendering a Bootstrap `card border-danger` error card (used for 400/404/502/500 responses).
-- `data.html`: `data` page — three tabs (Contatos / Notas / Finanças), filter pills that each `hx-get` a table partial, an empty `#data-table` container that loads on first paint, and the `#dataPanel` offcanvas whose body is swapped per record. A `dataChanged` body event lets the delete endpoint re-render the table the user was on without a full page reload. Pill highlight state is client-side (`markFilterPill`), because the server re-renders `#data-table` but never the pill list — a server-rendered `active` class would be lost on every delete. Switching the outer tab calls `activateFilterPills`, which loads and selects that pane's default filter, so the other kind's table is never left on screen. The contacts `Todos` pill (and only it) carries `hx-trigger="load, click"` — it boots the table on first paint but must stay clickable, and an explicit `hx-trigger` replaces htmx's default `click` trigger, so `load` alone would make it a dead button. `activateFilterPills` clicks that default pill unconditionally, with no `active`-pane guard: Bootstrap toggles `active` itself, so such a guard would skip the reload exactly when the tab you re-select is the one already showing. The finance pane adds `#txSearchForm`, a `hx-get` search box over the establishment/person/amount; it carries its own hidden `kind`/`filter` inputs and `markFilterPill` re-points `filter` on every pill click, so a search can never escape the type on screen.
+- `result.html`: `resultado` partial — a `<wa-card>` with PT-BR category/kind `<wa-badge>`s in `slot="header"`, branches for add/found/not-found/duplicate/no-data (contact), note_add/note_found/note_not_found/note_no_data (notes: type badge, content, date/time for reminders, item list with ✓/○ for to-dos) and transaction_add/transaction_found/transaction_not_found/transaction_no_data (finance: type badge, amount through `money`, date, party, the original message, and a `Total:` line when the outcome carries one), and the per-segment extraction trace as a list in `slot="footer"`.
+- `error.html`: `error` partial rendering a `<wa-callout variant="danger">` with a `wa-icon` (used for 400/404/502/500 responses).
+- `data.html`: `data` page — a `<wa-tab-group>` with three tabs (Contatos / Notas / Finanças), filter pills that each `hx-get` a table partial, an empty `#data-table` container that loads on first paint, and the `#dataPanel` `<wa-drawer>` whose body is swapped per record. A `dataChanged` body event lets the delete endpoint re-render the table the user was on without a full page reload. Pill highlight state is client-side (`markFilterPill`), because the server re-renders `#data-table` but never the pill list — a server-rendered `active` class would be lost on every delete. Switching the outer tab is driven by the `<wa-tab-group>`'s `wa-tab-show` event, which calls `activateFilterPills` and loads that pane's default filter, so the other kind's table is never left on screen. The contacts `Todos` pill (and only it) carries `hx-trigger="load, click"` — it boots the table on first paint but must stay clickable, and an explicit `hx-trigger` replaces htmx's default `click` trigger, so `load` alone would make it a dead button. `activateFilterPills` clicks that default pill unconditionally, with no `active`-pane guard: `wa-tab-group` toggles the pane itself, so such a guard would skip the reload exactly when the tab you re-select is the one already showing. The finance pane adds `#txSearchForm`, a `hx-get` search box over the establishment/person/amount; it carries its own hidden `kind`/`filter` inputs and `markFilterPill` re-points `filter` on every pill click, so a search can never escape the type on screen.
 - `contacts_table.html` / `notes_table.html` / `transactions_table.html`: row tables plus a checkbox per row (`class="data-check"`) and a bulk delete button. All three carry `kind` and `filter` in hidden inputs so the delete POST knows which table to re-render. The transaction rows show date, type badge, `money` amount, party and the original message.
-- `data_detail.html`: the offcanvas panel body. One form serves both modes — `view` renders the `fieldset` disabled with an "Editar" button that fetches the same record with `mode=edit`. A reminder shows date + time, a to-do a `#todo-items` editor with add/remove rows, a plain note only the content, and a transaction a type select + amount + date + party + original message.
+- `data_detail.html`: the drawer panel body. One form serves both modes — `view` renders the `fieldset` disabled with an "Editar" button that fetches the same record with `mode=edit`. A reminder shows date + time, a to-do a `#todo-items` editor with add/remove rows, a plain note only the content, and a transaction a type `<wa-select>` + amount + date + party + original message.
 - `data_item_row.html`: a single to-do row (text input + done checkbox + delete button). Existing rows render it with `{{ template }}` and "Adicionar item" fetches the same partial from `/data/item-row` — one row markup, not two.
 
 ### 12. Prompt Service (validation harness) — `internal/services/prompt.go` + `prompt_controller.go`
@@ -327,12 +330,12 @@ PromptController.Evaluate → PromptService.Evaluate
 
 ```
 Browser (/data)
-  │ GET /data → page with filter pills, empty #data-table, #dataPanel offcanvas
+  │ GET /data → page with filter pills, empty #data-table, #dataPanel drawer
   ▼
 DataController.Page → views.RenderPage("data") → page boots → hx-get /data/table?kind&filter
   ▼
 DataController.Table → DataService.ListContacts / ListNotes / ListTransactions → contacts_table / notes_table / transactions_table partial
-  │ row "Ver"  → hx-get /data/:kind/:id?mode=view  → offcanvas body, fieldset disabled
+  │ row "Ver"  → hx-get /data/:kind/:id?mode=view  → drawer body, fieldset disabled
   │ "Editar"   → hx-get /data/:kind/:id?mode=edit  → same form, fieldset enabled
   │ "Salvar"   → hx-post /data/:kind/:id → DataService.UpdateContact / UpdateNote / UpdateTransaction → detail back in view mode
   │ "Adicionar item" → hx-get /data/item-row → one blank row appended to #todo-items
@@ -373,7 +376,7 @@ All responses to htmx targets are HTML partials — no JSON on this route. The r
 | TypeSafe System One API | Message classification (Jev model) | `TYPESAFE_API_URL`, `TYPESAFE_MODEL`, `TS_API_KEY` |
 | htmx.org 2.0.10 (CDN) | Client-side partial page updates | — |
 | htmx-ext-response-targets (CDN) | Swap 4xx/5xx responses into `#resultado` | — |
-| Bootstrap 5.3 (CDN, default light theme) + Bootstrap Icons (CDN) | Styling | — |
+| Web Awesome 3.14.0 (CDN) | Web components: `wa-page`, `wa-card`, `wa-badge`, `wa-button`, `wa-input`/`wa-select`/`wa-checkbox`/`wa-textarea`, `wa-tab-group`, `wa-drawer`, `wa-callout`, `wa-spinner`, `wa-icon`, `wa-option` | — |
 | SQLite (glebarez/sqlite) | Contact, note, to-do and transaction persistence | DB_PATH |
 
 ## Configuration

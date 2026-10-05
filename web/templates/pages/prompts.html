@@ -1,34 +1,26 @@
 {{ define "page:title" }}Validação Jev{{ end }}
 {{ define "page:active" }}prompts{{ end }}
 {{ define "page:content" }}
-<div>
-    <h1 class="mb-4">Validação Jev</h1>
+<div class="wa-stack wa-gap-l">
+    <h1 class="wa-heading-m">Validação Jev</h1>
 
-    <div class="mb-3">
-        <label for="flow" class="form-label">Fluxo:</label>
-        <select id="flow" name="flow" class="form-select" hx-get="/prompts/table" hx-target="#prompt-table" hx-swap="innerHTML" hx-target-error="#prompt-table" hx-trigger="load, change">
-            <option value="classification">Classificação</option>
-            <option value="name">Extração de nome</option>
-            <option value="note">Tipo de nota</option>
-        </select>
-    </div>
+    <wa-select id="flow" name="flow" label="Fluxo:" hx-get="/prompts/table" hx-target="#prompt-table" hx-swap="innerHTML" hx-target-error="#prompt-table" hx-trigger="load, change">
+        <wa-option value="classification">Classificação</wa-option>
+        <wa-option value="name">Extração de nome</wa-option>
+        <wa-option value="note">Tipo de nota</wa-option>
+        <wa-option value="finance">Tipo de transação</wa-option>
+    </wa-select>
 
-    <form hx-post="/prompts" hx-target="#prompt-table" hx-swap="innerHTML" hx-target-error="#prompt-table" hx-include="#flow">
-        <div class="mb-3">
-            <label for="message" class="form-label">Mensagem:</label>
-            <textarea id="message" name="message" class="form-control" required></textarea>
-        </div>
-        <div class="mb-3">
-            <label for="expected" class="form-label">Resultado esperado:</label>
-            <input type="text" id="expected" name="expected" class="form-control" required>
-        </div>
-        <button type="submit" class="btn btn-primary" hx-indicator="this" hx-disabled-elt="this">
-            <span class="button-label">Adicionar exemplo</span>
-            <span class="htmx-indicator" aria-hidden="true"><span class="spinner-border spinner-border-sm me-2"></span>Adicionando…</span>
-        </button>
+    <form hx-post="/prompts" hx-target="#prompt-table" hx-swap="innerHTML" hx-target-error="#prompt-table" hx-include="#flow" class="wa-stack wa-gap-m">
+        <wa-textarea name="message" label="Mensagem:" required></wa-textarea>
+        <wa-input name="expected" label="Resultado esperado:" type="text" required></wa-input>
+        <wa-button type="submit" variant="brand" hx-indicator="#add-spinner" hx-disabled-elt="this">
+            Adicionar exemplo
+        </wa-button>
+        <wa-spinner id="add-spinner" class="htmx-indicator" aria-hidden="true"></wa-spinner>
     </form>
 
-    <div id="prompt-table" class="mt-4"></div>
-    <div id="evaluation" class="mt-4"></div>
+    <div id="prompt-table"></div>
+    <div id="evaluation"></div>
 </div>
 {{ end }}

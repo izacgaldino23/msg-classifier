@@ -35,7 +35,7 @@ func (ctrl *DataController) Table(c *gin.Context) {
 	ctrl.renderTable(c, c.Query("kind"), c.Query("filter"), c.Query("search"))
 }
 
-// Detail handles GET /data/:kind/:id?mode=view|edit — renders the offcanvas
+// Detail handles GET /data/:kind/:id?mode=view|edit — renders the drawer
 // panel body for one record.
 func (ctrl *DataController) Detail(c *gin.Context) {
 	kind, id, ok := ctrl.path(c)

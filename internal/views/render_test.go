@@ -4,6 +4,7 @@ import (
 	"html/template"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -58,11 +59,11 @@ func TestRenderResultContactAdd(t *testing.T) {
 	}
 	body := w.Body.String()
 	for _, want := range []string{
-		"badge-cat-contact", "badge-kind-add", "Contato", "Adicionar",
+		`variant="brand">Contato`, `variant="success">Adicionar`,
 		"Contato salvo", "ID 7", "Fulano Tal", "9292929290",
-		"segment-text\">Fulano", "score-pill\">0.91",
-		"segment-text\">de", "score-pill\">0.08",
-		"segment-text\">Tal", "score-pill\">0.88",
+		`segment-text">Fulano`, `score-pill">0.91`,
+		`segment-text">de`, `score-pill">0.08`,
+		`segment-text">Tal`, `score-pill">0.88`,
 		"segment-mark ok", "segment-mark no", "✓", "✗",
 	} {
 		if !strings.Contains(body, want) {
@@ -88,7 +89,7 @@ func TestRenderResultContactNoData(t *testing.T) {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
 	body := w.Body.String()
-	for _, want := range []string{"contact", "add", "Nenhum dado de contato"} {
+	for _, want := range []string{"Contato", "Adicionar", "Nenhum dado de contato"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body missing %q: %s", want, body)
 		}
@@ -112,7 +113,7 @@ func TestRenderResultClassificationOnly(t *testing.T) {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
 	body := w.Body.String()
-	for _, want := range []string{"notes", "70.00%", "add"} {
+	for _, want := range []string{"Notas", "70.00%", "Adicionar"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body missing %q: %s", want, body)
 		}
@@ -138,7 +139,7 @@ func TestRenderResultContactFound(t *testing.T) {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
 	body := w.Body.String()
-	for _, want := range []string{"contact", "require", "Contato encontrado", "Fulano Tal", "9292929290"} {
+	for _, want := range []string{"Contato", "Consultar", "Contato encontrado", "Fulano Tal", "9292929290"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body missing %q: %s", want, body)
 		}
@@ -226,7 +227,7 @@ func TestRenderEvaluationResults(t *testing.T) {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
 	body := w.Body.String()
-	for _, want := range []string{"salva fulano", "contact:add", "finance:require", "badge-match-ok", "badge-match-no", "✓", "✗"} {
+	for _, want := range []string{"salva fulano", "contact:add", "finance:require", `variant="success">✓`, `variant="danger">✗`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body missing %q: %s", want, body)
 		}
@@ -254,9 +255,9 @@ func TestRenderEvaluationResultsNameSegments(t *testing.T) {
 	}
 	body := w.Body.String()
 	for _, want := range []string{
-		"segment-text\">João", "score-pill\">0.99",
-		"segment-text\">da", "score-pill\">0.98",
-		"segment-text\">Silva", "score-pill\">0.97",
+		`segment-text">João`, `score-pill">0.99`,
+		`segment-text">da`, `score-pill">0.98`,
+		`segment-text">Silva`, `score-pill">0.97`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body missing %q: %s", want, body)
@@ -276,10 +277,14 @@ func TestRenderHomePage(t *testing.T) {
 	for _, want := range []string{
 		"Classificador de Mensagens",
 		`hx-post="/api/message"`,
-		// A plain text input is what makes Enter submit the form.
-		`<input type="text" id="message" name="message"`,
+		// wa-input is a form-associated custom element, so it submits like a
+		// native input — including Enter-to-submit.
+		`<wa-input name="message"`,
 		// The mocked user id is hidden, not a visible field.
 		`<input type="hidden" name="user_id" value="12345">`,
+		// wa-button defaults to type="button" (the opposite of a native
+		// <button>), so the submit type has to be explicit.
+		`<wa-button type="submit"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("home page missing %q: %s", want, body)
@@ -360,8 +365,8 @@ func TestRenderResultNoteAddReminder(t *testing.T) {
 	}
 	body := w.Body.String()
 	for _, want := range []string{
-		"badge-cat-notes", "Lembrete salvo", "ID 3",
-		"badge-note-reminder", "Lembrete", "pagar a conta de luz", "10/05/2026", "14:30",
+		`variant="brand">Notas`, "Lembrete salvo", "ID 3",
+		`variant="warning">Lembrete`, "pagar a conta de luz", "10/05/2026", "14:30",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body missing %q: %s", want, body)
@@ -396,7 +401,7 @@ func TestRenderResultNoteAddTodo(t *testing.T) {
 	}
 	body := w.Body.String()
 	for _, want := range []string{
-		"Lista de tarefas salva", "ID 4", "badge-note-todo", "Lista de tarefas",
+		"Lista de tarefas salva", "ID 4", `variant="success">Lista de tarefas`,
 		"todo-list", "todo-item", "comprar pão", "leite e ovos", "todo-item done", "✓", "○",
 	} {
 		if !strings.Contains(body, want) {
@@ -430,7 +435,7 @@ func TestRenderResultNoteFound(t *testing.T) {
 	body := w.Body.String()
 	for _, want := range []string{
 		"2 nota(s) encontrada(s) para '10/05/2026'",
-		"note-list", "badge-note-reminder", "badge-note-note",
+		"note-list", `variant="warning">Lembrete`, `variant="brand">Nota`,
 		"pagar a conta", "renomear o projeto", "10/05/2026",
 	} {
 		if !strings.Contains(body, want) {
@@ -478,7 +483,7 @@ func TestRenderResultNoteNoData(t *testing.T) {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
 	body := w.Body.String()
-	for _, want := range []string{"notes", "Não consegui extrair os dados da nota", "dia 10"} {
+	for _, want := range []string{"Notas", "Não consegui extrair os dados da nota", "dia 10"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body missing %q: %s", want, body)
 		}
@@ -515,10 +520,9 @@ func TestRenderDataPage(t *testing.T) {
 		`id="pane-finance"`,
 		`id="txSearchForm"`,
 		`id="txSearch"`,
-		`onclick="activateFilterPills('pane-finance')"`,
 		`id="dataPanel"`,
 		`id="data-panel-body"`,
-		`data-bs-dismiss="offcanvas"`,
+		`data-drawer="hide"`,
 		`hx-trigger="dataChanged from:body"`,
 	} {
 		if !strings.Contains(body, want) {
@@ -532,11 +536,11 @@ func TestRenderDataPage(t *testing.T) {
 	}
 	// Filter pill state is client-side: without these the "active" class stays
 	// hardcoded on one pill and the highlight never follows the selection.
+	// wa-tab-group replaces the old data-bs-toggle tabs, so the pane switch
+	// rides the component's wa-tab-show event rather than a per-tab onclick.
 	for _, want := range []string{
 		`onclick="markFilterPill(this)"`,
-		`onclick="activateFilterPills('pane-contacts')"`,
-		`onclick="activateFilterPills('pane-notes')"`,
-		`onclick="activateFilterPills('pane-finance')"`,
+		`@wa-tab-show="activateFilterPills('pane-' + $event.detail.name)"`,
 		"function markFilterPill(pill)",
 		"function activateFilterPills(paneId)",
 	} {
@@ -547,7 +551,7 @@ func TestRenderDataPage(t *testing.T) {
 	if got := strings.Count(body, "data-filter-pill"); got != 13 {
 		t.Errorf("filter pills = %d, want 13 (4 contacts + 4 notes + 5 finance)", got)
 	}
-	if got := strings.Count(body, `class="nav-link active" data-filter-pill`); got != 3 {
+	if got := strings.Count(body, `variant="brand" data-filter-pill`); got != 3 {
 		t.Errorf("pre-selected filter pills = %d, want 3 (one Todos per tab)", got)
 	}
 	// The contacts "Todos" pill boots the table on load but must stay clickable:
@@ -561,9 +565,9 @@ func TestRenderDataPage(t *testing.T) {
 		t.Errorf("data page has a bare load trigger that kills pill clicks: %s", body)
 	}
 	// activateFilterPills must load the pane's default filter unconditionally:
-	// pane-contacts ships with class="... active" and Bootstrap adds "active" to
-	// whichever pane it shows, so a `contains('active') return` guard skips the
-	// load exactly when you re-select the tab that is already showing.
+	// pane-contacts ships with class="... active" and wa-tab-group adds "active"
+	// to whichever pane it shows, so a `contains('active') return` guard skips
+	// the load exactly when you re-select the tab that is already showing.
 	if strings.Contains(body, "classList.contains('active')) return") {
 		t.Errorf("data page skips the default-filter load on an already-active pane: %s", body)
 	}
@@ -628,8 +632,8 @@ func TestRenderResultTransactionAdd(t *testing.T) {
 	}
 	body := w.Body.String()
 	for _, want := range []string{
-		"badge-cat-finance", "Transação salva", "ID 7", "badge-tx-compra",
-		"Compra", "R$ 1.234,56", "10/05/2026", "supermercado", "compras no supermercado",
+		`variant="success">Finanças`, "Transação salva", "ID 7", `variant="success">Compra`,
+		"R$ 1.234,56", "10/05/2026", "supermercado", "compras no supermercado",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("transaction add missing %q: %s", want, body)
@@ -683,7 +687,7 @@ func TestRenderResultTransactionNoData(t *testing.T) {
 
 	body := w.Body.String()
 	for _, want := range []string{
-		"badge-cat-finance", "Não consegui classificar", "o valor", "Acrescente à mensagem", "envie de novo",
+		`variant="success">Finanças`, "Não consegui classificar", "o valor", "Acrescente à mensagem", "envie de novo",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("transaction no data missing %q: %s", want, body)
@@ -716,7 +720,7 @@ func TestRenderNotesTable(t *testing.T) {
 	body := w.Body.String()
 	for _, want := range []string{
 		`name="filter" value="all"`, "pagar a conta", "10/05/2026", "14:30",
-		"comprar", "badge-note-reminder", "Lembrete", "badge-note-todo", "Lista de tarefas",
+		"comprar", `variant="warning">Lembrete`, `variant="success">Lista de tarefas`,
 		`hx-get="/data/notes/1"`, "Apagar selecionados",
 	} {
 		if !strings.Contains(body, want) {
@@ -848,7 +852,7 @@ func TestRenderDataDetailTransactionViewMode(t *testing.T) {
 			t.Errorf("transaction detail missing %q: %s", want, body)
 		}
 	}
-	if !strings.Contains(body, "<fieldset disabled>") {
+	if !strings.Contains(body, `<fieldset disabled class="wa-stack`) {
 		t.Errorf("view mode must disable the fieldset: %s", body)
 	}
 }
@@ -884,11 +888,17 @@ func TestRenderDataItemRow(t *testing.T) {
 	body := w.Body.String()
 	for _, want := range []string{
 		`name="item_text"`, `value=""`, `name="item_done" value="0"`,
-		"todo-item-row", "bi-trash",
+		"todo-item-row", `name="trash-can"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("item row missing %q: %s", want, body)
 		}
+	}
+	// The checkbox carries no name: an unchecked wa-checkbox sends nothing, and
+	// buildItems indexes item_done positionally against item_text, so a missing
+	// value would shift the array and mark the wrong rows done.
+	if strings.Contains(body, `<wa-checkbox name=`) {
+		t.Errorf("wa-checkbox must not be named (it would send nothing when unchecked): %s", body)
 	}
 }
 
@@ -923,6 +933,37 @@ func TestMoneyBRL(t *testing.T) {
 	for _, tt := range tests {
 		if got := MoneyBRL(tt.amount); got != tt.want {
 			t.Errorf("MoneyBRL(%v) = %q, want %q", tt.amount, got, tt.want)
+		}
+	}
+}
+
+// Shoelace 2.x token names. Web Awesome 3.x renamed every one of them, and an
+// undefined var() invalidates the whole declaration silently: no error, no log,
+// the property just computes to unset. This is the failure that left the brand
+// mark invisible and the active nav link unstyled. See IMP-006.md.
+var shoelaceOnlyTokens = []string{
+	"--wa-radius-",
+	"--wa-font-family-mono",
+	"--wa-font-weight-semi)",
+	"--wa-color-text-muted",
+	"--wa-color-surface-hover",
+	"--wa-color-success-6",
+	"--wa-color-brand-100",
+	"--wa-color-brand-500",
+	"--wa-color-brand-700",
+	"--wa-color-brand-800",
+	"--wa-color-cyan-500",
+	"--wa-color-cyan-600",
+}
+
+func TestAppCSSUsesNoShoelaceTokens(t *testing.T) {
+	css, err := os.ReadFile("../../web/static/css/app.css")
+	if err != nil {
+		t.Fatalf("failed to read app.css: %v", err)
+	}
+	for _, token := range shoelaceOnlyTokens {
+		if strings.Contains(string(css), token) {
+			t.Errorf("app.css references %q, a Shoelace 2.x name Web Awesome 3.x does not ship; the declaration silently does nothing", token)
 		}
 	}
 }

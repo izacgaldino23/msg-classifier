@@ -1,7 +1,6 @@
 {{ define "error" }}
-<div id="resultado" class="card border-danger">
-	<div class="card-body">
-		<p class="mb-0"><strong>Erro:</strong> <span class="text-danger">{{ .Message }}</span></p>
-	</div>
-</div>
+<wa-callout variant="danger" id="resultado">
+    <wa-icon slot="icon" name="triangle-exclamation"></wa-icon>
+    <p><strong>Erro:</strong> {{ .Message }}</p>
+</wa-callout>
 {{ end }}

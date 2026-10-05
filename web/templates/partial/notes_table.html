@@ -1,9 +1,9 @@
 {{ define "notes_table" }}
-<form id="data-table-form">
+<form id="data-table-form" class="wa-stack wa-gap-m">
     <input type="hidden" name="kind" value="notes">
     <input type="hidden" name="filter" value="{{ .Filter }}">
-    <div class="table-responsive">
-        <table class="table table-hover">
+    <wa-scroller>
+        <table>
             <thead>
                 <tr>
                     <th><input type="checkbox" onchange="document.querySelectorAll('.data-check').forEach(cb => cb.checked = this.checked)"></th>
@@ -22,13 +22,13 @@
                     <tr>
                         <td><input type="checkbox" class="data-check" name="ids" value="{{ .ID }}"></td>
                         <td>{{ .ID }}</td>
-                        <td><span class="badge badge-note-{{ .Type }}">{{ label .Type }}</span></td>
+                        <td><wa-badge variant="{{ badge .Type }}">{{ label .Type }}</wa-badge></td>
                         <td>{{ .Content }}</td>
                         <td>{{ dateBR .Date }}</td>
                         <td>{{ deref .Time }}</td>
                         <td>{{ len .Items }}</td>
-                        <td class="text-end">
-                            <button type="button" class="btn btn-sm btn-outline-primary" hx-get="/data/notes/{{ .ID }}" hx-target="#data-panel-body" hx-swap="innerHTML" hx-target-error="#data-panel-body" hx-on::after-request="bootstrap.Offcanvas.getOrCreateInstance('#dataPanel').show()">Ver</button>
+                        <td class="wa-text-end">
+                            <wa-button size="s" variant="brand" hx-get="/data/notes/{{ .ID }}" hx-target="#data-panel-body" hx-swap="innerHTML" hx-target-error="#data-panel-body" data-drawer="open dataPanel">Ver</wa-button>
                         </td>
                     </tr>
                     {{ end }}
@@ -37,10 +37,8 @@
                 {{ end }}
             </tbody>
         </table>
-    </div>
-    <button type="button" class="btn btn-danger mt-3" hx-post="/data/delete" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" hx-include="#data-table-form" hx-confirm="Apagar as notas selecionadas?" hx-indicator="this" hx-disabled-elt="this">
-        <span class="button-label">Apagar selecionados</span>
-        <span class="htmx-indicator" aria-hidden="true"><span class="spinner-border spinner-border-sm me-2"></span>Apagando…</span>
-    </button>
+    </wa-scroller>
+    <wa-button variant="danger" hx-post="/data/delete" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" hx-include="#data-table-form" hx-confirm="Apagar as notas selecionadas?" hx-indicator="#delete-notes-spinner" hx-disabled-elt="this">Apagar selecionados</wa-button>
+    <wa-spinner id="delete-notes-spinner" class="htmx-indicator" aria-hidden="true"></wa-spinner>
 </form>
 {{ end }}
