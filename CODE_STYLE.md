@@ -24,8 +24,9 @@ Conventions observed in this codebase. Follow these when writing new code.
 
 ## File Organization
 
-- **`cmd/`** — executable entry points only (`cmd/api/main.go`). Composition root: dependency wiring + route registration.
+- **`cmd/`** — executable entry points only (`cmd/web/main.go`). An entry point builds templates + routes; the dependency wiring lives in `internal/app`.
 - **`internal/`** — private application code, layered MVC:
+  - `app/` — the composition root: config → Jev client → DB → repositories → services → dispatcher; every entry point calls `app.New`
   - `config/` — env singleton (single godotenv load site)
   - `controllers/` — HTTP concerns only (bind → service → render → status)
   - `models/` — DTOs and domain structs
@@ -93,7 +94,7 @@ type jevClient interface {
 ### Category dispatch
 - Category-specific use cases implement the `CategoryHandler` interface: `Handle(request, classification) (*models.UseCaseOutcome, error)`.
 - A `Dispatcher` holds a `map[string]CategoryHandler` keyed by `Category.Choice`; misses fall back to an `ActionNone` outcome.
-- Adding a category = new service implementing `CategoryHandler` + one wiring line in `main.go` — no dispatcher edits.
+- Adding a category = new service implementing `CategoryHandler` + one wiring line in `internal/app/app.go` — no dispatcher edits.
 - Use cases return a `models.UseCaseOutcome` (`Classification` + `Action` + the use-case payload: `Contact`/`Segments` for contacts, `Notes []*Note` for notes, `SearchTerm`); actions: `ActionNone`, `ActionContactAdd`, `ActionContactNoData`, `ActionContactFound`, `ActionContactNotFound`, `ActionContactDuplicate`, `ActionNoteAdd`, `ActionNoteNoData`, `ActionNoteFound`, `ActionNoteNotFound`.
 
 ### Notes use case
@@ -119,7 +120,7 @@ type jevClient interface {
 - Render through `views.RenderPage` / `views.RenderResult` / `views.RenderError`, not raw `c.HTML`.
 - Pages render through `views.RenderPage(c, page, content)`; `views.PagesRenderer` clones the shared layout set per page so page blocks never collide. Do not try to collapse this into one template set: Go templates have no inheritance and `{{ template }}` names must be string literals, so the block name cannot come from the view data.
 - Template name constants in `internal/views/render.go` include the harness partials: `prompt_table`, `evaluation_results`.
-- Template helpers are exposed via `views.FuncMap` (e.g., `label` for PT-BR badge text, `confidence` for the percent format, `money` for amounts) and registered on the shared template set in `cmd/api/main.go` (`template.New("").Funcs(views.FuncMap)`).
+- Template helpers are exposed via `views.FuncMap` (e.g., `label` for PT-BR badge text, `confidence` for the percent format, `money` for amounts) and registered on the shared template set in `cmd/web/main.go` (`template.New("").Funcs(views.FuncMap)`).
 - htmx detection is `c.GetHeader("HX-Request") == "true"` in `views.isHxRequest`. There is no server-side htmx library or context middleware for it.
 - **A page template must `{{ define "page:content" }}`** — the `<name>:<name>:content` name. `PagesRenderer` executes `page:content`, so a mismatched define name renders an **empty body with HTTP 200** and no log line.
 
@@ -155,13 +156,15 @@ type jevClient interface {
 - A pill that both boots a table on first paint and answers clicks carries `hx-trigger="load, click"`. An explicit `hx-trigger` **replaces** htmx's default `click` trigger, so a bare `hx-trigger="load"` turns the element into a dead button once the initial load fires — tabs would never re-load their pane's default filter, and direct clicks would do nothing.
 
 ### JSON responses
-There are none. Every route renders an HTML partial; add a JSON helper on the day a JSON endpoint exists, not before.
+- JSON lives in `internal/api`, never in `internal/controllers` and never mixed into an htmx route — the htmx routes keep rendering partials.
+- One presenter per `models.Action`, written as a `switch`. No presenter interface, no registry.
+- Failures answer `{"error":"..."}` with the status rules the web entry point already uses: 400 bind/invalid, 502 upstream, 500 anything else.
 
 ### Jev domain types
 All TypeSafe-related types are prefixed `Jev`. Questions implement `JevQuestionInterface` (`GetType()` / `GetInstructions()`), and `GetInstructions` is defined once on the embedded `JevQuestion` — it promotes to every question type, so do not repeat it. Answers are plain structs in `JevResponse.Answers map[string]any`; there is no answer interface.
 
 ### Config access
-Never read `os.Getenv` directly outside `internal/config/env.go`. Config is read once at the composition root (`cmd/api/main.go`) and injected into constructors (`jev.NewClient(env.TypesafeApiUrl, env.TypesafeToken, env.TypesafeModel)`).
+Never read `os.Getenv` directly outside `internal/config/env.go`. Config is read once at the composition root (`internal/app/app.go`) and injected into constructors (`jev.NewClient(env.TypesafeApiUrl, env.TypesafeToken, env.TypesafeModel)`).
 
 ## Error Handling
 
