@@ -36,9 +36,11 @@ The codebase follows a **semantic MVC pattern** on an idiomatic Go layout:
 ```
 msg-classifier/
 ├── cmd/
-│   └── api/
-│       └── main.go              # Composition root: config → jev client → services → dispatcher → controllers → routes
+│   └── web/
+│       └── main.go              # Composition root is internal/app; this is templates + routes only
 ├── internal/                    # Private application code (not importable externally)
+│   ├── app/
+│   │   └── app.go               # composition root: config → jev → db → repos → services → dispatcher
 │   ├── config/
 │   │   └── env.go               # Env singleton (TYPESAFE_API_URL, TYPESAFE_MODEL, TS_API_KEY, DB_PATH) — single godotenv load site
 │   ├── models/                  # M — data structures
@@ -115,7 +117,7 @@ msg-classifier/
 │       └── seed_prompts.sql    # wipe + re-seed jev_prompts examples
 ├── go.mod / go.sum              # Module "msg-classifier", Go 1.25.4
 ├── local.env                    # Env vars (not committed secrets)
-├── .vscode/launch.json          # Go debug config for cmd/api/main.go
+├── .vscode/launch.json          # Go debug config for cmd/web/main.go
 ├── README.md
 └── docs/
     ├── decisions/DC-005.md     # notes, reminders, to-do lists
@@ -127,11 +129,12 @@ msg-classifier/
 
 ## Core Components
 
-### 1. Composition Root — `cmd/api/main.go`
-- `main()` builds a `gin.Default()` router, serves `web/static` via `router.Static("/static", "./web/static")`, parses `web/templates/**/*.html` (`template.Must`) and installs `views.PagesRenderer` as `router.HTMLRender`.
-- Wires dependencies: `config.GetEnv()` (single godotenv load site) → `jev.NewClient(url, token, model)` → `services.NewClassificationService(client)` → `notes.NewExtractor(client)` → `finance.NewExtractor(client)` → `services.NewDispatcher` (registry: `"contact"` → `ContactService`, `"notes"` → `NotesService`, `"finance"` → `FinanceService`) → controllers. The contact, notes and transaction repositories are built once and shared with the data screen.
-- `db.AutoMigrate(&models.Contact{}, &models.JevPrompt{}, &models.Note{}, &models.TodoItem{}, &models.Transaction{})`.
-- SQLite pool is capped at one connection (`SetMaxOpenConns(1)` right after `gorm.Open`) — all DB access is serialized; the pure-Go driver (glebarez/modernc) is unstable with concurrent connections on Windows.
+### 1. Composition Root — `internal/app/app.go`
+- `app.New(dbPath string) (*App, error)` is the one wiring point every entrypoint calls: `config.GetEnv()` (single godotenv load site) → `jev.NewClient(url, token, model)` → `gorm.Open(sqlite.Open(dsn(dbPath)))` → `db.DB()` → `sqlDB.SetMaxOpenConns(1)` → `db.AutoMigrate(&models.Contact{}, &models.JevPrompt{}, &models.Note{}, &models.TodoItem{}, &models.Transaction{})` → `services.NewClassificationService(client)` plus the `contact`/`notes`/`finance` extractors → the four repositories → `contact.NewService` → `contactService.BackfillNameNorm()` → `services.NewDispatcher` (registry: `"contact"` → `ContactService`, `"notes"` → `NotesService`, `"finance"` → `FinanceService`), along with `services.NewDataService` and `services.NewPromptService`. The contact, notes and transaction repositories are built once and shared with the data screen. `dbPath` is a parameter rather than a config read so a test can pass `:memory:`.
+- It returns an `App` carrying `Classifier`, `Dispatcher`, `Data` and `Prompts`, and every failure comes back as a wrapped error (`failed to open database %q`, `failed to get database pool`, `failed to migrate database`, `failed to backfill name_norm`) instead of killing the process — `BackfillNameNorm` used to `log.Fatalf` here, so the entrypoint now owns that decision.
+- `cmd/web/main.go` is the web entrypoint and nothing more: the `SourcePath = "web/templates"` const, `router.Static("/static", "./web/static")`, template parsing + `views.NewPagesRenderer` installed as `router.HTMLRender`, `app.New(config.GetEnv().DBPath)`, the four controllers, the route table below, and `router.Run(":8080")`.
+- SQLite pool is capped at one connection (`SetMaxOpenConns(1)` right after `gorm.Open`) — DB access is serialized within the process; the pure-Go driver (glebarez/modernc) is unstable with concurrent connections on Windows. The cap is per-process, so it stays even though the file itself is now shared.
+- A file-backed DSN also carries two pragmas — `file:<path>?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)` — because three processes write one SQLite file: `busy_timeout(5000)` turns a lock collision into a 5s wait instead of an error, and WAL lets a reader work while a writer commits. Without them the cost of three writers is an intermittent "database is locked" in production rather than in a test. An in-memory DSN is passed through untouched.
 - Registers routes:
   - `GET /` → `webController.Home`
   - `POST /api/message` → `messageController.ReceiveMessage`
@@ -163,7 +166,7 @@ msg-classifier/
 
 ### 5. Dispatcher — `internal/services/dispatcher.go`
 - `CategoryHandler` interface: `Handle(request, classification) (*models.UseCaseOutcome, error)` — the seam for category-specific use cases.
-- `Dispatcher` holds a `map[string]CategoryHandler` keyed by `Category.Choice`; `Dispatch` looks up the handler, falling back to an `ActionNone` outcome on a miss. Adding a category = new service implementing `CategoryHandler` + one wiring line in `main.go`.
+- `Dispatcher` holds a `map[string]CategoryHandler` keyed by `Category.Choice`; `Dispatch` looks up the handler, falling back to an `ActionNone` outcome on a miss. Adding a category = new service implementing `CategoryHandler` + one wiring line in `internal/app/app.go`.
 
 ### 6. Contact Service — `internal/services/contact/contact.go` + `contact_get.go`
 - `ContactService` implements `CategoryHandler` for the `contact` category. Constructor takes a `*ContactExtractor` and a `*repository.ContactRepository` — the repository owns all gorm queries, and the service wraps repo errors with the same context strings (`failed to check duplicate contact`, `failed to persist contact`, `failed to search contact`, `failed to load contacts for backfill`, `failed to backfill name_norm`). `Handle` routes `require` → `Get`, everything else → `Add`. `Add` extracts phone/email → neither found → `ActionContactNoData` outcome; a duplicate check (phone, then email) runs **before** name extraction — a match returns `ActionContactDuplicate` + the existing contact (no Jev call); otherwise name extraction runs and the repository inserts the contact (populating `NameNorm`) → `ActionContactAdd` outcome carrying the saved contact and the segment trace (`outcome.Segments`). `Get` (require flow) searches with phone → email → name priority; phone/email searches skip Jev entirely; name search uses `LIKE %term%` on `name_norm`; `SearchTerm` is set on the outcome and not-found is an outcome, not an error. `BackfillNameNorm()` recomputes `NameNorm` for pre-migration rows at startup.
@@ -211,7 +214,7 @@ msg-classifier/
 ### 8. Views — `internal/views/render.go` + `pages_renderer.go`
 - Template name constants (`base`, `page:content`, `resultado`, `error`, `contacts_table`, `notes_table`, `transactions_table`, `data_detail`, `data_item_row`) — no string literals at call sites.
 - `RenderPage`: renders `page:content` when the `HX-Request` header is `true`, full `base` otherwise. The header is the whole htmx detection there is — no middleware, no server-side htmx dependency.
-- `RenderResult` / `RenderError`: render the result or error partial; errors carry proper HTTP status so htmx swaps the error card into `#resultado`.
+- `RenderResult(c, outcome)` hands the `*models.UseCaseOutcome` straight to the `resultado` partial — there is no result view model, because `UseCaseOutcome` already exposes every field the partial reads and a `ResultData` copy would be a second one to keep in sync. `RenderError` renders the error partial with the status it is given, so htmx swaps the error card into `#resultado`.
 - The shared template set registers `views.FuncMap` (`label` for PT-BR badge text, `confidence` for the percent format, `money` for the amount, plus `dateBR`/`deref` for the data screen).
 - The data screen passes templates page-scoped view models — `DataDetailData{Kind, Mode, Contact, Note, Transaction}` and `ItemRowData` — rather than handing entities straight to a partial. `Mode` is `view` or `edit`, and the switch happens in the template through a single `disabled` attribute on the form's `fieldset` instead of two parallel branches.
 - `DateBR(*time.Time)`, `Deref(*string)`, `Confidence(float64)` and `MoneyBRL(float64)` are template helpers, not entity methods: rendering a `*string` directly puts a pointer address (`0xc000…`) in the cell, and formatting a confidence or an amount is presentation. `MoneyBRL` emits `"R$ 1.234,56"` — the same shape `ptbr.ParseAmount` reads back, which is why the transaction edit field is prefilled with `money` rather than `printf "%.2f"` (a bare `50.00` would parse back as 5000).
@@ -307,7 +310,7 @@ gin router ──► MessageController.ReceiveMessage
   │     │     ├─► found → outcome ActionTransactionFound + transactions + SearchTerm
   │     │     └─► not found → outcome ActionTransactionNotFound
   │     └─► other category      → outcome ActionNone
-  ├─► outcome.Classification → views.ResultData
+  ├─► outcome (*models.UseCaseOutcome) → views.RenderResult (no view model copy)
   └─► views.RenderResult ──► c.HTML(200, "resultado", ...) ──► htmx swaps #resultado innerHTML
 ```
 
@@ -383,10 +386,10 @@ All responses to htmx targets are HTML partials — no JSON on this route. The r
 
 | Variable | Source | Used by |
 |---|---|---|
-| `TYPESAFE_API_URL` | `local.env` | `cmd/api/main.go` → `jev.NewClient` (POST target) |
-| `TYPESAFE_MODEL` | `local.env` | `cmd/api/main.go` → `jev.NewClient` (model field) |
-| `TS_API_KEY` | environment (not in `local.env`) | `cmd/api/main.go` → `jev.NewClient` (Bearer token) |
-| DB_PATH | local.env (default contacts.db) | cmd/api/main.go → gorm.Open (contacts, notes, to-dos, transactions; also the data screen) |
+| `TYPESAFE_API_URL` | `local.env` | `internal/app/app.go` → `jev.NewClient` (POST target) |
+| `TYPESAFE_MODEL` | `local.env` | `internal/app/app.go` → `jev.NewClient` (model field) |
+| `TS_API_KEY` | environment (not in `local.env`) | `internal/app/app.go` → `jev.NewClient` (Bearer token) |
+| DB_PATH | local.env (default contacts.db) | internal/app/app.go → gorm.Open (contacts, notes, to-dos, transactions; also the data screen; a file-backed DSN adds busy_timeout/WAL) |
 
 > Note: `TS_API_KEY` is read by `internal/config/env.go` but not defined in `local.env` — it must be set in the environment or the Authorization header will be `Bearer ` (empty).
 
@@ -394,16 +397,16 @@ All responses to htmx targets are HTML partials — no JSON on this route. The r
 
 ```bash
 # Run locally (loads local.env, serves on :8080)
-go run ./cmd/api
+go run ./cmd/web
 
 # Build binary
-go build ./cmd/api
+go build ./cmd/web
 
 # Debug (VS Code)
-# .vscode/launch.json → "API Debug" runs cmd/api/main.go from workspace root
+# .vscode/launch.json → "API Debug" runs cmd/web/main.go from workspace root
 ```
 
-- No Dockerfile, Makefile, or CI pipeline exists yet.
-- Tests exist for `pkg/jev`, `internal/models`, `internal/config`, `internal/ptbr`, `internal/services` (+ its `contact`, `notes` and `finance` subpackages), `internal/views`, and `internal/repository` (run with `go test ./...`). `internal/controllers` has no tests — its handlers are a thin bind/render shell over `DataService`. `internal/jevq` has none either: it is answer decoding and request assembly over `pkg/jev`, exercised through the four flows.
-- Go and template files uniformly lack a trailing newline at EOF, so `gofmt -l` always lists ~17 files. That is expected: read the real diff, not the list.
+- No Dockerfile or Makefile exists yet; CI is `.github/workflows/ci.yml` (build + vet + test on push to `main`/`feat/**` and on every pull request, deliberately no gofmt gate).
+- Tests exist for `pkg/jev`, `internal/models`, `internal/config`, `internal/ptbr`, `internal/services` (+ its `contact`, `notes` and `finance` subpackages), `internal/app`, `internal/views`, and `internal/repository` (run with `go test ./...`). `internal/controllers` has no tests — its handlers are a thin bind/render shell over `DataService`. `internal/jevq` has none either: it is answer decoding and request assembly over `pkg/jev`, exercised through the four flows.
+- Go and template files uniformly lack a trailing newline at EOF, so `gofmt -l` lists 69 of the 72 tracked `.go` files. That is expected: read the real diff, not the list, and never bulk-reformat.
 - `.gitignore` ignores `**/*_bin.exe`, `thoughts/`, `*.db`, `.vscode`, and `exports/`.
