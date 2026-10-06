@@ -11,6 +11,7 @@ type Env struct {
 	TypesafeModel  string
 	TypesafeToken  string
 	DBPath         string
+	ApiPort        string
 }
 
 var env *Env
@@ -24,6 +25,7 @@ func GetEnv() *Env {
 			TypesafeModel:  os.Getenv("TYPESAFE_MODEL"),
 			TypesafeToken:  os.Getenv("TS_API_KEY"),
 			DBPath:         envOr("DB_PATH", "contacts.db"),
+			ApiPort:        envOr("API_PORT", "8081"),
 		}
 	}
 

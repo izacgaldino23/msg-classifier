@@ -14,6 +14,16 @@ func TestGetEnvDBPathDefault(t *testing.T) {
 	env = nil
 }
 
+func TestGetEnvApiPortDefault(t *testing.T) {
+	env = nil
+	t.Setenv("API_PORT", "")
+
+	if got := GetEnv().ApiPort; got != "8081" {
+		t.Errorf("ApiPort = %q, want %q", got, "8081")
+	}
+	env = nil
+}
+
 func TestGetEnvDBPathFromEnv(t *testing.T) {
 	env = nil
 	t.Setenv("DB_PATH", "test.db")
