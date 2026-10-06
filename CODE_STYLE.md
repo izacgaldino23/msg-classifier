@@ -24,8 +24,9 @@ Conventions observed in this codebase. Follow these when writing new code.
 
 ## File Organization
 
-- **`cmd/`** — executable entry points only (`cmd/web/main.go`). An entry point builds templates + routes; the dependency wiring lives in `internal/app`.
+- **`cmd/`** — executable entry points only (`cmd/web/main.go`, `cmd/api/main.go`). Each registers its own routes; the dependency wiring lives in `internal/app`, and only the web entry point parses templates.
 - **`internal/`** — private application code, layered MVC:
+  - `api/` — the REST surface: JSON handlers + presenter; reads `models` and `services`, never `views`
   - `app/` — the composition root: config → Jev client → DB → repositories → services → dispatcher; every entry point calls `app.New`
   - `config/` — env singleton (single godotenv load site)
   - `controllers/` — HTTP concerns only (bind → service → render → status)
@@ -95,7 +96,7 @@ type jevClient interface {
 - Category-specific use cases implement the `CategoryHandler` interface: `Handle(request, classification) (*models.UseCaseOutcome, error)`.
 - A `Dispatcher` holds a `map[string]CategoryHandler` keyed by `Category.Choice`; misses fall back to an `ActionNone` outcome.
 - Adding a category = new service implementing `CategoryHandler` + one wiring line in `internal/app/app.go` — no dispatcher edits.
-- Use cases return a `models.UseCaseOutcome` (`Classification` + `Action` + the use-case payload: `Contact`/`Segments` for contacts, `Notes []*Note` for notes, `SearchTerm`); actions: `ActionNone`, `ActionContactAdd`, `ActionContactNoData`, `ActionContactFound`, `ActionContactNotFound`, `ActionContactDuplicate`, `ActionNoteAdd`, `ActionNoteNoData`, `ActionNoteFound`, `ActionNoteNotFound`.
+- Use cases return a `models.UseCaseOutcome` (`Classification` + `Action` + the use-case payload: `Contact`/`Segments` for contacts, `Notes []*Note` for notes, `SearchTerm`); actions: `ActionNone`, `ActionContactAdd`, `ActionContactNoData`, `ActionContactFound`, `ActionContactNotFound`, `ActionContactDuplicate`, `ActionNoteAdd`, `ActionNoteNoData`, `ActionNoteFound`, `ActionNoteNotFound`, `ActionTransactionAdd`, `ActionTransactionNoData`, `ActionTransactionFound`, `ActionTransactionNotFound`.
 
 ### Notes use case
 - A second Jev call is allowed per message: the classification call plus one category-specific extraction call (`note.json` for notes). Keep it conditional — the notes add path only asks for the sub-type when the message is actually a note.
@@ -157,7 +158,8 @@ type jevClient interface {
 
 ### JSON responses
 - JSON lives in `internal/api`, never in `internal/controllers` and never mixed into an htmx route — the htmx routes keep rendering partials.
-- One presenter per `models.Action`, written as a `switch`. No presenter interface, no registry.
+- A presenter is a `switch` over `models.Action`, one per surface: the `resultado` partial branches for the HTML, `api.Outcome` builds the JSON. That switch is the whole abstraction — no `Presenter` interface, no registry, no map. The surfaces share no type; all they have to agree on is the wording, so a new action needs a branch in each one.
+- **`internal/api` never imports `internal/views`** (nor `internal/controllers`, which imports views). A JSON handler that reaches for a template helper drags the whole render layer — template set, `views.FuncMap`, `labelMap` — behind a surface that never renders HTML. So `api.noteKind` restates the note label and `api.StatusFor` restates the web's status map instead of sharing either.
 - Failures answer `{"error":"..."}` with the status rules the web entry point already uses: 400 bind/invalid, 502 upstream, 500 anything else.
 
 ### Jev domain types
@@ -190,6 +192,7 @@ Never read `os.Getenv` directly outside `internal/config/env.go`. Config is read
 - `gin.CreateTestContext` leaves `c.Request` nil, and anything that reads a header (`c.GetHeader`) panics on it. Set `c.Request = httptest.NewRequest(...)` in the test helper.
 - Source files intentionally lack a trailing newline at EOF, so `gofmt -l` always lists them. Only a real diff counts — never bulk-reformat.
 - Render tests assert on output with `strings.Contains`, and assert the absence of what must not leak: a prompt-page fragment in the data page, a pointer address in a table cell, a field that should be hidden.
+- A status-200-only test does not test a presenter branch. A presenter that prints nothing still answers 200, which reads as a styling bug rather than a failure — so assert the exact sentence per branch (`TestSummaryPerAction`) and keep the nil payload under test (`TestSummaryNeverPanics`).
 
 ## Do's and Don'ts
 
