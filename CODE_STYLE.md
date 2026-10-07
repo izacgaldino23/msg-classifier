@@ -24,10 +24,11 @@ Conventions observed in this codebase. Follow these when writing new code.
 
 ## File Organization
 
-- **`cmd/`** — executable entry points only (`cmd/web/main.go`, `cmd/api/main.go`). Each registers its own routes; the dependency wiring lives in `internal/app`, and only the web entry point parses templates.
+- **`cmd/`** — executable entry points only (`cmd/web/main.go`, `cmd/api/main.go`, `cmd/cli/main.go`). Each registers its own routes; the dependency wiring lives in `internal/app`, only the web entry point parses templates, and only it reads stdin/stdout for the REPL.
 - **`internal/`** — private application code, layered MVC:
   - `api/` — the REST surface: JSON handlers + presenter; reads `models` and `services`, never `views`
   - `app/` — the composition root: config → Jev client → DB → repositories → services → dispatcher; every entry point calls `app.New`
+  - `cli/` — the terminal surface: `Render` (outcome → plain-text lines) + `Repl` (the `msg>` loop); reads `models` and `ptbr`, never `views` or `api`
   - `config/` — env singleton (single godotenv load site)
   - `controllers/` — HTTP concerns only (bind → service → render → status)
   - `models/` — DTOs and domain structs
@@ -116,6 +117,10 @@ type jevClient interface {
 - Any text the UI can render back into an edit field must be re-readable by the same parser: the amount field is prefilled with `money` (`R$ 1.234,56`), never `printf "%.2f"` (`50.00` parses back as 5000 because dots are thousands separators).
 - Editing a transaction re-parses amount and date through `ParseAmount`/`ParseEventDate`, the same pair the message path uses, so a stored value can never be one the classifier would not have produced.
 
+### PT-BR text (parse + render)
+- What a surface prints must parse back: `ptbr.MoneyBRL`/`ptbr.DateBR` live in `internal/ptbr/format.go` beside `ParseAmount`/`ParseDate`, because `R$ 1.234,56` and `10/05/2026` are exactly the shapes the parsers accept. Never re-implement the `R$` grouping or the `dd/mm/aaaa` format inside a presenter or a template helper — call the `ptbr` function.
+- Templates reach them through `views.FuncMap` names (`money`, `dateBR`), the CLI calls them directly. A new surface formats with the same two functions; a new format function goes into `internal/ptbr`, not into the surface.
+
 ### Views
 - Template names are constants in `internal/views/render.go` — never string literals at call sites.
 - Render through `views.RenderPage` / `views.RenderResult` / `views.RenderError`, not raw `c.HTML`.
@@ -158,7 +163,7 @@ type jevClient interface {
 
 ### JSON responses
 - JSON lives in `internal/api`, never in `internal/controllers` and never mixed into an htmx route — the htmx routes keep rendering partials.
-- A presenter is a `switch` over `models.Action`, one per surface: the `resultado` partial branches for the HTML, `api.Outcome` builds the JSON. That switch is the whole abstraction — no `Presenter` interface, no registry, no map. The surfaces share no type; all they have to agree on is the wording, so a new action needs a branch in each one.
+- A presenter is a `switch` over `models.Action`, one per surface: the `resultado` partial branches for the HTML, `api.Outcome` builds the JSON, `cli.Render` prints the terminal lines. That switch is the whole abstraction — no `Presenter` interface, no registry, no map. The surfaces share no type; all they have to agree on is the wording (and the PT-BR formatting, which comes from `internal/ptbr`), so a new action needs a branch in each one.
 - **`internal/api` never imports `internal/views`** (nor `internal/controllers`, which imports views). A JSON handler that reaches for a template helper drags the whole render layer — template set, `views.FuncMap`, `labelMap` — behind a surface that never renders HTML. So `api.noteKind` restates the note label and `api.StatusFor` restates the web's status map instead of sharing either.
 - Failures answer `{"error":"..."}` with the status rules the web entry point already uses: 400 bind/invalid, 502 upstream, 500 anything else.
 

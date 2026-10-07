@@ -10,6 +10,8 @@ And the **finance** flow (`FinanceService`): a second Jev call asks for the tran
 
 A third surface, **`/data`**, browses and edits what those flows persisted, one tab per kind. `DataService` composes `ContactRepository`, `NotesRepository` and `TransactionRepository` directly — `ContactService`/`NotesService`/`FinanceService` belong to the classification flow and are not reused here — and `DataController` exposes it as htmx partials: filter pills, a search box on the finance tab, a per-record edit panel and bulk delete. No Jev call happens on this screen.
 
+Since DC-009 the same core is served by **three entrypoints** — `cmd/web` (the htmx app), `cmd/api` (a read-only JSON REST API with swagger) and `cmd/cli` (a terminal REPL) — all wired through `internal/app`. Each entrypoint brings its own presenter (`internal/views`, `internal/api`, `internal/cli`) and none of them re-implements business logic or PT-BR formatting.
+
 The codebase follows a **semantic MVC pattern** on an idiomatic Go layout:
 
 - **Model** — `internal/models` (data structures) + `internal/services` (business rules)
@@ -39,6 +41,8 @@ msg-classifier/
 ├── cmd/
 │   ├── api/
 │   │   └── main.go              # REST entrypoint (DC-009): JSON routes + swagger UI, nothing else
+│   ├── cli/
+│   │   └── main.go              # Terminal REPL entrypoint (DC-009): one line in, plain-text outcome out
 │   └── web/
 │       └── main.go              # Composition root is internal/app; this is templates + routes only
 ├── internal/                    # Private application code (not importable externally)
@@ -49,6 +53,9 @@ msg-classifier/
 │   │   └── data_controller.go   # read-only GET /contacts, /notes, /transactions over DataService
 │   ├── app/
 │   │   └── app.go               # composition root: config → jev → db → repos → services → dispatcher
+│   ├── cli/                     # C — the terminal presenter over the same core (no views/api import)
+│   │   ├── render.go            # outcome → plain-text lines (classification block + action block + trace)
+│   │   └── repl.go              # msg> loop: scan a line → Classify → Dispatch → print; errors keep it alive
 │   ├── config/
 │   │   └── env.go               # Env singleton (TYPESAFE_API_URL, TYPESAFE_MODEL, TS_API_KEY, DB_PATH) — single godotenv load site
 │   ├── models/                  # M — data structures
@@ -66,6 +73,7 @@ msg-classifier/
 │   ├── ptbr/                         # Deterministic PT-BR text — pure functions, no Jev, no DB
 │   │   ├── dateparse.go              # ParseDate / ParseTime / ParseRange / ParseEventDate + DateLayout + StartOfDay
 │   │   ├── money.go                  # ParseAmount (PT-BR monetary forms)
+│   │   ├── format.go                 # MoneyBRL + DateBR — the render side of the parsers, shared by web and cli
 │   │   └── text.go                   # NormalizeName (accent fold) + TrimSegment / StripPunctuation / IsCapitalized
 │   ├── jevq/                         # The Jev call layer shared by every flow
 │   │   ├── jev.go                   # ErrUpstream + the Client/Requester seams + AnswerChoice / AnswerNoul
@@ -210,7 +218,7 @@ msg-classifier/
 
 ### 6g. Finance Extractor / Money Parser — `internal/services/finance/finance_extract.go`, `internal/ptbr/money.go`
 - `FinanceExtractor.Extract` makes **one** dynamic Jev request carrying two question kinds: a `transaction_type` choice plus a `segment_N` Noul fan-out over the party candidate, so the party refines in the same round trip. The party candidate is regex-anchored on the preposition that introduces an establishment ("no"/"na"/"do"/"da"/"para o"…) and junk-filtered; `SegmentKey`/`NoulSegments` are shared with the contact name extraction rather than reimplemented. If the mixed request fails and there were segments to fan out, it retries with the type question alone and continues without a party — the type is what matters.
-- `ParseAmount` matches the PT-BR monetary forms in order — `R$ 50,00`, `50 reais`, then a bare number carrying a decimal or thousands separator. Requiring one of those markers is what stops "3 vezes de 300 reais" reading the installment count as the amount and "10/10/2023" reading as money. Dots are thousands separators and the comma is the decimal mark, so the same parser accepts what the UI renders through `views.MoneyBRL`.
+- `ParseAmount` matches the PT-BR monetary forms in order — `R$ 50,00`, `50 reais`, then a bare number carrying a decimal or thousands separator. Requiring one of those markers is what stops "3 vezes de 300 reais" reading the installment count as the amount and "10/10/2023" reading as money. Dots are thousands separators and the comma is the decimal mark, so the same parser accepts what the UI renders through `ptbr.MoneyBRL`.
 - ponytail: the party is a regex-anchored guess refined by the fan-out, not a parse of the sentence — a candidate with no preposition yields no party, and a preposition introducing something else is caught by the junk wordlist. Asking Jev to return the party as a quoted substring is the way past it.
 
 ### 6h. Transaction Repository — `internal/repository/transaction.go`
@@ -227,9 +235,9 @@ msg-classifier/
 - Template name constants (`base`, `page:content`, `resultado`, `error`, `contacts_table`, `notes_table`, `transactions_table`, `data_detail`, `data_item_row`) — no string literals at call sites.
 - `RenderPage`: renders `page:content` when the `HX-Request` header is `true`, full `base` otherwise. The header is the whole htmx detection there is — no middleware, no server-side htmx dependency.
 - `RenderResult(c, outcome)` hands the `*models.UseCaseOutcome` straight to the `resultado` partial — there is no result view model, because `UseCaseOutcome` already exposes every field the partial reads and a `ResultData` copy would be a second one to keep in sync. `RenderError` renders the error partial with the status it is given, so htmx swaps the error card into `#resultado`.
-- The shared template set registers `views.FuncMap` (`label` for PT-BR badge text, `confidence` for the percent format, `money` for the amount, plus `dateBR`/`deref` for the data screen).
+- The shared template set registers `views.FuncMap` (`label` for PT-BR badge text, `confidence` for the percent format, `money` for the amount, plus `dateBR`/`deref` for the data screen) — templates call these names, never the Go symbols, so a helper can move packages (as `money`/`dateBR` did, into `internal/ptbr`) without touching a single template.
 - The data screen passes templates page-scoped view models — `DataDetailData{Kind, Mode, Contact, Note, Transaction}` and `ItemRowData` — rather than handing entities straight to a partial. `Mode` is `view` or `edit`, and the switch happens in the template through a single `disabled` attribute on the form's `fieldset` instead of two parallel branches.
-- `DateBR(*time.Time)`, `Deref(*string)`, `Confidence(float64)` and `MoneyBRL(float64)` are template helpers, not entity methods: rendering a `*string` directly puts a pointer address (`0xc000…`) in the cell, and formatting a confidence or an amount is presentation. `MoneyBRL` emits `"R$ 1.234,56"` — the same shape `ptbr.ParseAmount` reads back, which is why the transaction edit field is prefilled with `money` rather than `printf "%.2f"` (a bare `50.00` would parse back as 5000).
+- `ptbr.MoneyBRL` and `ptbr.DateBR` are the **render half of the parsers**: they live in `internal/ptbr/format.go` beside `ParseAmount`/`ParseDate` so whatever a surface prints is what the parser reads back — `views.FuncMap` wires them to the `money`/`dateBR` template names and `internal/cli` calls them directly. `MoneyBRL` emits `"R$ 1.234,56"`, which is why the transaction edit field is prefilled with `money` rather than `printf "%.2f"` (a bare `50.00` would parse back as 5000). `Deref(*string)`, `Confidence(float64)`, `Label` and `BadgeVariant` stay in `views`: rendering a `*string` directly puts a pointer address (`0xc000…`) in the cell, and label/confidence are screen presentation the CLI does not need. All of them are template helpers, not entity methods.
 
 ### 9. Jev API Client — `pkg/jev/jev.go`
 - `Client` struct with `NewClient(apiURL, token, model)` — all configuration injected, no `internal/config` import (genuinely reusable).
@@ -286,6 +294,13 @@ msg-classifier/
 - `api.Outcome` is the presenter — a `switch` over `models.Action` producing `MessageResponse`. `action` is the discriminant (`contact_add`, `note_found`, `transaction_not_found`, `none`, …): a client reads one field instead of inferring the outcome from the payload. Every payload field past `action`/`message`/`classification` is `omitempty`, so an absent one is missing rather than `null` — `models.Note.Items` is `json:"items,omitempty"` too, so a note with no to-do items omits `items` instead of carrying the `[]` the controllers emit for an empty list.
 - Every non-2xx body is `{"error":"..."}` (`api.ErrorResponse`). `api.StatusFor` restates the web's mapping rather than importing it: `ErrInvalidFilter`/`ErrInvalidData` → 400, `repository.ErrNotFound` → 404, `jevq.ErrUpstream` → 502, else 500; an unbindable body or an empty `message` → 400.
 - The spec is generated by `swag init` into `docs/` and **committed on purpose** — `docs/docs.go` registers it, so `go build ./...` and the tests work on a fresh clone without the `swag` CLI installed, and CI does not install it.
+
+### 15. CLI — `cmd/cli/main.go` + `internal/cli/`
+
+- `cmd/cli/main.go` is the terminal entrypoint (DC-009): `config.GetEnv()` → `app.New(dbPath)` → `cli.New(application.Classifier.Classify, application.Dispatcher.Dispatch, os.Stdin, os.Stdout)` → `runner.Run()`. It reads a line, classifies it through the **same core** as `cmd/web` and `cmd/api`, and prints the outcome as plain text. No template, no HTTP: the CLI binary carries no `html/template` because `internal/cli` imports neither `internal/views` nor `internal/api`.
+- `internal/cli/render.go` turns a `*models.UseCaseOutcome` into terminal lines. It shares nothing with `views` but the outcome itself: a `switch` over `models.Action`, no `Presenter` interface, no registry. The **classification block prints raw choices** (`[contact/add]  categoria 94% · intenção 86%`) — the terminal is a developer surface and `contact/add` is more useful than `Contato/Adicionar` — while `ptbr.MoneyBRL`/`ptbr.DateBR` format amounts and dates identically to the web, so `R$ 1.234,56` and `10/05/2026` parse back through `ParseAmount`/`ParseDate`. The segment trace follows as `extração:` with each segment marked ✓/✗.
+- `internal/cli/repl.go` owns the interactive loop: `msg> ` prompt, `bufio.Scanner`, one line → one message, `exit`/`sair`/`quit`/EOF to stop. A single failure prints `erro: ...` and the loop keeps going — one hiccup must not end the session. It sends `UserID: "cli"` in the Jev state because the terminal has no form field.
+- Each entrypoint is a `cmd` (`web`, `api`, `cli`), and they share `internal/app/app.go` — build any one and the rest of the package stays unused rather than duplicated.
 
 ## Data Flow
 

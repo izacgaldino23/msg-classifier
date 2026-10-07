@@ -1,5 +1,7 @@
 **/*.exe
 thoughts/
 *.db
+*.db-shm
+*.db-wal
 .vscode
 exports/
