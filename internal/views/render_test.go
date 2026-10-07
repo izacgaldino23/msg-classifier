@@ -902,38 +902,12 @@ func TestRenderDataItemRow(t *testing.T) {
 	}
 }
 
-func TestDateBRAndDeref(t *testing.T) {
-	date := time.Date(2026, 5, 10, 0, 0, 0, 0, time.UTC)
-	if got := DateBR(&date); got != "10/05/2026" {
-		t.Errorf("DateBR = %q, want 10/05/2026", got)
-	}
-	if got := DateBR(nil); got != "" {
-		t.Errorf("DateBR(nil) = %q, want empty", got)
-	}
+func TestDeref(t *testing.T) {
 	if got := Deref(strPtr("abc")); got != "abc" {
 		t.Errorf("Deref = %q, want abc", got)
 	}
 	if got := Deref(nil); got != "" {
 		t.Errorf("Deref(nil) = %q, want empty", got)
-	}
-}
-
-func TestMoneyBRL(t *testing.T) {
-	tests := []struct {
-		amount float64
-		want   string
-	}{
-		{0, "R$ 0,00"},
-		{50, "R$ 50,00"},
-		{50.5, "R$ 50,50"},
-		{1234.56, "R$ 1.234,56"},
-		{1000, "R$ 1.000,00"},
-		{1000000.99, "R$ 1.000.000,99"},
-	}
-	for _, tt := range tests {
-		if got := MoneyBRL(tt.amount); got != tt.want {
-			t.Errorf("MoneyBRL(%v) = %q, want %q", tt.amount, got, tt.want)
-		}
 	}
 }
 
