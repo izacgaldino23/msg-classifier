@@ -453,14 +453,18 @@ The REST surface (`cmd/api`) answers JSON, and reuses the same status rules thro
 ## Build & Deploy
 
 ```bash
-# Web (loads local.env, serves on :8080)
-go run ./cmd/web
+# One start target per entrypoint (Makefile)
+make web    # loads local.env, serves on :8080
+make api    # serves JSON on :8081 — API_PORT
+make cli    # terminal REPL (msg> prompt)
 
-# REST API (serves on :8081 — API_PORT)
-go run ./cmd/api
+# Or directly
+go run ./cmd/web   # Web
+go run ./cmd/api   # REST API
+go run ./cmd/cli   # CLI
 
 # Build binaries
-go build ./cmd/web ./cmd/api
+go build ./cmd/web ./cmd/api ./cmd/cli
 
 # Debug (VS Code)
 # .vscode/launch.json → "API Debug" runs cmd/web/main.go from workspace root
@@ -468,7 +472,7 @@ go build ./cmd/web ./cmd/api
 
 - `cmd/web` and `cmd/api` can run at the same time: they share one SQLite file, which is why the DSN carries `busy_timeout(5000)` and WAL.
 - The generated `docs/` swagger package is committed, so neither the build nor CI needs the `swag` CLI.
-- No Dockerfile or Makefile exists yet; CI is `.github/workflows/ci.yml` (build + vet + test on push to `main`/`feat/**` and on every pull request, deliberately no gofmt gate).
+- The `Makefile` only starts entrypoints — no build/test targets; CI is `.github/workflows/ci.yml` (build + vet + test on push to `main`/`feat/**` and on every pull request, deliberately no gofmt gate). No Dockerfile exists.
 - Tests exist for `pkg/jev`, `internal/models`, `internal/config`, `internal/ptbr`, `internal/services` (+ its `contact`, `notes` and `finance` subpackages), `internal/app`, `internal/views`, and `internal/repository` (run with `go test ./...`). `internal/controllers` has no tests — its handlers are a thin bind/render shell over `DataService`. `internal/jevq` has none either: it is answer decoding and request assembly over `pkg/jev`, exercised through the four flows.
 - Go and template files uniformly lack a trailing newline at EOF, so `gofmt -l` lists 69 of the 72 tracked `.go` files. That is expected: read the real diff, not the list, and never bulk-reformat.
-- `.gitignore` ignores `**/*_bin.exe`, `thoughts/`, `*.db`, `.vscode`, and `exports/`.
+- `.gitignore` ignores `**/*_bin.exe`, `thoughts/`, `*.db`, `*.db-shm`, `*.db-wal`, `.vscode`, and `exports/`.
