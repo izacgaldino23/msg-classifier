@@ -119,3 +119,31 @@ func TestUseCaseOutcomeCarriesNotes(t *testing.T) {
 		t.Errorf("outcome.Contact = %v, want nil for the notes flow", outcome.Contact)
 	}
 }
+
+func TestDuplicateActionConstants(t *testing.T) {
+	for value, want := range map[Action]string{
+		ActionNoteDuplicate:        "note_duplicate",
+		ActionTransactionDuplicate: "transaction_duplicate",
+	} {
+		if string(value) != want {
+			t.Errorf("action = %q, want %q", value, want)
+		}
+	}
+}
+
+func TestReceiveMessageRequestDupActionTags(t *testing.T) {
+	f, ok := reflect.TypeOf(ReceiveMessageRequest{}).FieldByName("DupAction")
+	if !ok {
+		t.Fatal("field DupAction missing")
+	}
+	if f.Tag.Get("json") != "dup_action" || f.Tag.Get("form") != "dup_action" {
+		t.Errorf("DupAction tags = json:%q form:%q, want dup_action on both", f.Tag.Get("json"), f.Tag.Get("form"))
+	}
+}
+
+func TestUseCaseOutcomeCarriesMessage(t *testing.T) {
+	outcome := &UseCaseOutcome{Action: ActionNoteDuplicate, Message: "anota que o projeto é atlas"}
+	if outcome.Message != "anota que o projeto é atlas" {
+		t.Errorf("outcome.Message = %q, want the original message", outcome.Message)
+	}
+}

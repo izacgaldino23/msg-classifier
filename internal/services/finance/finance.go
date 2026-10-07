@@ -1,6 +1,7 @@
 package finance
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -61,6 +62,38 @@ func (s *FinanceService) Add(request *models.ReceiveMessageRequest, classificati
 		Party:   result.Party,
 		Content: content,
 	}
+
+	var existing *models.Transaction
+	if request.DupAction != "new" {
+		existing, err = s.repo.FindDuplicate(transaction.Type, transaction.Amount, transaction.Date, transaction.Party)
+		if err != nil && !errors.Is(err, repository.ErrNotFound) {
+			return nil, fmt.Errorf("failed to check duplicate transaction: %w", err)
+		}
+	}
+	if existing != nil {
+		if request.DupAction == "update" {
+			existing.Content = transaction.Content
+			if transaction.Party != "" {
+				existing.Party = transaction.Party
+			}
+			if err := s.repo.Save(existing); err != nil {
+				return nil, fmt.Errorf("failed to persist transaction: %w", err)
+			}
+			return &models.UseCaseOutcome{
+				Classification: classification,
+				Action:         models.ActionTransactionAdd,
+				Transactions:   []*models.Transaction{existing},
+				Segments:       result.Segments,
+			}, nil
+		}
+		return &models.UseCaseOutcome{
+			Classification: classification,
+			Action:         models.ActionTransactionDuplicate,
+			Transactions:   []*models.Transaction{existing},
+			Segments:       result.Segments,
+		}, nil
+	}
+
 	if err := s.repo.Create(transaction); err != nil {
 		return nil, fmt.Errorf("failed to persist transaction: %w", err)
 	}

@@ -23,6 +23,19 @@ func Render(outcome *models.UseCaseOutcome) string {
 	return out.String()
 }
 
+// isDuplicate tells the REPL the loop is open: the next line answers u/n/c.
+func isDuplicate(action models.Action) bool {
+	switch action {
+	case models.ActionContactDuplicate, models.ActionNoteDuplicate, models.ActionTransactionDuplicate:
+		return true
+	default:
+		return false
+	}
+}
+
+// Options is the confirmation prompt printed after a duplicate block (DC-008).
+const Options = "[u] atualizar existente · [n] adicionar mesmo assim · [c] cancelar\n"
+
 // body is the one switch every Action goes through. Wording mirrors result.html
 // so the three surfaces say the same thing.
 func body(outcome *models.UseCaseOutcome) string {
@@ -77,6 +90,18 @@ func body(outcome *models.UseCaseOutcome) string {
 		fmt.Fprintf(&out, "nenhuma nota encontrada para '%s'\n", outcome.SearchTerm)
 	case models.ActionNoteNoData:
 		fmt.Fprintln(&out, "não consegui extrair os dados da nota (lembretes precisam de uma data)")
+	case models.ActionNoteDuplicate:
+		for _, note := range outcome.Notes {
+			fmt.Fprintf(&out, "nota já existe [%s]\n", note.Type)
+			fmt.Fprintf(&out, "  conteúdo: %s\n", note.Content)
+			if note.Date != nil {
+				fmt.Fprintf(&out, "  data: %s\n", ptbr.DateBR(note.Date))
+			}
+			if note.Time != nil && *note.Time != "" {
+				fmt.Fprintf(&out, "  horário: %s\n", *note.Time)
+			}
+			writeItems(&out, note.Items)
+		}
 	case models.ActionTransactionAdd:
 		for _, transaction := range outcome.Transactions {
 			fmt.Fprintf(&out, "transação salva · id %d\n", transaction.ID)
@@ -95,6 +120,11 @@ func body(outcome *models.UseCaseOutcome) string {
 		fmt.Fprintf(&out, "nenhuma transação encontrada para '%s'\n", outcome.SearchTerm)
 	case models.ActionTransactionNoData:
 		fmt.Fprintf(&out, "não consegui classificar a transação: %s\n", outcome.Missing)
+	case models.ActionTransactionDuplicate:
+		for _, transaction := range outcome.Transactions {
+			fmt.Fprintln(&out, "transação já existe")
+			writeTransaction(&out, transaction)
+		}
 	}
 	return out.String()
 }

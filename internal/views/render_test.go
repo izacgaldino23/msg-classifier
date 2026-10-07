@@ -179,6 +179,7 @@ func TestRenderResultContactDuplicate(t *testing.T) {
 		},
 		Action:  models.ActionContactDuplicate,
 		Contact: &models.Contact{Name: "Fulano", Phone: strPtr("9292929290")},
+		Message: "09292929290 Fulano",
 	}
 
 	RenderResult(c, outcome)
@@ -187,7 +188,81 @@ func TestRenderResultContactDuplicate(t *testing.T) {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
 	body := w.Body.String()
-	for _, want := range []string{"Contato já existe: Fulano", "9292929290"} {
+	// DC-008: the duplicate screen carries the confirmation loop with the
+	// original message re-posted through both dup_action forms.
+	for _, want := range []string{
+		"Contato já existe: Fulano", "9292929290",
+		"dup_action", "value=\"update\"", "value=\"new\"",
+		"value=\"09292929290 Fulano\"",
+		"Atualizar existente", "Adicionar mesmo assim", "Cancelar",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body missing %q: %s", want, body)
+		}
+	}
+}
+
+func TestRenderResultNoteDuplicate(t *testing.T) {
+	c, w := newTestContext()
+
+	date := time.Date(2026, 5, 10, 0, 0, 0, 0, time.UTC)
+	outcome := &models.UseCaseOutcome{
+		Classification: &models.Classification{
+			Category: models.CategoryFinding{Choice: "notes", Confidence: 0.9},
+			Kind:     models.KindFinding{Choice: "add", Confidence: 0.8},
+		},
+		Action: models.ActionNoteDuplicate,
+		Notes: []*models.Note{
+			{ID: 3, Type: models.NoteTypeReminder, Content: "pagar a conta", Date: &date},
+		},
+		Message: "me lembra de pagar a conta dia 10/05",
+	}
+
+	RenderResult(c, outcome)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := w.Body.String()
+	for _, want := range []string{
+		"Nota já existe (lembrete)", "pagar a conta", "10/05/2026",
+		"dup_action", "value=\"update\"", "value=\"new\"",
+		"value=\"me lembra de pagar a conta dia 10/05\"",
+		"Atualizar existente", "Adicionar mesmo assim", "Cancelar",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body missing %q: %s", want, body)
+		}
+	}
+}
+
+func TestRenderResultTransactionDuplicate(t *testing.T) {
+	c, w := newTestContext()
+
+	outcome := &models.UseCaseOutcome{
+		Classification: &models.Classification{
+			Category: models.CategoryFinding{Choice: "finance", Confidence: 0.9},
+			Kind:     models.KindFinding{Choice: "add", Confidence: 0.8},
+		},
+		Action: models.ActionTransactionDuplicate,
+		Transactions: []*models.Transaction{
+			{ID: 7, Type: models.TransactionTypePurchase, Amount: 20, Date: time.Date(2026, 10, 7, 0, 0, 0, 0, time.UTC), Party: "mercado", Content: "comprei 20 reais no mercado"},
+		},
+		Message: "comprei 20 reais no mercado",
+	}
+
+	RenderResult(c, outcome)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := w.Body.String()
+	for _, want := range []string{
+		"Transação já existe", "R$ 20,00", "mercado",
+		"dup_action", "value=\"update\"", "value=\"new\"",
+		"comprei 20 reais no mercado",
+		"Atualizar existente", "Adicionar mesmo assim", "Cancelar",
+	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body missing %q: %s", want, body)
 		}

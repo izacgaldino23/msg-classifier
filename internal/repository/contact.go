@@ -55,6 +55,17 @@ func (r *ContactRepository) FindByName(term string) (*models.Contact, error) {
 	return &contact, nil
 }
 
+// FindByNameNorm returns the first contact whose normalized name equals the term
+// exactly, or ErrNotFound. Unlike FindByName it does not LIKE-match substrings —
+// it is the duplicate key (DC-008 name fallback).
+func (r *ContactRepository) FindByNameNorm(term string) (*models.Contact, error) {
+	var contact models.Contact
+	if err := r.db.Where("name_norm = ?", term).Order("id").First(&contact).Error; err != nil {
+		return nil, err
+	}
+	return &contact, nil
+}
+
 // ListNeedingNameNorm returns contacts whose NameNorm is empty or NULL (pre-migration rows).
 func (r *ContactRepository) ListNeedingNameNorm() ([]models.Contact, error) {
 	var contacts []models.Contact

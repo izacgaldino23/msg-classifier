@@ -159,7 +159,7 @@ func TestFinanceServiceAddPropagatesUpstreamError(t *testing.T) {
 }
 
 // The repository failure must be wrapped with the service context, like every other
-// persist path.
+// DB path — the duplicate lookup touches the table first (DC-008).
 func TestFinanceServiceAddWrapsRepositoryError(t *testing.T) {
 	db := newFinanceTestDB(t)
 	require.NoError(t, db.Migrator().DropTable(&models.Transaction{}))
@@ -168,5 +168,5 @@ func TestFinanceServiceAddWrapsRepositoryError(t *testing.T) {
 
 	_, err := service.Handle(&models.ReceiveMessageRequest{Message: "comprei 50 reais no mercado"}, financeClassification())
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to persist transaction")
+	assert.Contains(t, err.Error(), "failed to check duplicate transaction")
 }

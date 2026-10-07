@@ -57,7 +57,9 @@ func TestContactServiceAddPersistsContact(t *testing.T) {
 
 func TestContactServiceAddNoData(t *testing.T) {
 	db := newTestDB(t)
-	mock := &mockJevRequester{}
+	// DC-008: with no phone/email the name extraction runs (it is the duplicate
+	// key); all segments scoring below the threshold means nothing extractable.
+	mock := &mockJevRequester{resp: noulResponse(0.1, 0.1, 0.1, 0.1)}
 	service := NewService(NewExtractor(mock), repository.NewContactRepository(db))
 
 	outcome, err := service.Add(&models.ReceiveMessageRequest{Message: "sem dados aqui"}, &models.Classification{})
@@ -65,7 +67,6 @@ func TestContactServiceAddNoData(t *testing.T) {
 	assert.Equal(t, models.ActionContactNoData, outcome.Action)
 	assert.Nil(t, outcome.Contact)
 	assert.Nil(t, outcome.Segments)
-	assert.Nil(t, mock.got, "MakeJevRequest should not be called when no phone/email")
 
 	var count int64
 	require.NoError(t, db.Model(&models.Contact{}).Count(&count).Error)

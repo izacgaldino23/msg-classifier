@@ -2,8 +2,9 @@ package models
 
 // ReceiveMessageRequest is the inbound DTO for POST /api/message.
 type ReceiveMessageRequest struct {
-	Message string `json:"message" form:"message"`
-	UserID  string `json:"user_id" form:"user_id"`
+	Message   string `json:"message" form:"message"`
+	UserID    string `json:"user_id" form:"user_id"`
+	DupAction string `json:"dup_action" form:"dup_action"` // "" = check, "new" = insert anyway, "update" = merge into the duplicate
 }
 
 // Classification is the domain result with raw numeric confidences.
@@ -26,26 +27,29 @@ type KindFinding struct {
 type Action string
 
 const (
-	ActionNone             Action = "none"
-	ActionContactAdd       Action = "contact_add"
-	ActionContactNoData    Action = "contact_no_data"
-	ActionContactFound     Action = "contact_found"
-	ActionContactNotFound  Action = "contact_not_found"
-	ActionContactDuplicate Action = "contact_duplicate"
-	ActionNoteAdd          Action = "note_add"
-	ActionNoteNoData       Action = "note_no_data"
-	ActionNoteFound        Action = "note_found"
-	ActionNoteNotFound     Action = "note_not_found"
-	ActionTransactionAdd   Action = "transaction_add"
-	ActionTransactionNoData Action = "transaction_no_data"
-	ActionTransactionFound Action = "transaction_found"
-	ActionTransactionNotFound Action = "transaction_not_found"
+	ActionNone                 Action = "none"
+	ActionContactAdd           Action = "contact_add"
+	ActionContactNoData        Action = "contact_no_data"
+	ActionContactFound         Action = "contact_found"
+	ActionContactNotFound      Action = "contact_not_found"
+	ActionContactDuplicate     Action = "contact_duplicate"
+	ActionNoteAdd              Action = "note_add"
+	ActionNoteNoData           Action = "note_no_data"
+	ActionNoteFound            Action = "note_found"
+	ActionNoteNotFound         Action = "note_not_found"
+	ActionNoteDuplicate        Action = "note_duplicate"
+	ActionTransactionAdd       Action = "transaction_add"
+	ActionTransactionNoData    Action = "transaction_no_data"
+	ActionTransactionFound     Action = "transaction_found"
+	ActionTransactionNotFound  Action = "transaction_not_found"
+	ActionTransactionDuplicate Action = "transaction_duplicate"
 )
 
 // UseCaseOutcome carries the classification, the dispatched action, and any use-case result.
 type UseCaseOutcome struct {
 	Classification *Classification
 	Action         Action
+	Message        string // original message; the WEB duplicate screen re-posts it
 	Contact        *Contact
 	Notes          []*Note
 	Transactions   []*Transaction

@@ -41,6 +41,10 @@
 	color: var(--wa-color-brand-on-normal);
 }
 
+/* ── loop de confirmacao de duplicidade (DC-008) ── */
+.dup-actions { margin-top: var(--wa-space-s); }
+.dup-form { display: contents; }
+
 /* ── notas e to-do ── */
 .note-content { white-space: pre-line; }
 .todo-list {

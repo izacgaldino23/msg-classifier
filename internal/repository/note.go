@@ -63,6 +63,24 @@ func (r *NotesRepository) FindByTerm(term string) ([]*models.Note, error) {
 	})
 }
 
+// FindDuplicate returns the first note matching the exact duplicate key
+// (type + content + date; nil date means date IS NULL), or ErrNotFound.
+func (r *NotesRepository) FindDuplicate(noteType, content string, date *time.Time) (*models.Note, error) {
+	var note models.Note
+	query := r.db.
+		Preload("Items", func(db *gorm.DB) *gorm.DB { return db.Order("position") }).
+		Where("type = ? AND content = ?", noteType, content)
+	if date != nil {
+		query = query.Where("date = ?", date)
+	} else {
+		query = query.Where("date IS NULL")
+	}
+	if err := query.Order("id").First(&note).Error; err != nil {
+		return nil, err
+	}
+	return &note, nil
+}
+
 // find runs a scoped query with the to-do items preloaded (ordered by position)
 // and maps an empty result to ErrNotFound.
 func (r *NotesRepository) find(scope func(*gorm.DB) *gorm.DB) ([]*models.Note, error) {

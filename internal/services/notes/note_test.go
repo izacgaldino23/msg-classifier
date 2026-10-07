@@ -186,5 +186,5 @@ func TestNoteServiceAddDBFailure(t *testing.T) {
 	require.NoError(t, sqlDB.Close())
 
 	_, err = service.Add(&models.ReceiveMessageRequest{Message: "anota isso"}, &models.Classification{})
-	assert.ErrorContains(t, err, "failed to persist note")
+	assert.ErrorContains(t, err, "failed to check duplicate note", "the duplicate lookup is the first DB touch")
 }

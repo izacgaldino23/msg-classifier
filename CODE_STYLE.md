@@ -97,7 +97,14 @@ type jevClient interface {
 - Category-specific use cases implement the `CategoryHandler` interface: `Handle(request, classification) (*models.UseCaseOutcome, error)`.
 - A `Dispatcher` holds a `map[string]CategoryHandler` keyed by `Category.Choice`; misses fall back to an `ActionNone` outcome.
 - Adding a category = new service implementing `CategoryHandler` + one wiring line in `internal/app/app.go` — no dispatcher edits.
-- Use cases return a `models.UseCaseOutcome` (`Classification` + `Action` + the use-case payload: `Contact`/`Segments` for contacts, `Notes []*Note` for notes, `SearchTerm`); actions: `ActionNone`, `ActionContactAdd`, `ActionContactNoData`, `ActionContactFound`, `ActionContactNotFound`, `ActionContactDuplicate`, `ActionNoteAdd`, `ActionNoteNoData`, `ActionNoteFound`, `ActionNoteNotFound`, `ActionTransactionAdd`, `ActionTransactionNoData`, `ActionTransactionFound`, `ActionTransactionNotFound`.
+- Use cases return a `models.UseCaseOutcome` (`Classification` + `Action` + `Message` (original message, stamped by the Dispatcher for the DC-008 confirmation loop) + the use-case payload: `Contact`/`Segments` for contacts, `Notes []*Note` for notes, `SearchTerm`); actions: `ActionNone`, `ActionContactAdd`, `ActionContactNoData`, `ActionContactFound`, `ActionContactNotFound`, `ActionContactDuplicate`, `ActionNoteAdd`, `ActionNoteNoData`, `ActionNoteFound`, `ActionNoteNotFound`, `ActionNoteDuplicate`, `ActionTransactionAdd`, `ActionTransactionNoData`, `ActionTransactionFound`, `ActionTransactionNotFound`, `ActionTransactionDuplicate`.
+
+### Duplicate validation (DC-008)
+- The duplicate check runs in the **add path of each service, before the insert** — never in the controller and never in the repository (the repo only answers "does this key exist": `FindDuplicate(type, content[, date])` for notes, `FindDuplicate(type, amount, date, party)` for transactions, `FindByPhone`/`FindByEmail`/`FindByNameNorm` for contacts).
+- The confirmation channel is one field on `ReceiveMessageRequest` — `DupAction` (`""` check, `"new"` insert anyway, `"update"` merge) — so the server stays stateless: every surface re-posts the original message with the flag (`outcome.Message` is what carries it back to the presenter).
+- An unknown `DupAction` value is treated as `""` (check normally), never as an error — a typo from a client must not silently insert a duplicate.
+- The three presenters word the same outcome the same way: the `resultado` partial branches `*_duplicate` + `dup_confirm` forms, `api.Outcome` writes the action + a one-line summary, `cli.Render` prints the block + the `u`/`n`/`c` options. A new duplicate-capable action needs a branch in all three (and a `TestSummaryPerAction` entry).
+- `dup_confirm` is a **sibling** `define` (Go templates do not allow nested `define`s) invoked at the end of each duplicate branch.
 
 ### Notes use case
 - A second Jev call is allowed per message: the classification call plus one category-specific extraction call (`note.json` for notes). Keep it conditional — the notes add path only asks for the sub-type when the message is actually a note.

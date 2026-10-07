@@ -32,7 +32,7 @@ func NewMessageController(c classifier, d dispatcher) *MessageController {
 // ReceiveMessage classifies a message and answers the outcome as JSON.
 //
 //	@Summary		Classify a message
-//	@Description	Runs the same Classify → Dispatch core as the web and the CLI, and answers the outcome as JSON. `action` is the discriminant: contact_add, contact_found, contact_not_found, contact_duplicate, contact_no_data, note_add, note_found, note_not_found, note_no_data, transaction_add, transaction_found, transaction_not_found, transaction_no_data or none.
+//	@Description	Runs the same Classify → Dispatch core as the web and the CLI, and answers the outcome as JSON. `action` is the discriminant: contact_add, contact_found, contact_not_found, contact_duplicate, contact_no_data, note_add, note_found, note_not_found, note_no_data, note_duplicate, transaction_add, transaction_found, transaction_not_found, transaction_no_data, transaction_duplicate or none. On a duplicate the API only informs (DC-008): there is no confirmation path — re-posting the same message with `dup_action` set to `new` or `update` performs the confirmed save, but the web and CLI are the surfaces designed for that loop.
 //	@Tags			messages
 //	@Accept			json
 //	@Produce		json

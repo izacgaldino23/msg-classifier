@@ -214,3 +214,24 @@ func TestContactRepositoryDeleteByIDsEmptyIsANoOp(t *testing.T) {
 	require.NoError(t, db.Model(&models.Contact{}).Count(&count).Error)
 	assert.Equal(t, int64(1), count)
 }
+
+func TestContactRepositoryFindByNameNorm(t *testing.T) {
+	db := newTestDB(t)
+	repo := NewContactRepository(db)
+	require.NoError(t, db.Create(&models.Contact{Name: "Fulano de Tal", NameNorm: "fulano de tal"}).Error)
+	require.NoError(t, db.Create(&models.Contact{Name: "Fulano", NameNorm: "fulano"}).Error)
+
+	contact, err := repo.FindByNameNorm("fulano de tal")
+	require.NoError(t, err)
+	assert.Equal(t, "Fulano de Tal", contact.Name)
+
+	contact, err = repo.FindByNameNorm("fulano")
+	require.NoError(t, err)
+	assert.Equal(t, "Fulano", contact.Name)
+
+	_, err = repo.FindByNameNorm("fulano de")
+	assert.ErrorIs(t, err, ErrNotFound, "exact match only — FindByName's LIKE is the search flow")
+
+	_, err = repo.FindByNameNorm("inexistente")
+	assert.ErrorIs(t, err, ErrNotFound)
+}

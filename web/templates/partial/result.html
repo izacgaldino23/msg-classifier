@@ -21,6 +21,7 @@
 		<p><strong>Contato já existe: {{ .Contact.Name }}</strong></p>
 		{{ if .Contact.Phone }}<div class="contact-row"><span class="row-label">Telefone</span><span>{{ .Contact.Phone }}</span></div>{{ end }}
 		{{ if .Contact.Email }}<div class="contact-row"><span class="row-label">Email</span><span>{{ .Contact.Email }}</span></div>{{ end }}
+		{{ template "dup_confirm" . }}
 	{{ else if eq .Action "contact_no_data" }}
 		<p class="wa-color-text-quiet">Nenhum dado de contato encontrado na mensagem.</p>
 	{{ else if eq .Action "note_add" }}
@@ -58,6 +59,14 @@
 		</ul>
 	{{ else if eq .Action "note_not_found" }}
 		<p>Nenhuma nota encontrada para '{{ .SearchTerm }}'.</p>
+	{{ else if eq .Action "note_duplicate" }}
+		{{ range .Notes }}
+		<p><strong>Nota já existe{{ if eq .Type "reminder" }} (lembrete){{ else if eq .Type "todo" }} (lista de tarefas){{ end }}</strong></p>
+		<div class="note-row"><span class="row-label">Conteúdo</span><span>{{ .Content }}</span></div>
+		{{ if .Date }}<div class="note-row"><span class="row-label">Data</span><span>{{ dateBR .Date }}</span></div>{{ end }}
+		{{ if .Time }}<div class="note-row"><span class="row-label">Horário</span><span>{{ deref .Time }}</span></div>{{ end }}
+		{{ end }}
+		{{ template "dup_confirm" . }}
 	{{ else if eq .Action "note_no_data" }}
 		<p class="wa-color-text-quiet">Não consegui extrair os dados da nota. Para lembretes, informe a data (ex.: dia 10, 10/05 ou amanhã).</p>
 	{{ else if eq .Action "transaction_add" }}
@@ -82,6 +91,16 @@
 		</ul>
 	{{ else if eq .Action "transaction_not_found" }}
 		<p>Nenhuma transação encontrada para '{{ .SearchTerm }}'.</p>
+	{{ else if eq .Action "transaction_duplicate" }}
+		{{ range .Transactions }}
+		<p><strong>Transação já existe</strong></p>
+		<div class="note-row"><span class="row-label">Tipo</span><wa-badge variant="{{ badge .Type }}">{{ label .Type }}</wa-badge></div>
+		<div class="note-row"><span class="row-label">Valor</span><span>{{ money .Amount }}</span></div>
+		<div class="note-row"><span class="row-label">Data</span><span>{{ dateBR .Date }}</span></div>
+		{{ if .Party }}<div class="note-row"><span class="row-label">Estabelecimento</span><span>{{ .Party }}</span></div>{{ end }}
+		<div class="note-row"><span class="row-label">Mensagem</span><span>{{ .Content }}</span></div>
+		{{ end }}
+		{{ template "dup_confirm" . }}
 	{{ else if eq .Action "transaction_no_data" }}
 		<p class="wa-color-text-quiet">Não consegui classificar a transação: {{ .Missing }}. Acrescente à mensagem e envie de novo.</p>
 	{{ end }}
@@ -100,4 +119,24 @@
 	</div>
 	{{ end }}
 </wa-card>
+{{ end }}
+
+{{/* DC-008 confirmation loop: two sibling forms re-post the original message with
+     dup_action (update / new); cancel just clears the result card. */}}
+{{ define "dup_confirm" }}
+<div class="wa-cluster wa-gap-s dup-actions">
+	<form hx-post="/api/message" hx-target="#resultado" hx-swap="innerHTML" class="dup-form">
+		<input type="hidden" name="message" value="{{ .Message }}">
+		<input type="hidden" name="user_id" value="web">
+		<input type="hidden" name="dup_action" value="update">
+		<wa-button type="submit" variant="primary">Atualizar existente</wa-button>
+	</form>
+	<form hx-post="/api/message" hx-target="#resultado" hx-swap="innerHTML" class="dup-form">
+		<input type="hidden" name="message" value="{{ .Message }}">
+		<input type="hidden" name="user_id" value="web">
+		<input type="hidden" name="dup_action" value="new">
+		<wa-button type="submit">Adicionar mesmo assim</wa-button>
+	</form>
+	<wa-button type="button" onclick="document.getElementById('resultado').innerHTML = ''">Cancelar</wa-button>
+</div>
 {{ end }}

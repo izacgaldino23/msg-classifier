@@ -1,6 +1,7 @@
 package notes
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -66,6 +67,36 @@ func (s *NotesService) Add(request *models.ReceiveMessageRequest, classification
 		}
 	default:
 		return noData(classification), nil
+	}
+
+	var existing *models.Note
+	if request.DupAction != "new" {
+		existing, err = s.repo.FindDuplicate(note.Type, note.Content, note.Date)
+		if err != nil && !errors.Is(err, repository.ErrNotFound) {
+			return nil, fmt.Errorf("failed to check duplicate note: %w", err)
+		}
+	}
+	if existing != nil {
+		if request.DupAction == "update" {
+			// The key already pins type, content and date; only a time carried by
+			// the pending payload can change anything.
+			if note.Time != nil && *note.Time != "" {
+				existing.Time = note.Time
+			}
+			if err := s.repo.Save(existing, items); err != nil {
+				return nil, fmt.Errorf("failed to persist note: %w", err)
+			}
+			return &models.UseCaseOutcome{
+				Classification: classification,
+				Action:         models.ActionNoteAdd,
+				Notes:          []*models.Note{existing},
+			}, nil
+		}
+		return &models.UseCaseOutcome{
+			Classification: classification,
+			Action:         models.ActionNoteDuplicate,
+			Notes:          []*models.Note{existing},
+		}, nil
 	}
 
 	if err := s.repo.Create(note, items); err != nil {

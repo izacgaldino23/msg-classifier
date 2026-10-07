@@ -59,7 +59,7 @@ const docTemplate = `{
         },
         "/messages": {
             "post": {
-                "description": "Runs the same Classify → Dispatch core as the web and the CLI, and answers the outcome as JSON. ` + "`" + `action` + "`" + ` is the discriminant: contact_add, contact_found, contact_not_found, contact_duplicate, contact_no_data, note_add, note_found, note_not_found, note_no_data, transaction_add, transaction_found, transaction_not_found, transaction_no_data or none.",
+                "description": "Runs the same Classify → Dispatch core as the web and the CLI, and answers the outcome as JSON. ` + "`" + `action` + "`" + ` is the discriminant: contact_add, contact_found, contact_not_found, contact_duplicate, contact_no_data, note_add, note_found, note_not_found, note_no_data, note_duplicate, transaction_add, transaction_found, transaction_not_found, transaction_no_data, transaction_duplicate or none. On a duplicate the API only informs (DC-008): there is no confirmation path — re-posting the same message with ` + "`" + `dup_action` + "`" + ` set to ` + "`" + `new` + "`" + ` or ` + "`" + `update` + "`" + ` performs the confirmed save, but the web and CLI are the surfaces designed for that loop.",
                 "consumes": [
                     "application/json"
                 ],
@@ -347,6 +347,10 @@ const docTemplate = `{
         "models.ReceiveMessageRequest": {
             "type": "object",
             "properties": {
+                "dup_action": {
+                    "description": "\"\" = check, \"new\" = insert anyway, \"update\" = merge into the duplicate",
+                    "type": "string"
+                },
                 "message": {
                     "type": "string"
                 },

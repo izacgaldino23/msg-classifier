@@ -100,6 +100,16 @@ func TestSummaryPerAction(t *testing.T) {
 			"Não consegui extrair os dados da nota.",
 		},
 		{
+			models.ActionNoteDuplicate,
+			models.UseCaseOutcome{Notes: []*models.Note{{ID: 9, Type: models.NoteTypeNote, Content: "pagar a conta"}}},
+			"Nota já existe: pagar a conta",
+		},
+		{
+			models.ActionNoteDuplicate,
+			models.UseCaseOutcome{},
+			"Nota já existe",
+		},
+		{
 			models.ActionTransactionAdd,
 			models.UseCaseOutcome{Transactions: []*models.Transaction{{ID: 7, Type: models.TransactionTypePurchase}}},
 			"Transação salva · ID 7",
@@ -124,6 +134,11 @@ func TestSummaryPerAction(t *testing.T) {
 			models.UseCaseOutcome{Missing: "o valor"},
 			"Não consegui classificar a transação: o valor.",
 		},
+		{
+			models.ActionTransactionDuplicate,
+			models.UseCaseOutcome{Transactions: []*models.Transaction{{ID: 7}}},
+			"Transação já existe",
+		},
 	}
 
 	for _, tt := range tests {
@@ -141,7 +156,8 @@ func TestSummaryPerAction(t *testing.T) {
 func TestSummaryNeverPanics(t *testing.T) {
 	for _, action := range []models.Action{
 		models.ActionContactAdd, models.ActionContactFound, models.ActionContactDuplicate,
-		models.ActionNoteAdd, models.ActionTransactionAdd, models.ActionTransactionFound,
+		models.ActionNoteAdd, models.ActionNoteDuplicate,
+		models.ActionTransactionAdd, models.ActionTransactionFound, models.ActionTransactionDuplicate,
 	} {
 		outcome := &models.UseCaseOutcome{Action: action, Classification: classification()}
 		assert.NotPanics(t, func() { Outcome(outcome) }, "action %q with a nil payload", action)

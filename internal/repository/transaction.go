@@ -85,6 +85,22 @@ func (r *TransactionRepository) FindByID(id uint) (*models.Transaction, error) {
 	return &transaction, nil
 }
 
+// FindDuplicate returns the first transaction matching the exact key
+// (type + amount + date; party only when the key carries one — an empty pending
+// party ignores party, a non-empty one matches equal or empty stored parties),
+// or ErrNotFound.
+func (r *TransactionRepository) FindDuplicate(txType string, amount float64, date time.Time, party string) (*models.Transaction, error) {
+	query := r.db.Where("type = ? AND amount = ? AND date = ?", txType, amount, date)
+	if party != "" {
+		query = query.Where("(party IS NULL OR party = '' OR LOWER(party) = LOWER(?))", party)
+	}
+	var transaction models.Transaction
+	if err := query.Order("id").First(&transaction).Error; err != nil {
+		return nil, err
+	}
+	return &transaction, nil
+}
+
 // Save updates the transaction fields.
 func (r *TransactionRepository) Save(transaction *models.Transaction) error {
 	return r.db.Save(transaction).Error

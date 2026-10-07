@@ -18,11 +18,16 @@ func NewDispatcher(handlers map[string]CategoryHandler) *Dispatcher {
 	return &Dispatcher{handlers: handlers}
 }
 
-// Dispatch routes the classification to the handler for its category.
+// Dispatch routes the classification to the handler for its category. The outcome
+// carries the original message so the WEB duplicate screen can re-post it (DC-008).
 func (d *Dispatcher) Dispatch(request *models.ReceiveMessageRequest, classification *models.Classification) (*models.UseCaseOutcome, error) {
 	handler, ok := d.handlers[classification.Category.Choice]
 	if !ok {
-		return &models.UseCaseOutcome{Classification: classification, Action: models.ActionNone}, nil
+		return &models.UseCaseOutcome{Classification: classification, Action: models.ActionNone, Message: request.Message}, nil
 	}
-	return handler.Handle(request, classification)
+	outcome, err := handler.Handle(request, classification)
+	if outcome != nil {
+		outcome.Message = request.Message
+	}
+	return outcome, err
 }

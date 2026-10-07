@@ -28,30 +28,28 @@ func (s *ContactService) Handle(request *models.ReceiveMessageRequest, classific
 	return s.Add(request, classification)
 }
 
-// Add extracts contact data from the message and persists it.
+// Add extracts contact data from the message and persists it. Phone and email are
+// checked before any Jev call; with neither of them the name extraction runs first
+// and its result is the duplicate key (DC-008). A duplicate with dup_action=update
+// still runs the extraction — only the confirmed merge pays for Jev.
 func (s *ContactService) Add(request *models.ReceiveMessageRequest, classification *models.Classification) (*models.UseCaseOutcome, error) {
 	phone, phoneSpan, hasPhone := s.extractor.ExtractPhone(request.Message)
 	email, emailSpan, hasEmail := s.extractor.ExtractEmail(request.Message)
 
-	if !hasPhone && !hasEmail {
-		return &models.UseCaseOutcome{Classification: classification, Action: models.ActionContactNoData}, nil
-	}
-
 	// Duplicate check before name extraction (early return — no Jev spent).
-	if hasPhone {
-		existing, err := s.repo.FindByPhone(phone)
+	var existing *models.Contact
+	if request.DupAction != "new" {
+		var err error
+		switch {
+		case hasPhone:
+			existing, err = s.repo.FindByPhone(phone)
+		case hasEmail:
+			existing, err = s.repo.FindByEmail(email)
+		}
 		if err != nil && !errors.Is(err, repository.ErrNotFound) {
 			return nil, fmt.Errorf("failed to check duplicate contact: %w", err)
 		}
-		if existing != nil {
-			return &models.UseCaseOutcome{Classification: classification, Action: models.ActionContactDuplicate, Contact: existing}, nil
-		}
-	} else if hasEmail {
-		existing, err := s.repo.FindByEmail(email)
-		if err != nil && !errors.Is(err, repository.ErrNotFound) {
-			return nil, fmt.Errorf("failed to check duplicate contact: %w", err)
-		}
-		if existing != nil {
+		if existing != nil && request.DupAction != "update" {
 			return &models.UseCaseOutcome{Classification: classification, Action: models.ActionContactDuplicate, Contact: existing}, nil
 		}
 	}
@@ -69,6 +67,21 @@ func (s *ContactService) Add(request *models.ReceiveMessageRequest, classificati
 		return nil, err
 	}
 
+	// Name-fallback check: no phone/email to key on, so the extracted name is the key.
+	if existing == nil && request.DupAction != "new" && !hasPhone && !hasEmail && nameResult.Name != "" {
+		existing, err = s.repo.FindByNameNorm(ptbr.NormalizeName(nameResult.Name))
+		if err != nil && !errors.Is(err, repository.ErrNotFound) {
+			return nil, fmt.Errorf("failed to check duplicate contact: %w", err)
+		}
+		if existing != nil && request.DupAction != "update" {
+			return &models.UseCaseOutcome{Classification: classification, Action: models.ActionContactDuplicate, Contact: existing, Segments: nameResult.Segments}, nil
+		}
+	}
+
+	if nameResult.Name == "" {
+		return &models.UseCaseOutcome{Classification: classification, Action: models.ActionContactNoData}, nil
+	}
+
 	contact := &models.Contact{Name: nameResult.Name, NameNorm: ptbr.NormalizeName(nameResult.Name)}
 	if hasPhone {
 		contact.Phone = &phone
@@ -77,11 +90,37 @@ func (s *ContactService) Add(request *models.ReceiveMessageRequest, classificati
 		contact.Email = &email
 	}
 
+	if existing != nil {
+		mergeContact(existing, contact)
+		if err := s.repo.Save(existing); err != nil {
+			return nil, fmt.Errorf("failed to persist contact: %w", err)
+		}
+		return &models.UseCaseOutcome{Classification: classification, Action: models.ActionContactAdd, Contact: existing, Segments: nameResult.Segments}, nil
+	}
+
 	if err := s.repo.Create(contact); err != nil {
 		return nil, fmt.Errorf("failed to persist contact: %w", err)
 	}
 
 	return &models.UseCaseOutcome{Classification: classification, Action: models.ActionContactAdd, Contact: contact, Segments: nameResult.Segments}, nil
+}
+
+// mergeContact copies every non-empty field of pending onto existing; a nil or
+// empty pending field leaves the stored value alone.
+func mergeContact(existing, pending *models.Contact) {
+	if pending == nil {
+		return
+	}
+	if pending.Name != "" {
+		existing.Name = pending.Name
+		existing.NameNorm = pending.NameNorm
+	}
+	if pending.Phone != nil && *pending.Phone != "" {
+		existing.Phone = pending.Phone
+	}
+	if pending.Email != nil && *pending.Email != "" {
+		existing.Email = pending.Email
+	}
 }
 
 // BackfillNameNorm recomputes NameNorm for rows created before the column existed.

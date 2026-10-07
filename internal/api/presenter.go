@@ -72,6 +72,11 @@ func summary(outcome *models.UseCaseOutcome) string {
 		return fmt.Sprintf("Nenhuma nota encontrada para '%s'.", outcome.SearchTerm)
 	case models.ActionNoteNoData:
 		return "Não consegui extrair os dados da nota."
+	case models.ActionNoteDuplicate:
+		if note := firstNote(outcome.Notes); note != nil {
+			return fmt.Sprintf("Nota já existe: %s", note.Content)
+		}
+		return "Nota já existe"
 	case models.ActionTransactionAdd:
 		if transaction := firstTransaction(outcome.Transactions); transaction != nil {
 			return fmt.Sprintf("Transação salva · ID %d", transaction.ID)
@@ -83,6 +88,8 @@ func summary(outcome *models.UseCaseOutcome) string {
 		return fmt.Sprintf("Nenhuma transação encontrada para '%s'.", outcome.SearchTerm)
 	case models.ActionTransactionNoData:
 		return fmt.Sprintf("Não consegui classificar a transação: %s.", outcome.Missing)
+	case models.ActionTransactionDuplicate:
+		return "Transação já existe"
 	default:
 		return ""
 	}

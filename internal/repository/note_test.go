@@ -336,3 +336,47 @@ func TestNotesRepositoryDeleteByIDsEmptyIsANoOp(t *testing.T) {
 	require.NoError(t, db.Model(&models.Note{}).Count(&count).Error)
 	assert.Equal(t, int64(1), count)
 }
+
+func TestNotesRepositoryFindDuplicate(t *testing.T) {
+	db := newNoteTestDB(t)
+	repo := NewNotesRepository(db)
+	date := fixedDate()
+	require.NoError(t, repo.Create(&models.Note{Type: models.NoteTypeNote, Content: "ideia solta"}, nil))
+	require.NoError(t, repo.Create(&models.Note{Type: models.NoteTypeReminder, Content: "pagar a conta", Date: &date}, nil))
+
+	note, err := repo.FindDuplicate(models.NoteTypeNote, "ideia solta", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "ideia solta", note.Content)
+
+	rem, err := repo.FindDuplicate(models.NoteTypeReminder, "pagar a conta", &date)
+	require.NoError(t, err)
+	assert.Equal(t, "pagar a conta", rem.Content)
+
+	other := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	_, err = repo.FindDuplicate(models.NoteTypeReminder, "pagar a conta", &other)
+	assert.ErrorIs(t, err, ErrNotFound, "a reminder key includes the date")
+
+	_, err = repo.FindDuplicate(models.NoteTypeTodo, "ideia solta", nil)
+	assert.ErrorIs(t, err, ErrNotFound, "the type is part of the key")
+
+	_, err = repo.FindDuplicate(models.NoteTypeNote, "ideia solta", &date)
+	assert.ErrorIs(t, err, ErrNotFound, "a plain note key never matches a dated row")
+}
+
+func TestNotesRepositoryFindDuplicatePreloadsItems(t *testing.T) {
+	db := newNoteTestDB(t)
+	repo := NewNotesRepository(db)
+	require.NoError(t, repo.Create(&models.Note{Type: models.NoteTypeTodo, Content: "comprar pão"},
+		[]models.TodoItem{{Text: "pão", Position: 0}}))
+
+	note, err := repo.FindDuplicate(models.NoteTypeTodo, "comprar pão", nil)
+	require.NoError(t, err)
+	require.Len(t, note.Items, 1, "the duplicate screen shows the items")
+}
+
+func TestNotesRepositoryFindDuplicateEmptyDB(t *testing.T) {
+	repo := NewNotesRepository(newNoteTestDB(t))
+
+	_, err := repo.FindDuplicate(models.NoteTypeNote, "qualquer coisa", nil)
+	assert.ErrorIs(t, err, ErrNotFound)
+}

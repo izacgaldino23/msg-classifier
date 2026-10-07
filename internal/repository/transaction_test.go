@@ -192,3 +192,53 @@ func TestTransactionRepositorySaveAndDelete(t *testing.T) {
 
 	require.NoError(t, repo.DeleteByIDs(nil), "an empty list is a no-op")
 }
+
+func TestTransactionRepositoryFindDuplicate(t *testing.T) {
+	db := newTransactionTestDB(t)
+	repo := NewTransactionRepository(db)
+	date := fixedDate()
+	require.NoError(t, repo.Create(&models.Transaction{
+		Type: models.TransactionTypePurchase, Amount: 50, Date: date, Party: "mercado", Content: "a",
+	}))
+	require.NoError(t, repo.Create(&models.Transaction{
+		Type: models.TransactionTypePurchase, Amount: 50, Date: date, Party: "", Content: "b",
+	}))
+
+	// exact party hit (oldest matching row)
+	hit, err := repo.FindDuplicate(models.TransactionTypePurchase, 50, date, "mercado")
+	require.NoError(t, err)
+	assert.Equal(t, "a", hit.Content)
+
+	// pending party vs empty existing party: both-sides rule keeps the hit
+	hit, err = repo.FindDuplicate(models.TransactionTypePurchase, 50, date, "padaria")
+	require.NoError(t, err)
+	assert.Equal(t, "b", hit.Content, "an empty existing party removes party from the key")
+
+	// pending party empty: party not in the key at all
+	hit, err = repo.FindDuplicate(models.TransactionTypePurchase, 50, date, "")
+	require.NoError(t, err)
+	assert.Equal(t, "a", hit.Content, "oldest match, party ignored")
+
+	// both sides have a party and they differ: not a duplicate
+	require.NoError(t, repo.Create(&models.Transaction{
+		Type: models.TransactionTypePurchase, Amount: 60, Date: date, Party: "mercado", Content: "c",
+	}))
+	_, err = repo.FindDuplicate(models.TransactionTypePurchase, 60, date, "padaria")
+	assert.ErrorIs(t, err, ErrNotFound)
+}
+
+func TestTransactionRepositoryFindDuplicateMisses(t *testing.T) {
+	db := newTransactionTestDB(t)
+	repo := NewTransactionRepository(db)
+	date := fixedDate()
+	require.NoError(t, repo.Create(&models.Transaction{
+		Type: models.TransactionTypePurchase, Amount: 50, Date: date, Party: "mercado",
+	}))
+
+	_, err := repo.FindDuplicate(models.TransactionTypeSale, 50, date, "mercado")
+	assert.ErrorIs(t, err, ErrNotFound, "type is part of the key")
+	_, err = repo.FindDuplicate(models.TransactionTypePurchase, 51, date, "mercado")
+	assert.ErrorIs(t, err, ErrNotFound, "amount is part of the key")
+	_, err = repo.FindDuplicate(models.TransactionTypePurchase, 50, fixedDate().AddDate(0, 0, 1), "mercado")
+	assert.ErrorIs(t, err, ErrNotFound, "date is part of the key")
+}
