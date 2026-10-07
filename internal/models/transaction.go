@@ -17,14 +17,14 @@ const (
 // hand: the app has no access to any bank or card, so there is no statement to
 // reconcile against (DC-007).
 type Transaction struct {
-	ID        uint      `gorm:"primaryKey"`
-	Type      string    `gorm:"index;size:20;not null"`
-	Amount    float64   `gorm:"not null"`
-	Date      time.Time `gorm:"index;not null"`
-	Party     string    `gorm:"index;size:120"` // establishment or person involved
-	Content   string    `gorm:"size:400"`       // the original message, kept verbatim
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	Type      string    `gorm:"index;size:20;not null" json:"type"`
+	Amount    float64   `gorm:"not null" json:"amount"`
+	Date      time.Time `gorm:"index;not null" json:"date"`
+	Party     string    `gorm:"index;size:120" json:"party"` // establishment or person involved
+	Content   string    `gorm:"size:400" json:"content"`     // the original message, kept verbatim
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // IsTransactionType reports whether a raw type is one of the known criteria.

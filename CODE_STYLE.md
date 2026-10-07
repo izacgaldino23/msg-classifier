@@ -24,8 +24,11 @@ Conventions observed in this codebase. Follow these when writing new code.
 
 ## File Organization
 
-- **`cmd/`** — executable entry points only (`cmd/api/main.go`). Composition root: dependency wiring + route registration.
+- **`cmd/`** — executable entry points only (`cmd/web/main.go`, `cmd/api/main.go`, `cmd/cli/main.go`). Each registers its own routes; the dependency wiring lives in `internal/app`, only the web entry point parses templates, and only it reads stdin/stdout for the REPL.
 - **`internal/`** — private application code, layered MVC:
+  - `api/` — the REST surface: JSON handlers + presenter; reads `models` and `services`, never `views`
+  - `app/` — the composition root: config → Jev client → DB → repositories → services → dispatcher; every entry point calls `app.New`
+  - `cli/` — the terminal surface: `Render` (outcome → plain-text lines) + `Repl` (the `msg>` loop); reads `models` and `ptbr`, never `views` or `api`
   - `config/` — env singleton (single godotenv load site)
   - `controllers/` — HTTP concerns only (bind → service → render → status)
   - `models/` — DTOs and domain structs
@@ -93,8 +96,8 @@ type jevClient interface {
 ### Category dispatch
 - Category-specific use cases implement the `CategoryHandler` interface: `Handle(request, classification) (*models.UseCaseOutcome, error)`.
 - A `Dispatcher` holds a `map[string]CategoryHandler` keyed by `Category.Choice`; misses fall back to an `ActionNone` outcome.
-- Adding a category = new service implementing `CategoryHandler` + one wiring line in `main.go` — no dispatcher edits.
-- Use cases return a `models.UseCaseOutcome` (`Classification` + `Action` + the use-case payload: `Contact`/`Segments` for contacts, `Notes []*Note` for notes, `SearchTerm`); actions: `ActionNone`, `ActionContactAdd`, `ActionContactNoData`, `ActionContactFound`, `ActionContactNotFound`, `ActionContactDuplicate`, `ActionNoteAdd`, `ActionNoteNoData`, `ActionNoteFound`, `ActionNoteNotFound`.
+- Adding a category = new service implementing `CategoryHandler` + one wiring line in `internal/app/app.go` — no dispatcher edits.
+- Use cases return a `models.UseCaseOutcome` (`Classification` + `Action` + the use-case payload: `Contact`/`Segments` for contacts, `Notes []*Note` for notes, `SearchTerm`); actions: `ActionNone`, `ActionContactAdd`, `ActionContactNoData`, `ActionContactFound`, `ActionContactNotFound`, `ActionContactDuplicate`, `ActionNoteAdd`, `ActionNoteNoData`, `ActionNoteFound`, `ActionNoteNotFound`, `ActionTransactionAdd`, `ActionTransactionNoData`, `ActionTransactionFound`, `ActionTransactionNotFound`.
 
 ### Notes use case
 - A second Jev call is allowed per message: the classification call plus one category-specific extraction call (`note.json` for notes). Keep it conditional — the notes add path only asks for the sub-type when the message is actually a note.
@@ -114,12 +117,16 @@ type jevClient interface {
 - Any text the UI can render back into an edit field must be re-readable by the same parser: the amount field is prefilled with `money` (`R$ 1.234,56`), never `printf "%.2f"` (`50.00` parses back as 5000 because dots are thousands separators).
 - Editing a transaction re-parses amount and date through `ParseAmount`/`ParseEventDate`, the same pair the message path uses, so a stored value can never be one the classifier would not have produced.
 
+### PT-BR text (parse + render)
+- What a surface prints must parse back: `ptbr.MoneyBRL`/`ptbr.DateBR` live in `internal/ptbr/format.go` beside `ParseAmount`/`ParseDate`, because `R$ 1.234,56` and `10/05/2026` are exactly the shapes the parsers accept. Never re-implement the `R$` grouping or the `dd/mm/aaaa` format inside a presenter or a template helper — call the `ptbr` function.
+- Templates reach them through `views.FuncMap` names (`money`, `dateBR`), the CLI calls them directly. A new surface formats with the same two functions; a new format function goes into `internal/ptbr`, not into the surface.
+
 ### Views
 - Template names are constants in `internal/views/render.go` — never string literals at call sites.
 - Render through `views.RenderPage` / `views.RenderResult` / `views.RenderError`, not raw `c.HTML`.
 - Pages render through `views.RenderPage(c, page, content)`; `views.PagesRenderer` clones the shared layout set per page so page blocks never collide. Do not try to collapse this into one template set: Go templates have no inheritance and `{{ template }}` names must be string literals, so the block name cannot come from the view data.
 - Template name constants in `internal/views/render.go` include the harness partials: `prompt_table`, `evaluation_results`.
-- Template helpers are exposed via `views.FuncMap` (e.g., `label` for PT-BR badge text, `confidence` for the percent format, `money` for amounts) and registered on the shared template set in `cmd/api/main.go` (`template.New("").Funcs(views.FuncMap)`).
+- Template helpers are exposed via `views.FuncMap` (e.g., `label` for PT-BR badge text, `confidence` for the percent format, `money` for amounts) and registered on the shared template set in `cmd/web/main.go` (`template.New("").Funcs(views.FuncMap)`).
 - htmx detection is `c.GetHeader("HX-Request") == "true"` in `views.isHxRequest`. There is no server-side htmx library or context middleware for it.
 - **A page template must `{{ define "page:content" }}`** — the `<name>:<name>:content` name. `PagesRenderer` executes `page:content`, so a mismatched define name renders an **empty body with HTTP 200** and no log line.
 
@@ -155,13 +162,16 @@ type jevClient interface {
 - A pill that both boots a table on first paint and answers clicks carries `hx-trigger="load, click"`. An explicit `hx-trigger` **replaces** htmx's default `click` trigger, so a bare `hx-trigger="load"` turns the element into a dead button once the initial load fires — tabs would never re-load their pane's default filter, and direct clicks would do nothing.
 
 ### JSON responses
-There are none. Every route renders an HTML partial; add a JSON helper on the day a JSON endpoint exists, not before.
+- JSON lives in `internal/api`, never in `internal/controllers` and never mixed into an htmx route — the htmx routes keep rendering partials.
+- A presenter is a `switch` over `models.Action`, one per surface: the `resultado` partial branches for the HTML, `api.Outcome` builds the JSON, `cli.Render` prints the terminal lines. That switch is the whole abstraction — no `Presenter` interface, no registry, no map. The surfaces share no type; all they have to agree on is the wording (and the PT-BR formatting, which comes from `internal/ptbr`), so a new action needs a branch in each one.
+- **`internal/api` never imports `internal/views`** (nor `internal/controllers`, which imports views). A JSON handler that reaches for a template helper drags the whole render layer — template set, `views.FuncMap`, `labelMap` — behind a surface that never renders HTML. So `api.noteKind` restates the note label and `api.StatusFor` restates the web's status map instead of sharing either.
+- Failures answer `{"error":"..."}` with the status rules the web entry point already uses: 400 bind/invalid, 502 upstream, 500 anything else.
 
 ### Jev domain types
 All TypeSafe-related types are prefixed `Jev`. Questions implement `JevQuestionInterface` (`GetType()` / `GetInstructions()`), and `GetInstructions` is defined once on the embedded `JevQuestion` — it promotes to every question type, so do not repeat it. Answers are plain structs in `JevResponse.Answers map[string]any`; there is no answer interface.
 
 ### Config access
-Never read `os.Getenv` directly outside `internal/config/env.go`. Config is read once at the composition root (`cmd/api/main.go`) and injected into constructors (`jev.NewClient(env.TypesafeApiUrl, env.TypesafeToken, env.TypesafeModel)`).
+Never read `os.Getenv` directly outside `internal/config/env.go`. Config is read once at the composition root (`internal/app/app.go`) and injected into constructors (`jev.NewClient(env.TypesafeApiUrl, env.TypesafeToken, env.TypesafeModel)`).
 
 ## Error Handling
 
@@ -187,6 +197,7 @@ Never read `os.Getenv` directly outside `internal/config/env.go`. Config is read
 - `gin.CreateTestContext` leaves `c.Request` nil, and anything that reads a header (`c.GetHeader`) panics on it. Set `c.Request = httptest.NewRequest(...)` in the test helper.
 - Source files intentionally lack a trailing newline at EOF, so `gofmt -l` always lists them. Only a real diff counts — never bulk-reformat.
 - Render tests assert on output with `strings.Contains`, and assert the absence of what must not leak: a prompt-page fragment in the data page, a pointer address in a table cell, a field that should be hidden.
+- A status-200-only test does not test a presenter branch. A presenter that prints nothing still answers 200, which reads as a styling bug rather than a failure — so assert the exact sentence per branch (`TestSummaryPerAction`) and keep the nil payload under test (`TestSummaryNeverPanics`).
 
 ## Do's and Don'ts
 

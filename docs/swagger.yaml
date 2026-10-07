@@ -1,0 +1,277 @@
+basePath: /api/v1
+definitions:
+  api.ErrorResponse:
+    properties:
+      error:
+        type: string
+    type: object
+  api.MessageResponse:
+    properties:
+      action:
+        type: string
+      classification:
+        $ref: '#/definitions/models.Classification'
+      contact:
+        $ref: '#/definitions/models.Contact'
+      message:
+        type: string
+      missing:
+        type: string
+      notes:
+        items:
+          $ref: '#/definitions/models.Note'
+        type: array
+      search_term:
+        type: string
+      segments:
+        items:
+          $ref: '#/definitions/models.SegmentScore'
+        type: array
+      total:
+        type: number
+      transactions:
+        items:
+          $ref: '#/definitions/models.Transaction'
+        type: array
+    type: object
+  models.CategoryFinding:
+    properties:
+      choice:
+        type: string
+      confidence:
+        type: number
+    type: object
+  models.Classification:
+    properties:
+      category:
+        $ref: '#/definitions/models.CategoryFinding'
+      kind:
+        $ref: '#/definitions/models.KindFinding'
+    type: object
+  models.Contact:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      name_norm:
+        type: string
+      phone:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.KindFinding:
+    properties:
+      choice:
+        type: string
+      confidence:
+        type: number
+    type: object
+  models.Note:
+    properties:
+      content:
+        type: string
+      created_at:
+        type: string
+      date:
+        type: string
+      id:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/models.TodoItem'
+        type: array
+      time:
+        type: string
+      type:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.ReceiveMessageRequest:
+    properties:
+      message:
+        type: string
+      user_id:
+        type: string
+    type: object
+  models.SegmentScore:
+    properties:
+      included:
+        type: boolean
+      score:
+        type: number
+      text:
+        type: string
+    type: object
+  models.TodoItem:
+    properties:
+      done:
+        type: boolean
+      id:
+        type: integer
+      note_id:
+        type: integer
+      position:
+        type: integer
+      text:
+        type: string
+    type: object
+  models.Transaction:
+    properties:
+      amount:
+        type: number
+      content:
+        description: the original message, kept verbatim
+        type: string
+      created_at:
+        type: string
+      date:
+        type: string
+      id:
+        type: integer
+      party:
+        description: establishment or person involved
+        type: string
+      type:
+        type: string
+      updated_at:
+        type: string
+    type: object
+info:
+  contact: {}
+  description: REST entrypoint over the message classifier core. POST /api/v1/messages
+    runs the same Classify → Dispatch as the web and the CLI and answers the outcome
+    as JSON; the browse endpoints are read-only.
+  title: msg-classifier API
+  version: v1
+paths:
+  /contacts:
+    get:
+      parameters:
+      - description: all|phone|email|name
+        in: query
+        name: filter
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Contact'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: List contacts
+      tags:
+      - contacts
+  /messages:
+    post:
+      consumes:
+      - application/json
+      description: 'Runs the same Classify → Dispatch core as the web and the CLI,
+        and answers the outcome as JSON. `action` is the discriminant: contact_add,
+        contact_found, contact_not_found, contact_duplicate, contact_no_data, note_add,
+        note_found, note_not_found, note_no_data, transaction_add, transaction_found,
+        transaction_not_found, transaction_no_data or none.'
+      parameters:
+      - description: Message to classify
+        in: body
+        name: message
+        required: true
+        schema:
+          $ref: '#/definitions/models.ReceiveMessageRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.MessageResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Classify a message
+      tags:
+      - messages
+  /notes:
+    get:
+      parameters:
+      - description: all|note|reminder|todo
+        in: query
+        name: filter
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Note'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: List notes
+      tags:
+      - notes
+  /transactions:
+    get:
+      parameters:
+      - description: all|compra|venda|pagamento|recebimento|transferencia
+        in: query
+        name: filter
+        type: string
+      - description: term matched against the party and the original message
+        in: query
+        name: search
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Transaction'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: List transactions
+      tags:
+      - transactions
+swagger: "2.0"
