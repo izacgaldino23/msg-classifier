@@ -7,7 +7,7 @@ Conventions observed in this codebase. Follow these when writing new code.
 | Item | Convention | Examples |
 |---|---|---|
 | Files & directories | `snake_case` | `message_controller.go`, `classification.json`, `web/templates/partial/` |
-| Go packages | Single lowercase word | `controllers`, `services`, `models`, `views`, `config`, `jev` |
+| Go packages | Single lowercase word | `controllers`, `services`, `models`, `views`, `config`, `jev`, `messages` |
 | Exported types | PascalCase, domain prefix | `JevRequest`, `JevAnswerChoice`, `MessageController`, `ClassificationService`, `ReceiveMessageRequest` |
 | Answers in `JevResponse` | `map[string]any`, typed values | `*JevAnswerChoice`, `*JevAnswerNoul` |
 | Exported functions | PascalCase, `New*` constructors | `NewMessageController()`, `NewClassificationService()`, `NewClient()`, `GetEnv()` |
@@ -21,6 +21,7 @@ Conventions observed in this codebase. Follow these when writing new code.
 | Template names | lowercase, `:`-namespaced blocks | `base`, `page:title`, `page:content`, `resultado`, `error`, `contacts_table`, `data_detail` |
 | Env variables | `SCREAMING_SNAKE_CASE` | `TYPESAFE_API_URL`, `TYPESAFE_MODEL`, `TS_API_KEY` |
 | Error strings | lowercase, wrapped with `%w` | `"failed to decode question %q in %q: %w"` |
+| Locale message keys | dotted lowercase, `area.name` | `label.todo`, `contact.saved`, `transaction.not_found`, `error.bad_request`, `cli.field.party` |
 
 ## File Organization
 
@@ -31,6 +32,7 @@ Conventions observed in this codebase. Follow these when writing new code.
   - `cli/` — the terminal surface: `Render` (outcome → plain-text lines) + `Repl` (the `msg>` loop); reads `models` and `ptbr`, never `views` or `api`
   - `config/` — env singleton (single godotenv load site)
   - `controllers/` — HTTP concerns only (bind → service → render → status)
+  - `messages/` — the user-facing PT-BR wording, one JSON per locale; leaf over stdlib + `models` (never imports `services`/`repository`/`jevq`, so the error→text mapping stays in the surfaces that own the sentinels)
   - `models/` — DTOs and domain structs
   - `repository/` — persistence layer; structs with `New*` constructors holding `*gorm.DB`; methods return raw gorm errors; package exposes its own not-found sentinel (`ErrNotFound = gorm.ErrRecordNotFound`)
   - `services/` — business rules and orchestration; a use case that grew past one screen splits like the contact flow did (`contact.go` + `contact_get.go`, `note.go` + `note_get.go`).
@@ -74,7 +76,7 @@ func NewMessageController(classifier *services.ClassificationService) *MessageCo
 func (ctrl *MessageController) ReceiveMessage(c *gin.Context) {
 	request := &models.ReceiveMessageRequest{}
 	if err := c.Bind(request); err != nil {
-		views.RenderError(c, http.StatusBadRequest, "invalid request")
+		views.RenderError(c, http.StatusBadRequest, messages.BadRequest())
 		return
 	}
 	// call service → map errors → render via views
@@ -128,6 +130,16 @@ type jevClient interface {
 - What a surface prints must parse back: `ptbr.MoneyBRL`/`ptbr.DateBR` live in `internal/ptbr/format.go` beside `ParseAmount`/`ParseDate`, because `R$ 1.234,56` and `10/05/2026` are exactly the shapes the parsers accept. Never re-implement the `R$` grouping or the `dd/mm/aaaa` format inside a presenter or a template helper — call the `ptbr` function.
 - Templates reach them through `views.FuncMap` names (`money`, `dateBR`), the CLI calls them directly. A new surface formats with the same two functions; a new format function goes into `internal/ptbr`, not into the surface.
 
+### User-facing messages (internal/messages)
+- **No PT-BR literal in Go.** Every sentence a user reads comes from `internal/messages`, whose wording lives in `locales/<locale>.json` (embedded, `encoding/json`, the same pattern as `pkg/jev/requests/*.json`). A second language is one more file with the same keys.
+- Call one **typed function per message** (`messages.ContactSaved(id)`, `messages.NoteNoData()`), never a raw key or a `Sprintf` at the call site. That is what keeps the arity, the `· ID %d` layout and the casing identical between the CLI and the API instead of drifting per surface.
+- Key shape: `area.name`, grouped by domain (`label.*`, `contact.*`, `note.*`, `transaction.*`, `error.*`, `cli.*`). Parameters live in the value (`"Contato salvo · ID %d"`), never in the key.
+- `T(key)` returns the **key itself** when the locale has no entry and a malformed locale file loads as an empty map: never panic in the request path, never render an empty card. `TestEveryWrapperIsTranslated` and the accent assertion in `TestLocaleLoads` are what catch a broken file — add a test entry whenever you add a wrapper.
+- Gender rides in the key, not in the caller: `noteSavedKey` picks `note.saved.reminder` / `note.saved.todo` / `note.saved.note` because the participle agrees with the noun ("Lembrete salvo", "Lista de tarefas **salva**"). A shared `"%s salvo"` prints the feminine ones wrong — that bug existed in three duplicated copies before this package.
+- Layout stays with the surface: the locale carries the words (`"nome"`), the presenter carries the indent, the `": "` separator and the HTML. Never move markup or column layout into a locale value.
+- `messages` must stay a leaf: it may import `models` (for the note-kind vocabulary) but **not** `services`, `repository` or `jevq`. The error→text mapping therefore lives in `controllers.userText` and `api.userText`, two small switches next to the sentinels they recognize (the same reasoning as `api.StatusFor`). An unrecognized error keeps its `err.Error()` so a diagnostic still reaches the developer.
+- Web copy inside the HTML partials (`resultado`, `error`) is deliberately **not** in the locale yet; when it moves, expose it through `views.FuncMap` names — never call a Go symbol from a template.
+
 ### Views
 - Template names are constants in `internal/views/render.go` — never string literals at call sites.
 - Render through `views.RenderPage` / `views.RenderResult` / `views.RenderError`, not raw `c.HTML`.
@@ -170,8 +182,8 @@ type jevClient interface {
 
 ### JSON responses
 - JSON lives in `internal/api`, never in `internal/controllers` and never mixed into an htmx route — the htmx routes keep rendering partials.
-- A presenter is a `switch` over `models.Action`, one per surface: the `resultado` partial branches for the HTML, `api.Outcome` builds the JSON, `cli.Render` prints the terminal lines. That switch is the whole abstraction — no `Presenter` interface, no registry, no map. The surfaces share no type; all they have to agree on is the wording (and the PT-BR formatting, which comes from `internal/ptbr`), so a new action needs a branch in each one.
-- **`internal/api` never imports `internal/views`** (nor `internal/controllers`, which imports views). A JSON handler that reaches for a template helper drags the whole render layer — template set, `views.FuncMap`, `labelMap` — behind a surface that never renders HTML. So `api.noteKind` restates the note label and `api.StatusFor` restates the web's status map instead of sharing either.
+- A presenter is a `switch` over `models.Action`, one per surface: the `resultado` partial branches for the HTML, `api.Outcome` builds the JSON, `cli.Render` prints the terminal lines. That switch is the whole abstraction — no `Presenter` interface, no registry, no map. The surfaces share no type; all they have to agree on is the wording (from `internal/messages`) and the PT-BR formatting (from `internal/ptbr`), so a new action needs a branch in each one.
+- **`internal/api` never imports `internal/views`** (nor `internal/controllers`, which imports views). A JSON handler that reaches for a template helper drags the whole render layer — template set, `views.FuncMap` — behind a surface that never renders HTML. So `api.StatusFor` and `api.userText` restate the web's status map and error wording instead of sharing either; both read the **text** from `internal/messages`, which is importable from either side because it is a leaf.
 - Failures answer `{"error":"..."}` with the status rules the web entry point already uses: 400 bind/invalid, 502 upstream, 500 anything else.
 
 ### Jev domain types
