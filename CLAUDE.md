@@ -18,6 +18,14 @@ Also after implementing anything from docs/decisions, add a subheading with a su
 - Keep in mind to use MVC standard.
 - Never execute the plan before asking confirmation from user.
 
+## Text
+
+- Todo texto que o usuario le vem de `internal/messages` (locales/*.json). Nunca hardcodar portugues em Go, e nunca chamar uma chave crua no call site: use a funcao tipada (`messages.ContactSaved(id)`). Layout (indentacao, HTML, `": "`) continua na superficie.
+
+## Git
+
+- Never use git worktrees — I'm the only one working in this repo. Work directly on a branch in the main checkout and push from there.
+
 ## DC (decisions) execution
 
 After planning and when the usar start executing the plan, first add a subheading with more, human like, information about how this task it'll be executed. Remember to keep the edits in those files simples. You dont need to refer all files, I think that a small but complete explanation must work.

@@ -20,8 +20,6 @@ Backlog of what was deliberately left out of DC-005 (notes, lembretes e listas d
 
 ## Lista de tarefas
 
-## Lista de tarefas
-
 - [ ] **Deadline na lista** — a lista de tarefas não aceita data (o DC-005 deixa isso para o futuro); quando existir, reusar o `Note.Date` já indexado.
 - [ ] **Marcar item como feito** — a coluna `todo_items.done` existe, mas não há caminho de escrita: falta um endpoint/mensagem para alternar o item e o serviço correspondente (`NotesRepository.UpdateItem`).
 - [ ] **Título da nota** — nota, lembrete e lista não têm título; separar título de descrição exigiria uma chamada Jev nova (o modelo só suporta choice/noul/score).
