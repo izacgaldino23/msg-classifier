@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"msg-classifier/internal/jevq"
+	"msg-classifier/internal/messages"
 	"msg-classifier/internal/repository"
 	"msg-classifier/internal/services"
 
@@ -35,5 +36,26 @@ func StatusFor(err error) int {
 		return http.StatusBadGateway
 	default:
 		return http.StatusInternalServerError
+	}
+}
+
+// userText gives a recognized sentinel its PT-BR wording and passes anything else
+// through unchanged, so a diagnostic still reaches the client. The web surface keeps
+// the same switch in controllers.userText: sharing the function would mean one surface
+// importing the other's packages.
+func userText(err error) string {
+	switch {
+	case errors.Is(err, services.ErrInvalidFilter):
+		return messages.InvalidFilter()
+	case errors.Is(err, services.ErrInvalidData):
+		return messages.InvalidData()
+	case errors.Is(err, services.ErrInvalidPrompt):
+		return messages.InvalidPrompt()
+	case errors.Is(err, repository.ErrNotFound):
+		return messages.NotFound()
+	case errors.Is(err, jevq.ErrUpstream):
+		return messages.UpstreamUnavailable()
+	default:
+		return err.Error()
 	}
 }

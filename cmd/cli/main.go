@@ -10,6 +10,7 @@ import (
 	"msg-classifier/internal/app"
 	"msg-classifier/internal/cli"
 	"msg-classifier/internal/config"
+	"msg-classifier/internal/messages"
 )
 
 func main() {
@@ -18,7 +19,7 @@ func main() {
 		log.Fatalf("failed to build application: %v", err)
 	}
 
-	fmt.Println("msg-classifier · digite uma mensagem, ou 'exit' para sair")
+	fmt.Println(messages.Banner())
 
 	runner := cli.New(application.Classifier.Classify, application.Dispatcher.Dispatch, os.Stdin, os.Stdout)
 	if err := runner.Run(); err != nil {

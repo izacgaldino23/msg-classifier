@@ -48,7 +48,7 @@ func TestRunnerClassifiesAndPrintsEachLine(t *testing.T) {
 	assert.Equal(t, []string{"salva o fulano"}, seen, "each line is one message")
 	body := out.String()
 	assert.Contains(t, body, Prompt)
-	assert.Contains(t, body, "contato salvo · id 7")
+	assert.Contains(t, body, "Contato salvo · ID 7")
 	assert.Contains(t, body, "nome: Fulano Tal")
 }
 
@@ -74,7 +74,7 @@ func TestRunnerContinuesAfterAnError(t *testing.T) {
 	body := out.String()
 	assert.Equal(t, 2, attempts, "the second line must reach the classifier")
 	assert.Contains(t, body, "erro: failed to call jev")
-	assert.Contains(t, body, "contato salvo · id 7")
+	assert.Contains(t, body, "Contato salvo · ID 7")
 }
 
 func TestRunnerSkipsBlankLines(t *testing.T) {
@@ -99,7 +99,7 @@ func TestRunnerExitsOnEOF(t *testing.T) {
 	runner := New(okClassify, okDispatch, strings.NewReader("oi\n"), &out)
 
 	require.NoError(t, runner.Run(), "EOF is a normal exit")
-	assert.Contains(t, out.String(), "contato salvo · id 7")
+	assert.Contains(t, out.String(), "Contato salvo · ID 7")
 }
 
 func TestRunnerExitWords(t *testing.T) {
@@ -107,7 +107,7 @@ func TestRunnerExitWords(t *testing.T) {
 		var out strings.Builder
 		runner := New(okClassify, okDispatch, strings.NewReader(word+"\n"), &out)
 		require.NoError(t, runner.Run(), "Run() with %q", word)
-		assert.NotContains(t, out.String(), "contato salvo", "%q must stop before classifying", word)
+		assert.NotContains(t, out.String(), "Contato salvo", "%q must stop before classifying", word)
 	}
 }
 

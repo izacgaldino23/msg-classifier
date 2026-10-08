@@ -4,8 +4,7 @@
 package api
 
 import (
-	"fmt"
-
+	"msg-classifier/internal/messages"
 	"msg-classifier/internal/models"
 )
 
@@ -43,8 +42,9 @@ func Outcome(outcome *models.UseCaseOutcome) MessageResponse {
 }
 
 // summary is the PT-BR one-liner for the action, worded like result.html so the
-// two surfaces say the same thing. The contact guard is load-bearing: never
-// panic in the request path, and a malformed outcome must still answer.
+// surfaces say the same thing — the text lives in internal/messages, this switch only
+// picks which message. The contact guard is load-bearing: never panic in the request
+// path, and a malformed outcome must still answer.
 func summary(outcome *models.UseCaseOutcome) string {
 	contact := outcome.Contact
 	if contact == nil {
@@ -52,63 +52,46 @@ func summary(outcome *models.UseCaseOutcome) string {
 	}
 	switch outcome.Action {
 	case models.ActionContactAdd:
-		return fmt.Sprintf("Contato salvo · ID %d", contact.ID)
+		return messages.ContactSaved(contact.ID)
 	case models.ActionContactFound:
-		return "Contato encontrado"
+		return messages.ContactFound()
 	case models.ActionContactNotFound:
-		return fmt.Sprintf("Nenhum contato encontrado para '%s'", outcome.SearchTerm)
+		return messages.ContactNotFound(outcome.SearchTerm)
 	case models.ActionContactDuplicate:
-		return fmt.Sprintf("Contato já existe: %s", contact.Name)
+		return messages.ContactDuplicate(contact.Name)
 	case models.ActionContactNoData:
-		return "Nenhum dado de contato encontrado na mensagem."
+		return messages.ContactNoData()
 	case models.ActionNoteAdd:
 		if note := firstNote(outcome.Notes); note != nil {
-			return fmt.Sprintf("%s · ID %d", noteKind(note.Type), note.ID)
+			return messages.NoteSaved(note.Type, note.ID)
 		}
-		return "Nota salva"
+		return messages.NoteSavedNoID()
 	case models.ActionNoteFound:
-		return fmt.Sprintf("%d nota(s) encontrada(s) para '%s'", len(outcome.Notes), outcome.SearchTerm)
+		return messages.NoteFound(len(outcome.Notes), outcome.SearchTerm)
 	case models.ActionNoteNotFound:
-		return fmt.Sprintf("Nenhuma nota encontrada para '%s'.", outcome.SearchTerm)
+		return messages.NoteNotFound(outcome.SearchTerm)
 	case models.ActionNoteNoData:
-		return "Não consegui extrair os dados da nota."
+		return messages.NoteNoData()
 	case models.ActionNoteDuplicate:
 		if note := firstNote(outcome.Notes); note != nil {
-			return fmt.Sprintf("Nota já existe: %s", note.Content)
+			return messages.NoteDuplicate(note.Content)
 		}
-		return "Nota já existe"
+		return messages.NoteDuplicateNoContent()
 	case models.ActionTransactionAdd:
 		if transaction := firstTransaction(outcome.Transactions); transaction != nil {
-			return fmt.Sprintf("Transação salva · ID %d", transaction.ID)
+			return messages.TransactionSaved(transaction.ID)
 		}
-		return "Transação salva"
+		return messages.TransactionSavedNoID()
 	case models.ActionTransactionFound:
-		return fmt.Sprintf("%d transação(ões) para '%s'", len(outcome.Transactions), outcome.SearchTerm)
+		return messages.TransactionFound(len(outcome.Transactions), outcome.SearchTerm)
 	case models.ActionTransactionNotFound:
-		return fmt.Sprintf("Nenhuma transação encontrada para '%s'.", outcome.SearchTerm)
+		return messages.TransactionNotFound(outcome.SearchTerm)
 	case models.ActionTransactionNoData:
-		return fmt.Sprintf("Não consegui classificar a transação: %s.", outcome.Missing)
+		return messages.TransactionNoData(outcome.Missing)
 	case models.ActionTransactionDuplicate:
-		return "Transação já existe"
+		return messages.TransactionDuplicate()
 	default:
 		return ""
-	}
-}
-
-// noteKind is the PT-BR saved-form label for a note sub-type, worded as
-// result.html says it. The participle travels with the noun because the two
-// genders disagree — "Lembrete salvo", but "Nota salva" and "Lista de tarefas
-// salva"; a shared `"%s salvo"` would print the feminine ones wrong.
-// views.Label owns the badge map, but importing views here would pull
-// html/template into the JSON binary.
-func noteKind(noteType string) string {
-	switch noteType {
-	case models.NoteTypeReminder:
-		return "Lembrete salvo"
-	case models.NoteTypeTodo:
-		return "Lista de tarefas salva"
-	default:
-		return "Nota salva"
 	}
 }
 

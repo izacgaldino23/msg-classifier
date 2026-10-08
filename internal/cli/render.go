@@ -1,12 +1,14 @@
 // Package cli is the terminal presenter: a UseCaseOutcome becomes lines. It
 // shares nothing with views or api but the outcome itself — no interface, no
-// registry, just a switch on models.Action.
+// registry, just a switch on models.Action. The wording comes from
+// internal/messages, so this file owns layout only.
 package cli
 
 import (
 	"fmt"
 	"strings"
 
+	"msg-classifier/internal/messages"
 	"msg-classifier/internal/models"
 	"msg-classifier/internal/ptbr"
 )
@@ -15,8 +17,7 @@ import (
 func Render(outcome *models.UseCaseOutcome) string {
 	var out strings.Builder
 	if c := outcome.Classification; c != nil {
-		fmt.Fprintf(&out, "[%s/%s]  categoria %.0f%% · intenção %.0f%%\n",
-			c.Category.Choice, c.Kind.Choice, c.Category.Confidence*100, c.Kind.Confidence*100)
+		fmt.Fprintln(&out, messages.Classification(c.Category.Choice, c.Kind.Choice, c.Category.Confidence, c.Kind.Confidence))
 	}
 	out.WriteString(body(outcome))
 	out.WriteString(segments(outcome.Segments))
@@ -33,11 +34,8 @@ func isDuplicate(action models.Action) bool {
 	}
 }
 
-// Options is the confirmation prompt printed after a duplicate block (DC-008).
-const Options = "[u] atualizar existente · [n] adicionar mesmo assim · [c] cancelar\n"
-
 // body is the one switch every Action goes through. Wording mirrors result.html
-// so the three surfaces say the same thing.
+// because both read the same locale.
 func body(outcome *models.UseCaseOutcome) string {
 	var out strings.Builder
 	switch outcome.Action {
@@ -46,84 +44,64 @@ func body(outcome *models.UseCaseOutcome) string {
 		if contact == nil {
 			contact = &models.Contact{}
 		}
-		fmt.Fprintf(&out, "contato salvo · id %d\n", contact.ID)
+		fmt.Fprintln(&out, messages.ContactSaved(contact.ID))
 		writeContact(&out, contact, true)
 	case models.ActionContactFound:
-		fmt.Fprintln(&out, "contato encontrado")
+		fmt.Fprintln(&out, messages.ContactFound())
 		writeContact(&out, outcome.Contact, true)
 	case models.ActionContactNotFound:
-		fmt.Fprintf(&out, "nenhum contato encontrado para '%s'\n", outcome.SearchTerm)
+		fmt.Fprintln(&out, messages.ContactNotFound(outcome.SearchTerm))
 	case models.ActionContactDuplicate:
 		contact := outcome.Contact
 		if contact == nil {
 			contact = &models.Contact{}
 		}
-		fmt.Fprintf(&out, "contato já existe: %s\n", contact.Name)
+		fmt.Fprintln(&out, messages.ContactDuplicate(contact.Name))
 		writeContact(&out, contact, false)
 	case models.ActionContactNoData:
-		fmt.Fprintln(&out, "nenhum dado de contato encontrado na mensagem")
+		fmt.Fprintln(&out, messages.ContactNoData())
 	case models.ActionNoteAdd:
 		for _, note := range outcome.Notes {
-			fmt.Fprintf(&out, "%s salvo · id %d\n", noteKind(note.Type), note.ID)
-			fmt.Fprintf(&out, "  conteúdo: %s\n", note.Content)
-			if note.Date != nil {
-				fmt.Fprintf(&out, "  data: %s\n", ptbr.DateBR(note.Date))
-			}
-			if note.Time != nil && *note.Time != "" {
-				fmt.Fprintf(&out, "  horário: %s\n", *note.Time)
-			}
-			writeItems(&out, note.Items)
+			fmt.Fprintln(&out, messages.NoteSaved(note.Type, note.ID))
+			writeNote(&out, note, "  ")
 		}
 	case models.ActionNoteFound:
-		fmt.Fprintf(&out, "%d nota(s) encontrada(s) para '%s'\n", len(outcome.Notes), outcome.SearchTerm)
+		fmt.Fprintln(&out, messages.NoteFound(len(outcome.Notes), outcome.SearchTerm))
 		for _, note := range outcome.Notes {
 			fmt.Fprintf(&out, "  [%s] %s\n", note.Type, note.Content)
-			if note.Date != nil {
-				fmt.Fprintf(&out, "    data: %s\n", ptbr.DateBR(note.Date))
-			}
-			if note.Time != nil && *note.Time != "" {
-				fmt.Fprintf(&out, "    horário: %s\n", *note.Time)
-			}
-			writeItems(&out, note.Items)
+			writeNote(&out, note, "    ")
 		}
 	case models.ActionNoteNotFound:
-		fmt.Fprintf(&out, "nenhuma nota encontrada para '%s'\n", outcome.SearchTerm)
+		fmt.Fprintln(&out, messages.NoteNotFound(outcome.SearchTerm))
 	case models.ActionNoteNoData:
-		fmt.Fprintln(&out, "não consegui extrair os dados da nota (lembretes precisam de uma data)")
+		fmt.Fprintln(&out, messages.NoteNoData())
 	case models.ActionNoteDuplicate:
 		for _, note := range outcome.Notes {
-			fmt.Fprintf(&out, "nota já existe [%s]\n", note.Type)
-			fmt.Fprintf(&out, "  conteúdo: %s\n", note.Content)
-			if note.Date != nil {
-				fmt.Fprintf(&out, "  data: %s\n", ptbr.DateBR(note.Date))
-			}
-			if note.Time != nil && *note.Time != "" {
-				fmt.Fprintf(&out, "  horário: %s\n", *note.Time)
-			}
-			writeItems(&out, note.Items)
+			fmt.Fprintln(&out, messages.NoteDuplicate(note.Content))
+			writeNote(&out, note, "  ")
 		}
 	case models.ActionTransactionAdd:
 		for _, transaction := range outcome.Transactions {
-			fmt.Fprintf(&out, "transação salva · id %d\n", transaction.ID)
-			writeTransaction(&out, transaction)
+			fmt.Fprintln(&out, messages.TransactionSaved(transaction.ID))
+			writeTransaction(&out, transaction, "  ")
 		}
 	case models.ActionTransactionFound:
-		fmt.Fprintf(&out, "%d transação(ões) para '%s'\n", len(outcome.Transactions), outcome.SearchTerm)
+		fmt.Fprintln(&out, messages.TransactionFound(len(outcome.Transactions), outcome.SearchTerm))
 		if outcome.Total > 0 {
-			fmt.Fprintf(&out, "  total: %s\n", ptbr.MoneyBRL(outcome.Total))
+			fmt.Fprintf(&out, "  %s: %s\n", messages.Field("total"), ptbr.MoneyBRL(outcome.Total))
 		}
 		for _, transaction := range outcome.Transactions {
 			fmt.Fprintf(&out, "  [%s] %s — %s\n", transaction.Type, ptbr.MoneyBRL(transaction.Amount), transaction.Party)
-			fmt.Fprintf(&out, "    data: %s\n", ptbr.DateBR(&transaction.Date))
+			fmt.Fprintf(&out, "    %s: %s\n", messages.Field("date"), ptbr.DateBR(&transaction.Date))
 		}
 	case models.ActionTransactionNotFound:
-		fmt.Fprintf(&out, "nenhuma transação encontrada para '%s'\n", outcome.SearchTerm)
+		fmt.Fprintln(&out, messages.TransactionNotFound(outcome.SearchTerm))
 	case models.ActionTransactionNoData:
-		fmt.Fprintf(&out, "não consegui classificar a transação: %s\n", outcome.Missing)
+		fmt.Fprintln(&out, messages.TransactionNoData(outcome.Missing))
 	case models.ActionTransactionDuplicate:
 		for _, transaction := range outcome.Transactions {
-			fmt.Fprintln(&out, "transação já existe")
-			writeTransaction(&out, transaction)
+			fmt.Fprintln(&out, messages.TransactionDuplicate())
+			writeTransaction(&out, transaction, "  ")
 		}
 	}
 	return out.String()
@@ -134,35 +112,48 @@ func writeContact(out *strings.Builder, contact *models.Contact, withName bool) 
 		return
 	}
 	if withName && contact.Name != "" {
-		fmt.Fprintf(out, "  nome: %s\n", contact.Name)
+		fmt.Fprintf(out, "  %s: %s\n", messages.Field("name"), contact.Name)
 	}
 	if contact.Phone != nil && *contact.Phone != "" {
-		fmt.Fprintf(out, "  telefone: %s\n", *contact.Phone)
+		fmt.Fprintf(out, "  %s: %s\n", messages.Field("phone"), *contact.Phone)
 	}
 	if contact.Email != nil && *contact.Email != "" {
-		fmt.Fprintf(out, "  email: %s\n", *contact.Email)
+		fmt.Fprintf(out, "  %s: %s\n", messages.Field("email"), *contact.Email)
 	}
 }
 
-func writeTransaction(out *strings.Builder, transaction *models.Transaction) {
-	fmt.Fprintf(out, "  tipo: %s\n", transaction.Type)
-	fmt.Fprintf(out, "  valor: %s\n", ptbr.MoneyBRL(transaction.Amount))
-	fmt.Fprintf(out, "  data: %s\n", ptbr.DateBR(&transaction.Date))
+// writeNote prints the fields a note may carry, indented by the caller: the add block
+// indents two spaces, the found list four.
+func writeNote(out *strings.Builder, note *models.Note, indent string) {
+	fmt.Fprintf(out, "%s%s: %s\n", indent, messages.Field("content"), note.Content)
+	if note.Date != nil {
+		fmt.Fprintf(out, "%s%s: %s\n", indent, messages.Field("date"), ptbr.DateBR(note.Date))
+	}
+	if note.Time != nil && *note.Time != "" {
+		fmt.Fprintf(out, "%s%s: %s\n", indent, messages.Field("time"), *note.Time)
+	}
+	writeItems(out, note.Items, indent)
+}
+
+func writeTransaction(out *strings.Builder, transaction *models.Transaction, indent string) {
+	fmt.Fprintf(out, "%s%s: %s\n", indent, messages.Field("type"), transaction.Type)
+	fmt.Fprintf(out, "%s%s: %s\n", indent, messages.Field("amount"), ptbr.MoneyBRL(transaction.Amount))
+	fmt.Fprintf(out, "%s%s: %s\n", indent, messages.Field("date"), ptbr.DateBR(&transaction.Date))
 	if transaction.Party != "" {
-		fmt.Fprintf(out, "  estabelecimento: %s\n", transaction.Party)
+		fmt.Fprintf(out, "%s%s: %s\n", indent, messages.Field("party"), transaction.Party)
 	}
 	if transaction.Content != "" {
-		fmt.Fprintf(out, "  mensagem: %s\n", transaction.Content)
+		fmt.Fprintf(out, "%s%s: %s\n", indent, messages.Field("message"), transaction.Content)
 	}
 }
 
-func writeItems(out *strings.Builder, items []models.TodoItem) {
+func writeItems(out *strings.Builder, items []models.TodoItem, indent string) {
 	for _, item := range items {
 		mark := "○"
 		if item.Done {
 			mark = "✓"
 		}
-		fmt.Fprintf(out, "  %s %s\n", mark, item.Text)
+		fmt.Fprintf(out, "%s%s %s\n", indent, mark, item.Text)
 	}
 }
 
@@ -173,7 +164,7 @@ func segments(trace []models.SegmentScore) string {
 		return ""
 	}
 	var out strings.Builder
-	out.WriteString("extração:\n")
+	fmt.Fprintln(&out, messages.SectionExtraction())
 	for _, segment := range trace {
 		mark := "✗"
 		if segment.Included {
@@ -182,16 +173,4 @@ func segments(trace []models.SegmentScore) string {
 		fmt.Fprintf(&out, "  %s %.2f %s\n", segment.Text, segment.Score, mark)
 	}
 	return out.String()
-}
-
-// noteKind is the PT-BR noun for a note sub-type.
-func noteKind(noteType string) string {
-	switch noteType {
-	case models.NoteTypeReminder:
-		return "lembrete"
-	case models.NoteTypeTodo:
-		return "lista de tarefas"
-	default:
-		return "nota"
-	}
 }

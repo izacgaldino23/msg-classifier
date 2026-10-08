@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 
+	"msg-classifier/internal/messages"
 	"msg-classifier/internal/models"
 	"msg-classifier/internal/services"
 	"msg-classifier/internal/views"
@@ -29,7 +30,7 @@ func (ctrl *PromptController) Page(c *gin.Context) {
 func (ctrl *PromptController) Table(c *gin.Context) {
 	flow := c.Query("flow")
 	if flow == "" {
-		views.RenderError(c, http.StatusBadRequest, "missing flow")
+		views.RenderError(c, http.StatusBadRequest, messages.MissingFlow())
 		return
 	}
 	prompts, err := ctrl.service.ListByFlow(flow)
@@ -44,7 +45,7 @@ func (ctrl *PromptController) Table(c *gin.Context) {
 func (ctrl *PromptController) Add(c *gin.Context) {
 	request := &models.PromptForm{}
 	if err := c.Bind(request); err != nil {
-		views.RenderError(c, http.StatusBadRequest, "invalid request")
+		views.RenderError(c, http.StatusBadRequest, messages.BadRequest())
 		return
 	}
 	if _, err := ctrl.service.Add(request.Flow, request.Message, request.Expected); err != nil {
@@ -67,7 +68,7 @@ func (ctrl *PromptController) Add(c *gin.Context) {
 func (ctrl *PromptController) Evaluate(c *gin.Context) {
 	request := &models.EvaluateForm{}
 	if err := c.Bind(request); err != nil {
-		views.RenderError(c, http.StatusBadRequest, "invalid request")
+		views.RenderError(c, http.StatusBadRequest, messages.BadRequest())
 		return
 	}
 	results, err := ctrl.service.Evaluate(request.Flow, request.IDs)

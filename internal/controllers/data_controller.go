@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"msg-classifier/internal/messages"
 	"msg-classifier/internal/models"
 	"msg-classifier/internal/repository"
 	"msg-classifier/internal/services"
@@ -58,7 +59,7 @@ func (ctrl *DataController) Update(c *gin.Context) {
 	}
 	form := &models.DataForm{}
 	if err := c.Bind(form); err != nil {
-		views.RenderError(c, http.StatusBadRequest, "invalid request")
+		views.RenderError(c, http.StatusBadRequest, messages.BadRequest())
 		return
 	}
 	var err error
@@ -70,7 +71,7 @@ func (ctrl *DataController) Update(c *gin.Context) {
 	case services.DataKindTransactions:
 		_, err = ctrl.service.UpdateTransaction(id, *form)
 	default:
-		views.RenderError(c, http.StatusBadRequest, "invalid kind")
+		views.RenderError(c, http.StatusBadRequest, messages.BadKind())
 		return
 	}
 	if err != nil {
@@ -85,7 +86,7 @@ func (ctrl *DataController) Update(c *gin.Context) {
 func (ctrl *DataController) Delete(c *gin.Context) {
 	form := &models.DataDeleteForm{}
 	if err := c.Bind(form); err != nil {
-		views.RenderError(c, http.StatusBadRequest, "invalid request")
+		views.RenderError(c, http.StatusBadRequest, messages.BadRequest())
 		return
 	}
 	if len(form.IDs) == 0 {
@@ -101,7 +102,7 @@ func (ctrl *DataController) Delete(c *gin.Context) {
 	case services.DataKindTransactions:
 		err = ctrl.service.DeleteTransactions(form.IDs)
 	default:
-		views.RenderError(c, http.StatusBadRequest, "invalid kind")
+		views.RenderError(c, http.StatusBadRequest, messages.BadKind())
 		return
 	}
 	if err != nil {
@@ -121,12 +122,12 @@ func (ctrl *DataController) ItemRow(c *gin.Context) {
 func (ctrl *DataController) path(c *gin.Context) (string, uint, bool) {
 	kind := c.Param("kind")
 	if kind != services.DataKindContact && kind != services.DataKindNotes && kind != services.DataKindTransactions {
-		views.RenderError(c, http.StatusBadRequest, "invalid kind")
+		views.RenderError(c, http.StatusBadRequest, messages.BadKind())
 		return "", 0, false
 	}
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil || id == 0 {
-		views.RenderError(c, http.StatusBadRequest, "invalid id")
+		views.RenderError(c, http.StatusBadRequest, messages.BadID())
 		return "", 0, false
 	}
 	return kind, uint(id), true
@@ -137,7 +138,7 @@ func (ctrl *DataController) path(c *gin.Context) (string, uint, bool) {
 // on comes back after a delete.
 func (ctrl *DataController) renderTable(c *gin.Context, kind, filter, search string) {
 	if kind != services.DataKindContact && kind != services.DataKindNotes && kind != services.DataKindTransactions {
-		views.RenderError(c, http.StatusBadRequest, "invalid kind")
+		views.RenderError(c, http.StatusBadRequest, messages.BadKind())
 		return
 	}
 	if filter == "" {
@@ -202,7 +203,7 @@ func renderDataError(c *gin.Context, err error) {
 	case errors.Is(err, services.ErrInvalidFilter), errors.Is(err, services.ErrInvalidData):
 		views.RenderError(c, http.StatusBadRequest, err.Error())
 	case errors.Is(err, repository.ErrNotFound):
-		views.RenderError(c, http.StatusNotFound, "registro não encontrado")
+		views.RenderError(c, http.StatusNotFound, messages.NotFound())
 	default:
 		renderServiceError(c, err)
 	}

@@ -127,5 +127,5 @@ func TestBrowseEndpointsReturnEmptyArray(t *testing.T) {
 func TestBrowseRejectsAnUnknownFilter(t *testing.T) {
 	recorder := getRoute(t, "/api/v1/contacts?filter=bogus")
 	assert.Equal(t, http.StatusBadRequest, recorder.Code)
-	assert.Contains(t, recorder.Body.String(), "invalid data filter")
+	assert.Contains(t, recorder.Body.String(), "Filtro inválido.")
 }

@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"msg-classifier/internal/messages"
 	"msg-classifier/internal/models"
 
 	"github.com/stretchr/testify/assert"
@@ -55,9 +56,9 @@ func TestRunnerDuplicateConfirmUpdate(t *testing.T) {
 	assert.Equal(t, "update", dupAction, "u confirms with dup_action=update")
 	assert.Equal(t, "09292929290 Fulano", message, "the original message is re-posted")
 	body := out.String()
-	assert.Contains(t, body, "contato já existe")
-	assert.Contains(t, body, Options)
-	assert.Contains(t, body, "contato salvo · id 7")
+	assert.Contains(t, body, "Contato já existe")
+	assert.Contains(t, body, messages.DupOptions())
+	assert.Contains(t, body, "Contato salvo · ID 7")
 }
 
 func TestRunnerDuplicateConfirmNew(t *testing.T) {
@@ -71,7 +72,7 @@ func TestRunnerDuplicateConfirmNew(t *testing.T) {
 	require.NoError(t, runner.Run(), "Run()")
 
 	assert.Equal(t, "new", dupAction, "n confirms with dup_action=new")
-	assert.Contains(t, out.String(), "contato salvo · id 7")
+	assert.Contains(t, out.String(), "Contato salvo · ID 7")
 }
 
 func TestRunnerDuplicateCancel(t *testing.T) {
@@ -90,7 +91,7 @@ func TestRunnerDuplicateCancel(t *testing.T) {
 	require.NoError(t, runner.Run(), "Run()")
 
 	assert.Equal(t, 1, calls, "cancel sends nothing to dispatch")
-	assert.Contains(t, out.String(), "cancelado")
+	assert.Contains(t, out.String(), messages.Cancelled())
 }
 
 func TestRunnerDuplicateUnknownLineCancelsAndTreatsAsNewMessage(t *testing.T) {
@@ -105,7 +106,7 @@ func TestRunnerDuplicateUnknownLineCancelsAndTreatsAsNewMessage(t *testing.T) {
 
 	assert.Equal(t, "outro texto qualquer", message, "a non-answer becomes the next message")
 	assert.Equal(t, "", dupAction, "the fresh message carries no dup_action")
-	assert.NotContains(t, out.String(), "cancelado")
+	assert.NotContains(t, out.String(), messages.Cancelled())
 }
 
 func TestRenderResultDuplicateNoteBlock(t *testing.T) {
@@ -115,7 +116,7 @@ func TestRenderResultDuplicateNoteBlock(t *testing.T) {
 		Notes:          []*models.Note{{Type: models.NoteTypeReminder, Content: "pagar conta"}},
 		Message:        "lembra de pagar conta",
 	})
-	assert.Contains(t, body, "nota já existe [reminder]")
+	assert.Contains(t, body, "Nota já existe: pagar conta")
 	assert.Contains(t, body, "conteúdo: pagar conta")
 }
 
@@ -128,6 +129,6 @@ func TestRenderResultDuplicateTransactionBlock(t *testing.T) {
 		},
 		Message: "comprei 20",
 	})
-	assert.Contains(t, body, "transação já existe")
+	assert.Contains(t, body, "Transação já existe")
 	assert.Contains(t, body, "estabelecimento: mercado")
 }

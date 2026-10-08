@@ -33,7 +33,7 @@ func NewDataController(data *services.DataService) *DataController {
 func (ctrl *DataController) ListContacts(c *gin.Context) {
 	contacts, err := ctrl.data.ListContacts(c.Query("filter"))
 	if err != nil {
-		RenderError(c, StatusFor(err), err.Error())
+		RenderError(c, StatusFor(err), userText(err))
 		return
 	}
 	if contacts == nil {
@@ -55,7 +55,7 @@ func (ctrl *DataController) ListContacts(c *gin.Context) {
 func (ctrl *DataController) ListNotes(c *gin.Context) {
 	notes, err := ctrl.data.ListNotes(c.Query("filter"))
 	if err != nil {
-		RenderError(c, StatusFor(err), err.Error())
+		RenderError(c, StatusFor(err), userText(err))
 		return
 	}
 	if notes == nil {
@@ -79,7 +79,7 @@ func (ctrl *DataController) ListNotes(c *gin.Context) {
 func (ctrl *DataController) ListTransactions(c *gin.Context) {
 	transactions, err := ctrl.data.ListTransactions(c.Query("filter"), c.Query("search"))
 	if err != nil {
-		RenderError(c, StatusFor(err), err.Error())
+		RenderError(c, StatusFor(err), userText(err))
 		return
 	}
 	if transactions == nil {

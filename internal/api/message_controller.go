@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 
+	"msg-classifier/internal/messages"
 	"msg-classifier/internal/models"
 
 	"github.com/gin-gonic/gin"
@@ -45,24 +46,24 @@ func NewMessageController(c classifier, d dispatcher) *MessageController {
 func (ctrl *MessageController) ReceiveMessage(c *gin.Context) {
 	request := &models.ReceiveMessageRequest{}
 	if err := c.ShouldBindJSON(request); err != nil {
-		RenderError(c, http.StatusBadRequest, "invalid request")
+		RenderError(c, http.StatusBadRequest, messages.BadRequest())
 		return
 	}
 	// Trust boundary: an empty message is a client bug, not a classification.
 	if request.Message == "" {
-		RenderError(c, http.StatusBadRequest, "message is required")
+		RenderError(c, http.StatusBadRequest, messages.MessageRequired())
 		return
 	}
 
 	classification, err := ctrl.classifier.Classify(request)
 	if err != nil {
-		RenderError(c, StatusFor(err), err.Error())
+		RenderError(c, StatusFor(err), userText(err))
 		return
 	}
 
 	outcome, err := ctrl.dispatcher.Dispatch(request, classification)
 	if err != nil {
-		RenderError(c, StatusFor(err), err.Error())
+		RenderError(c, StatusFor(err), userText(err))
 		return
 	}
 

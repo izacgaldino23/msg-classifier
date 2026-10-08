@@ -97,7 +97,7 @@ func TestSummaryPerAction(t *testing.T) {
 		{
 			models.ActionNoteNoData,
 			models.UseCaseOutcome{},
-			"Não consegui extrair os dados da nota.",
+			"Não consegui extrair os dados da nota. Para lembretes, informe a data.",
 		},
 		{
 			models.ActionNoteDuplicate,

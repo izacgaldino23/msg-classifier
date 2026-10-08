@@ -37,7 +37,7 @@ func TestRenderPerAction(t *testing.T) {
 				Contact:  &models.Contact{ID: 7, Name: "Fulano Tal", Phone: strPtr("9292929290")},
 				Segments: []models.SegmentScore{{Text: "Fulano", Score: 0.91, Included: true}, {Text: "de", Score: 0.08, Included: false}},
 			},
-			[]string{"contato salvo · id 7", "nome: Fulano Tal", "telefone: 9292929290", "extração:", "Fulano 0.91 ✓", "de 0.08 ✗"},
+			[]string{"Contato salvo · ID 7", "nome: Fulano Tal", "telefone: 9292929290", "extração:", "Fulano 0.91 ✓", "de 0.08 ✗"},
 		},
 		{
 			"contact found",
@@ -46,12 +46,12 @@ func TestRenderPerAction(t *testing.T) {
 				Contact:    &models.Contact{Name: "Fulano Tal", Email: strPtr("f@t.io")},
 				SearchTerm: "9292929290",
 			},
-			[]string{"contato encontrado", "nome: Fulano Tal", "email: f@t.io"},
+			[]string{"Contato encontrado", "nome: Fulano Tal", "email: f@t.io"},
 		},
 		{
 			"contact not found",
 			models.UseCaseOutcome{Classification: classification(), Action: models.ActionContactNotFound, SearchTerm: "fulano tal"},
-			[]string{"nenhum contato encontrado para 'fulano tal'"},
+			[]string{"Nenhum contato encontrado para 'fulano tal'"},
 		},
 		{
 			"contact duplicate",
@@ -59,12 +59,12 @@ func TestRenderPerAction(t *testing.T) {
 				Classification: classification(), Action: models.ActionContactDuplicate,
 				Contact: &models.Contact{Name: "Fulano", Phone: strPtr("9292929290")},
 			},
-			[]string{"contato já existe: Fulano", "telefone: 9292929290"},
+			[]string{"Contato já existe: Fulano", "telefone: 9292929290"},
 		},
 		{
 			"contact no data",
 			models.UseCaseOutcome{Classification: classification(), Action: models.ActionContactNoData},
-			[]string{"nenhum dado de contato encontrado na mensagem"},
+			[]string{"Nenhum dado de contato encontrado na mensagem."},
 		},
 		{
 			"note add reminder",
@@ -72,7 +72,7 @@ func TestRenderPerAction(t *testing.T) {
 				Classification: classification(), Action: models.ActionNoteAdd,
 				Notes: []*models.Note{{ID: 3, Type: models.NoteTypeReminder, Content: "pagar a conta de luz", Date: &date, Time: &clock}},
 			},
-			[]string{"lembrete salvo · id 3", "conteúdo: pagar a conta de luz", "data: 10/05/2026", "horário: 14:30"},
+			[]string{"Lembrete salvo · ID 3", "conteúdo: pagar a conta de luz", "data: 10/05/2026", "horário: 14:30"},
 		},
 		{
 			"note add todo",
@@ -82,7 +82,7 @@ func TestRenderPerAction(t *testing.T) {
 					{Text: "pão"}, {Text: "leite", Done: true},
 				}}},
 			},
-			[]string{"lista de tarefas salvo · id 4", "○ pão", "✓ leite"},
+			[]string{"Lista de tarefas salva · ID 4", "○ pão", "✓ leite"},
 		},
 		{
 			"note found",
@@ -98,12 +98,12 @@ func TestRenderPerAction(t *testing.T) {
 		{
 			"note not found",
 			models.UseCaseOutcome{Classification: classification(), Action: models.ActionNoteNotFound, SearchTerm: "projeto"},
-			[]string{"nenhuma nota encontrada para 'projeto'"},
+			[]string{"Nenhuma nota encontrada para 'projeto'."},
 		},
 		{
 			"note no data",
 			models.UseCaseOutcome{Classification: classification(), Action: models.ActionNoteNoData},
-			[]string{"não consegui extrair os dados da nota"},
+			[]string{"Não consegui extrair os dados da nota. Para lembretes, informe a data."},
 		},
 		{
 			"transaction add",
@@ -114,7 +114,7 @@ func TestRenderPerAction(t *testing.T) {
 					Date: date, Party: "supermercado", Content: "compras no supermercado",
 				}},
 			},
-			[]string{"transação salva · id 7", "tipo: compra", "valor: R$ 1.234,56", "data: 10/05/2026", "estabelecimento: supermercado", "mensagem: compras no supermercado"},
+			[]string{"Transação salva · ID 7", "tipo: compra", "valor: R$ 1.234,56", "data: 10/05/2026", "estabelecimento: supermercado", "mensagem: compras no supermercado"},
 		},
 		{
 			"transaction found with total",
@@ -131,12 +131,12 @@ func TestRenderPerAction(t *testing.T) {
 		{
 			"transaction not found",
 			models.UseCaseOutcome{Classification: classification(), Action: models.ActionTransactionNotFound, SearchTerm: "remedio"},
-			[]string{"nenhuma transação encontrada para 'remedio'"},
+			[]string{"Nenhuma transação encontrada para 'remedio'."},
 		},
 		{
 			"transaction no data",
 			models.UseCaseOutcome{Classification: classification(), Action: models.ActionTransactionNoData, Missing: "o valor"},
-			[]string{"não consegui classificar a transação: o valor"},
+			[]string{"Não consegui classificar a transação: o valor."},
 		},
 		{
 			"none",

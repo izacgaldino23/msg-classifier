@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"msg-classifier/internal/messages"
 	"msg-classifier/internal/models"
 	"msg-classifier/internal/ptbr"
 	"msg-classifier/internal/repository"
@@ -37,11 +38,11 @@ func (s *FinanceService) Handle(request *models.ReceiveMessageRequest, classific
 func (s *FinanceService) Add(request *models.ReceiveMessageRequest, classification *models.Classification) (*models.UseCaseOutcome, error) {
 	content := strings.TrimSpace(request.Message)
 	if content == "" {
-		return financeNoData(classification, "mensagem"), nil
+		return financeNoData(classification, messages.MissingMessage()), nil
 	}
 	amount, hasAmount := ptbr.ParseAmount(content)
 	if !hasAmount {
-		return financeNoData(classification, "o valor"), nil
+		return financeNoData(classification, messages.MissingAmount()), nil
 	}
 
 	now := time.Now()

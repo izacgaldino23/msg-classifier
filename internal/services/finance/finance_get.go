@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"msg-classifier/internal/messages"
 	"msg-classifier/internal/models"
 	"msg-classifier/internal/ptbr"
 	"msg-classifier/internal/repository"
@@ -53,7 +54,7 @@ func (s *FinanceService) Get(request *models.ReceiveMessageRequest, classificati
 	filter.Term = financeSearchTerm(content)
 
 	if filter.Type == "" && filter.From.IsZero() && filter.Term == "" {
-		return financeNoData(classification, "um período, um tipo ou um estabelecimento"), nil
+		return financeNoData(classification, messages.MissingFilter()), nil
 	}
 
 	transactions, err := s.repo.Find(filter)

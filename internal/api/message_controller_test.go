@@ -79,7 +79,7 @@ func TestReceiveMessageRequiresAMessage(t *testing.T) {
 
 	recorder := postMessage(t, ctrl, `{"user_id":"1"}`)
 	assert.Equal(t, http.StatusBadRequest, recorder.Code)
-	assert.Contains(t, recorder.Body.String(), "message is required")
+	assert.Contains(t, recorder.Body.String(), "A mensagem é obrigatória.")
 	assert.Nil(t, classifier.seen, "Classify() must not run on an empty message")
 }
 
@@ -88,7 +88,7 @@ func TestReceiveMessageRejectsMalformedJSON(t *testing.T) {
 
 	recorder := postMessage(t, ctrl, `not json`)
 	assert.Equal(t, http.StatusBadRequest, recorder.Code)
-	assert.Contains(t, recorder.Body.String(), "invalid request")
+	assert.Contains(t, recorder.Body.String(), "Requisição inválida.")
 }
 
 func TestReceiveMessageMapsUpstreamTo502(t *testing.T) {
@@ -99,7 +99,7 @@ func TestReceiveMessageMapsUpstreamTo502(t *testing.T) {
 
 	recorder := postMessage(t, ctrl, `{"message":"oi"}`)
 	assert.Equal(t, http.StatusBadGateway, recorder.Code)
-	assert.Contains(t, recorder.Body.String(), "failed to call jev")
+	assert.Contains(t, recorder.Body.String(), "Não consegui falar com o serviço de classificação")
 }
 
 func TestReceiveMessageMapsDispatchFailureTo500(t *testing.T) {

@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 
+	"msg-classifier/internal/messages"
 	"msg-classifier/internal/models"
 )
 
@@ -66,14 +67,14 @@ func (r *Runner) Run() error {
 			switch answer := confirmAction(line); answer {
 			case "cancel":
 				r.pending = ""
-				fmt.Fprintln(r.out, "cancelado")
+				fmt.Fprintln(r.out, messages.Cancelled())
 				continue
 			case "update", "new":
 				message := r.pending
 				r.pending = ""
 				outcome, err := r.handle(message, answer)
 				if err != nil {
-					fmt.Fprintf(r.out, "erro: %v\n", err)
+					fmt.Fprintln(r.out, messages.ErrorLine(err))
 				} else {
 					fmt.Fprint(r.out, Render(outcome))
 					r.remember(outcome)
@@ -88,7 +89,7 @@ func (r *Runner) Run() error {
 
 		outcome, err := r.handle(line, "")
 		if err != nil {
-			fmt.Fprintf(r.out, "erro: %v\n", err)
+			fmt.Fprintln(r.out, messages.ErrorLine(err))
 			continue
 		}
 		fmt.Fprint(r.out, Render(outcome))
@@ -99,7 +100,7 @@ func (r *Runner) Run() error {
 // remember opens the confirmation loop when the outcome is a duplicate.
 func (r *Runner) remember(outcome *models.UseCaseOutcome) {
 	if isDuplicate(outcome.Action) {
-		fmt.Fprint(r.out, Options)
+		fmt.Fprintln(r.out, messages.DupOptions())
 		r.pending = outcome.Message
 		return
 	}

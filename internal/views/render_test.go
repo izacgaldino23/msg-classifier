@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"msg-classifier/internal/messages"
 	"msg-classifier/internal/models"
 
 	"github.com/gin-gonic/gin"
@@ -401,15 +402,15 @@ func TestLabel(t *testing.T) {
 		"notes": "Notas", "other": "Outro", "add": "Adicionar",
 		"require": "Consultar", "both": "Ambos",
 	} {
-		if got := Label(input); got != want {
-			t.Errorf("Label(%q) = %q, want %q", input, got, want)
+		if got := messages.Label(input); got != want {
+			t.Errorf("messages.Label(%q) = %q, want %q", input, got, want)
 		}
 	}
-	if got := Label("unknown"); got != "unknown" {
-		t.Errorf("Label(%q) = %q, want fallback to input", "unknown", got)
+	if got := messages.Label("unknown"); got != "unknown" {
+		t.Errorf("messages.Label(%q) = %q, want fallback to input", "unknown", got)
 	}
-	if got := Label(nil); got != "" {
-		t.Errorf("Label(nil) = %q, want empty string", got)
+	if got := messages.Label(nil); got != "" {
+		t.Errorf("messages.Label(nil) = %q, want empty string", got)
 	}
 }
 
@@ -569,8 +570,8 @@ func TestLabelNoteTypes(t *testing.T) {
 	for input, want := range map[string]string{
 		"note": "Nota", "reminder": "Lembrete", "todo": "Lista de tarefas",
 	} {
-		if got := Label(input); got != want {
-			t.Errorf("Label(%q) = %q, want %q", input, got, want)
+		if got := messages.Label(input); got != want {
+			t.Errorf("messages.Label(%q) = %q, want %q", input, got, want)
 		}
 	}
 }
