@@ -326,6 +326,17 @@ func TestRunnerAnswersTheHelpFlagWithoutClassifying(t *testing.T) {
 	assertBoxLines(t, out.String(), messages.HelpDetail("notas"))
 }
 
+// The help flag wins over the action, /sair included: asking for help must not
+// end the session.
+func TestHelpFlagOnSairDoesNotEndTheSession(t *testing.T) {
+	var out strings.Builder
+	runner := New(okClassify, okDispatch, &fakeData{}, strings.NewReader("/sair --ajuda\n/contatos\n"), &out)
+
+	require.NoError(t, runner.Run())
+	assertBoxLines(t, out.String(), messages.HelpDetail("sair"))
+	assert.Contains(t, out.String(), messages.ListEmpty("contact"), "the loop kept reading after the help")
+}
+
 // The working indicator is written before the classification call and erased after it,
 // but only where the terminal can erase it again.
 func TestWorkingIndicatorIsErasedAfterTheAnswer(t *testing.T) {

@@ -65,6 +65,13 @@ func (r *Runner) Run() error {
 		}
 
 		cmd, args, isCommand, known := parse(line)
+		// The help flag wins over everything, including /sair: "--ajuda" is always a
+		// request to read, never the action itself.
+		if isCommand && known && isHelpFlag(args) {
+			fmt.Fprintln(r.out)
+			r.printCommandHelp(cmd.name)
+			continue
+		}
 		if isCommand && known && cmd.name == "/sair" {
 			return nil
 		}
@@ -96,11 +103,7 @@ func (r *Runner) Run() error {
 				continue
 			}
 			// "--ajuda" (or "-h") on any command prints that command's long
-			// help instead of running it.
-			if isHelpFlag(args) {
-				r.printCommandHelp(cmd.name)
-				continue
-			}
+			// help instead of running it — handled above, before /sair.
 			if err := cmd.run(r, args); err != nil {
 				if errors.Is(err, errExitSession) {
 					return nil
