@@ -30,6 +30,7 @@ Backlog of what was deliberately left out of DC-005 (notes, lembretes e listas d
 - [ ] **Busca insensível a acentos no conteúdo** — hoje `content LIKE %termo%` é insensível a maiúsculas (`LOWER(content)`) mas não a acentos: "acao" não acha "ação". Corrigir com uma coluna `content_norm` (o mesmo padrão de `contacts.name_norm`) ou com uma função SQLite de normalização.
 - [ ] **Termo com várias palavras** — a busca remove stopwords e, se a frase não bate, refaz a consulta só com a última palavra. Um índice full-text (FTS5) resolveria o caso geral.
 - [ ] **Filtro combinado** — hoje o require escolhe um único filtro (data → pendências → termo). "O que falta para o dia 10?" deveria combinar data + pendência.
+- [ ] **Telefone com separadores na busca** — a busca de contato (require e `/data`) casa o telefone como ele está gravado, só dígitos: "11 98888-7777" não acha "11988887777". Ou o termo que parece telefone perde os separadores antes do `LIKE`, ou uma coluna `phone_digits` indexada.
 
 ## Produto
 
