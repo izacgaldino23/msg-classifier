@@ -6,7 +6,8 @@ skinparam shadowing false
 
 start
 repeat
-  :prompt msg> (cor de destaque) e lê uma linha;
+  :prompt msg> (cor de destaque) e lê uma linha
+  (↑/↓ andam pelo histórico da sessão; no pipe, leitura simples sem eco);
   if (é comando?) then (sim — começa com "/" ou é um alias)
     :resolve o nome: /ajuda /? ajuda ? · /contatos /c
     · /notas /n · /financas /f · /limpar · /sair sair exit quit;
