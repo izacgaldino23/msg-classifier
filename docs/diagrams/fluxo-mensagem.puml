@@ -1,0 +1,121 @@
+@startuml fluxo-mensagem
+!theme plain
+title Fluxo de uma mensagem — web · api · cli (o mesmo core)
+
+skinparam shadowing false
+
+start
+:linha do usuário
+(web/api: bind do formulário · cli: uma linha do REPL);
+:ClassificationService.Classify — 1ª chamada Jev
+(classification.json: categoria + add/require);
+note right
+  categoria: contact · finance · schedule · notes · other
+  intenção: add · require · both ("both" segue o caminho de add)
+end note
+
+switch (categoria?)
+case (contact)
+  if (require?) then (sim)
+    :busca em ordem: telefone → e-mail → nome
+    (nome = LIKE em name_norm; telefone e e-mail não usam Jev);
+    if (achou?) then (sim)
+      :contact_found (com o termo buscado);
+    else (não)
+      :contact_not_found;
+    endif
+    note right: nada extraível → contact_no_data
+  else (add / both)
+    :regex: telefone (10/11 dígitos) e e-mail;
+    if (tem telefone ou e-mail?) then (sim)
+      :checa duplicado no banco
+      (FindByPhone / FindByEmail — sem Jev);
+    else (não)
+      :extrai o nome — 2ª chamada Jev (fan-out Noul);
+      :checa duplicado por name_norm;
+      note right: nome não extraído → contact_no_data
+    endif
+    if (achou duplicado?) then (sim)
+      :contact_duplicate;
+    else (não)
+      :ContactRepository.Create (nome + name_norm);
+      :contact_add + trace dos segmentos;
+    endif
+  endif
+
+case (notes)
+  if (require?) then (sim)
+    :escolhe um filtro, em ordem:
+    data (FindByDate, inclui "ontem")
+    → pendências ("falta", "não fiz", "pendente") → FindUnfinished
+    → termo (stopwords fora; retenta a última palavra) → FindByTerm;
+    if (achou?) then (sim)
+      :note_found (com a lista);
+    else (não)
+      :note_not_found;
+    endif
+    note right: nada extraível → note_no_data
+  else (add / both)
+    :NoteExtractor.ExtractType — 2ª chamada Jev
+    (note.json: nota · lembrete · tarefa);
+    if (lembrete?) then (sim)
+      :ParseDate (obrigatória) + ParseTime (opcional);
+      note right: data não entendida → note_no_data
+    else (tarefa)
+      :SplitTodoItems (linhas → numeração → vírgulas);
+    endif
+    :checa duplicado (tipo + conteúdo [+ data]);
+    if (achou duplicado?) then (sim)
+      :note_duplicate;
+    else (não)
+      :NotesRepository.Create (nota + itens, em transação);
+      :note_add;
+    endif
+  endif
+
+case (finance)
+  if (require?) then (sim)
+    :filtro composto: tipo (comprei, paguei, …)
+    + período (ParseRange: "esse mês", "semana passada")
+    + termo (conteúdo ou estabelecimento);
+    :TransactionRepository.Find (ou Sum);
+    if (perguntou quanto/total?) then (sim)
+      :transaction_found + o total somado;
+    else (não)
+      :transaction_found / transaction_not_found;
+    endif
+    note right: nada extraível → transaction_no_data
+  else (add / both)
+    :candidato a estabelecimento (regex de preposição);
+    :FinanceExtractor — 2ª chamada Jev
+    (tipo + fan-out do party, numa requisição só);
+    if (tem valor?) then (não)
+      :transaction_no_data (falta o valor);
+    else (sim)
+      :ParseAmount + ParseEventDate (sem data → hoje);
+      :checa duplicado (tipo + valor + data [+ party]);
+      if (achou duplicado?) then (sim)
+        :transaction_duplicate;
+      else (não)
+        :TransactionRepository.Create (valor sempre positivo);
+        :transaction_add + trace dos segmentos;
+      endif
+    endif
+  endif
+
+case (schedule · other)
+  :ActionNone — a categoria é reconhecida,
+  mas não há caso de uso;
+endswitch
+
+:o presenter mostra o resultado
+(web: partial · api: JSON · cli: cartão de texto);
+note right
+  quando o resultado é um *_duplicate, o presenter abre o loop DC-008:
+    web: dois formulários (atualizar / adicionar mesmo assim)
+    cli: u / n / c na linha seguinte
+    api: informa e não confirma
+  stateless — o cliente re-posta a mensagem original com dup_action
+end note
+stop
+@enduml

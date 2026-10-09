@@ -1,0 +1,54 @@
+@startuml fluxo-cli
+!theme plain
+title REPL do CLI — cada linha vira um comando ou uma mensagem
+
+skinparam shadowing false
+
+start
+repeat
+  :prompt msg> (cor de destaque) e lê uma linha;
+  if (é comando?) then (sim — começa com "/" ou é um alias)
+    :resolve o nome: /ajuda /? ajuda ? · /contatos /c
+    · /notas /n · /financas /f · /limpar · /sair sair exit quit;
+    if (--ajuda ou -h?) then (sim)
+      :detalhe do comando (cli.help.<comando>.detail);
+    else (não)
+      if (/ajuda?) then (sim)
+        :tabela curta de comandos;
+      elseif (/contatos · /notas · /financas?) then
+        :a primeira palavra só filtra quando nomeia um filtro;
+        :o resto é o termo de busca → DataService lista;
+        :tabela com borda — ou uma linha amarela "nada encontrado";
+      elseif (/limpar?) then (sim)
+        :limpa a tela;
+      else (/sair)
+        break
+      endif
+    endif
+  else (mensagem)
+    if (há um duplicado pendente?) then (sim)
+      :u · n · c — qualquer outra linha
+      cancela o pendente e segue como mensagem nova;
+    endif
+    :classificando… (apagado quando a resposta chega);
+    :o mesmo fluxo de mensagem do web e da API;
+    :bloco: eco em dim + classificação + cartão do resultado;
+    if (o resultado é um duplicado?) then (sim)
+      :pendente = a mensagem (u/n/c na linha seguinte);
+    endif
+  endif
+repeat while (a sessão continua?) is (sim)
+:encerra;
+stop
+
+note right
+  filtros de cada listagem (o detalhe sai com --ajuda):
+    /contatos → todos · telefone · email · nome
+    /notas    → todas · nota · lembrete · tarefa
+    /financas → todas · compra · venda · pagamento · recebimento · transferencia
+  um comando nunca chega ao classificador;
+  um erro devolve a linha "erro: …" e o loop continua;
+  EOF (Ctrl+D / Ctrl+Z) também encerra
+end note
+
+@enduml

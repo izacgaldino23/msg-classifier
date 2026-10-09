@@ -1,0 +1,48 @@
+@startuml fluxo-dados
+!theme plain
+title Tela /data — o que dá para fazer com o que foi salvo
+
+skinparam shadowing false
+
+start
+:GET /data — página com três abas
+(Contatos · Notas · Finanças);
+:escolhe a aba, uma pílula de filtro (tipo)
+e/ou digita um termo na caixa de busca;
+:pílula: /data/table?kind&filter
+caixa de busca: /data/table?kind&filter&search;
+:DataService valida kind e filtro
+(nenhum filtro reconhecido → 400 · nenhuma chamada Jev);
+:partial <kind>_table — linhas, checkbox por linha
+e o botão de apagar em massa;
+
+if (o que o usuário fez?) then (Ver)
+  :GET /data/:kind/:id?mode=view
+  (drawer, fieldset desabilitado);
+  if (Editar?) then (sim)
+    :o mesmo formulário em mode=edit;
+    :POST /data/:kind/:id → Update
+    (valor e data re-parseados: o mesmo parser da mensagem);
+    :volta em mode=view;
+  endif
+elseif (Adicionar item?) then (numa lista de tarefas)
+  :GET /data/item-row → uma linha nova no editor;
+elseif (Apagar selecionados?) then
+  :POST /data/delete {kind, filter, search, ids[]};
+  :a tabela volta no mesmo filtro e na mesma busca;
+else (carregou a página)
+  :a tabela da aba carrega no primeiro paint;
+endif
+stop
+
+note right
+  as pílulas de filtro de cada aba:
+    Contatos → todos · telefone · email · nome
+    Notas    → todas · nota · lembrete · tarefa
+    Finanças → todas · compra · venda · pagamento · recebimento · transferencia
+  as listagens do CLI (/contatos · /notas · /financas)
+  e os GETs da API leem o mesmo DataService — a parte
+  de leitura é compartilhada, mas só a tela /data escreve
+end note
+
+@enduml

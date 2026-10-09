@@ -1,0 +1,74 @@
+@startuml visao-geral
+!theme plain
+title msg-classifier — três entrypoints sobre um core só
+
+skinparam shadowing false
+skinparam linetype ortho
+
+actor "Usuário" as user
+
+rectangle "Apresentação — um presenter por entrypoint, nenhuma regra de negócio" as pres {
+  component "cmd/web\nhtmx + templates · :8080" as web
+  component "cmd/api\nJSON + swagger · :8081" as api
+  component "cmd/cli\nREPL no terminal" as cli
+}
+
+rectangle "Core — internal/app amarra tudo" as core {
+  component "ClassificationService\n1 chamada Jev por mensagem" as classify
+  component "Dispatcher" as dispatch
+  component "ContactService" as contact
+  component "NotesService" as notes
+  component "FinanceService" as finance
+  component "DataService\nlistar · editar · apagar" as data
+  component "PromptService\nharness do /prompts" as prompts
+}
+
+rectangle "Infraestrutura" as infra {
+  component "Repositórios\n(Gorm)" as repo
+  database "SQLite\nDB_PATH" as db
+  component "pkg/jev" as jev
+}
+
+cloud "TypeSafe System One\nmodelo jev-latest" as typesafe
+
+user --> web
+user --> api
+user --> cli
+
+web --> classify
+web --> data
+web --> prompts
+api --> classify
+api --> data : só leitura
+cli --> classify
+cli --> data : listagens
+
+classify --> dispatch
+dispatch --> contact
+dispatch --> notes
+dispatch --> finance
+
+contact --> repo
+notes --> repo
+finance --> repo
+data --> repo
+repo --> db
+
+classify --> jev
+contact --> jev
+notes --> jev
+finance --> jev
+jev --> typesafe
+
+note bottom of dispatch
+  registry: contact · notes · finance
+  schedule e other caem em ActionNone
+end note
+
+note bottom of prompts
+  o harness reusa os extractors do fluxo
+  de mensagem (Classify, ExtractName,
+  ExtractType, Extract) — não há caminho paralelo
+end note
+
+@enduml
