@@ -1,11 +1,13 @@
 package cli
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
+
+	"golang.org/x/term"
 
 	"msg-classifier/internal/messages"
 	"msg-classifier/internal/models"
@@ -34,6 +36,11 @@ type Runner struct {
 	out      io.Writer
 	style    style
 
+	// reader overrides how lines are read; nil means Run picks one (the history
+	// editor on a terminal, the plain scanner otherwise). It exists so a test can
+	// drive the loop through the editor without a terminal.
+	reader lineReader
+
 	// pending is the message awaiting a duplicate answer (u/n/c, DC-008); empty
 	// means the loop is closed and the next line is a fresh message.
 	pending string
@@ -51,15 +58,17 @@ func New(classify ClassifyFunc, dispatch DispatchFunc, data DataLister, in io.Re
 // ponytail: Ctrl+C needs no handler — SIGINT already ends the process, so a
 // signal.Notify would be code that changes nothing.
 func (r *Runner) Run() error {
-	scanner := bufio.NewScanner(r.in)
+	reader := r.openReader()
 	for {
-		fmt.Fprint(r.out, r.style.accent(Prompt))
-
-		if !scanner.Scan() {
+		line, err := reader.readLine(r.style.accent(Prompt))
+		if err != nil {
 			fmt.Fprintln(r.out)
-			return scanner.Err()
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
 		}
-		line := strings.TrimSpace(scanner.Text())
+		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
@@ -115,6 +124,34 @@ func (r *Runner) Run() error {
 
 		r.answerMessage(line, "")
 	}
+}
+
+// openReader picks how lines are read. The history editor needs both ends to be a
+// terminal and the platform to accept a raw switch — probed here, so a console
+// without virtual-terminal input falls back to the scanner instead of failing on the
+// first line. A pipe, a file and every test take the scanner too.
+func (r *Runner) openReader() lineReader {
+	if r.reader != nil {
+		return r.reader
+	}
+	in, okIn := r.in.(*os.File)
+	out, okOut := r.out.(*os.File)
+	if !okIn || !okOut || !isCharDevice(in) || !isCharDevice(out) {
+		return newScannerReader(r.in, r.out)
+	}
+	fd := int(in.Fd())
+	state, err := term.MakeRaw(fd)
+	if err != nil {
+		return newScannerReader(r.in, r.out)
+	}
+	_ = term.Restore(fd, state)
+	return newLineEditor(r.in, r.out, func() (func(), error) {
+		state, err := term.MakeRaw(fd)
+		if err != nil {
+			return nil, err
+		}
+		return func() { _ = term.Restore(fd, state) }, nil
+	})
 }
 
 // answerMessage classifies one message and prints its block. The in-flight indicator

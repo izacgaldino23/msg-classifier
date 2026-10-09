@@ -30,18 +30,22 @@ type style struct{ on bool }
 
 // newStyle decides once, from the writer it will use, whether escapes may be written.
 func newStyle(out io.Writer) style {
-	if os.Getenv("NO_COLOR") != "" {
-		return style{}
-	}
-	file, ok := out.(*os.File)
-	if !ok {
-		return style{}
-	}
-	info, err := file.Stat()
-	if err != nil || info.Mode()&os.ModeCharDevice == 0 {
+	if os.Getenv("NO_COLOR") != "" || !isCharDevice(out) {
 		return style{}
 	}
 	return style{on: true}
+}
+
+// isCharDevice reports whether w is an open character device — a terminal, not a
+// pipe, a file or a test buffer. The same check covers the input handle the history
+// editor needs.
+func isCharDevice(w io.Writer) bool {
+	file, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := file.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
 // active reports whether escapes may be written: the in-flight indicator needs to know,
