@@ -21,7 +21,7 @@ func main() {
 
 	fmt.Println(messages.Banner())
 
-	runner := cli.New(application.Classifier.Classify, application.Dispatcher.Dispatch, os.Stdin, os.Stdout)
+	runner := cli.New(application.Classifier.Classify, application.Dispatcher.Dispatch, application.Data, os.Stdin, os.Stdout)
 	if err := runner.Run(); err != nil {
 		log.Fatalf("cli stopped: %v", err)
 	}

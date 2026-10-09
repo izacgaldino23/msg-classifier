@@ -37,7 +37,7 @@ func TestRenderPerAction(t *testing.T) {
 				Contact:  &models.Contact{ID: 7, Name: "Fulano Tal", Phone: strPtr("9292929290")},
 				Segments: []models.SegmentScore{{Text: "Fulano", Score: 0.91, Included: true}, {Text: "de", Score: 0.08, Included: false}},
 			},
-			[]string{"Contato salvo · ID 7", "nome: Fulano Tal", "telefone: 9292929290", "extração:", "Fulano 0.91 ✓", "de 0.08 ✗"},
+			[]string{"Contato salvo · ID 7", "nome", "Fulano Tal", "telefone", "9292929290", "extração:", "Fulano 0.91 ✓", "de 0.08 ✗"},
 		},
 		{
 			"contact found",
@@ -46,7 +46,7 @@ func TestRenderPerAction(t *testing.T) {
 				Contact:    &models.Contact{Name: "Fulano Tal", Email: strPtr("f@t.io")},
 				SearchTerm: "9292929290",
 			},
-			[]string{"Contato encontrado", "nome: Fulano Tal", "email: f@t.io"},
+			[]string{"Contato encontrado", "nome", "Fulano Tal", "email", "f@t.io"},
 		},
 		{
 			"contact not found",
@@ -57,9 +57,9 @@ func TestRenderPerAction(t *testing.T) {
 			"contact duplicate",
 			models.UseCaseOutcome{
 				Classification: classification(), Action: models.ActionContactDuplicate,
-				Contact: &models.Contact{Name: "Fulano", Phone: strPtr("9292929290")},
+				Contact: &models.Contact{ID: 12, Name: "Fulano", Phone: strPtr("9292929290")},
 			},
-			[]string{"Contato já existe: Fulano", "telefone: 9292929290"},
+			[]string{"Contato já existe: Fulano", "ID 12", "Fulano", "9292929290"},
 		},
 		{
 			"contact no data",
@@ -72,7 +72,7 @@ func TestRenderPerAction(t *testing.T) {
 				Classification: classification(), Action: models.ActionNoteAdd,
 				Notes: []*models.Note{{ID: 3, Type: models.NoteTypeReminder, Content: "pagar a conta de luz", Date: &date, Time: &clock}},
 			},
-			[]string{"Lembrete salvo · ID 3", "conteúdo: pagar a conta de luz", "data: 10/05/2026", "horário: 14:30"},
+			[]string{"Lembrete salvo · ID 3", "conteúdo", "pagar a conta de luz", "data", "10/05/2026", "horário", "14:30"},
 		},
 		{
 			"note add todo",
@@ -93,7 +93,7 @@ func TestRenderPerAction(t *testing.T) {
 					{ID: 2, Type: models.NoteTypeNote, Content: "renomear o projeto"},
 				},
 			},
-			[]string{"2 nota(s) encontrada(s) para '10/05/2026'", "[reminder] pagar a conta", "[note] renomear o projeto"},
+			[]string{"2 nota(s) encontrada(s) para '10/05/2026'", "Lembrete · ID 1", "pagar a conta", "Nota · ID 2", "renomear o projeto"},
 		},
 		{
 			"note not found",
@@ -114,7 +114,7 @@ func TestRenderPerAction(t *testing.T) {
 					Date: date, Party: "supermercado", Content: "compras no supermercado",
 				}},
 			},
-			[]string{"Transação salva · ID 7", "tipo: compra", "valor: R$ 1.234,56", "data: 10/05/2026", "estabelecimento: supermercado", "mensagem: compras no supermercado"},
+			[]string{"Transação salva · ID 7", "tipo", "compra", "valor", "R$ 1.234,56", "data", "10/05/2026", "estabelecimento", "supermercado", "mensagem", "compras no supermercado"},
 		},
 		{
 			"transaction found with total",
@@ -126,7 +126,7 @@ func TestRenderPerAction(t *testing.T) {
 					{ID: 2, Type: models.TransactionTypePurchase, Amount: 1250.5, Party: "supermercado", Date: date},
 				},
 			},
-			[]string{"2 transação(ões) para 'supermercado'", "total: R$ 1.300,50", "R$ 50,00 — supermercado", "R$ 1.250,50 — supermercado"},
+			[]string{"2 transação(ões) para 'supermercado'", "total: R$ 1.300,50", "R$ 50,00", "R$ 1.250,50", "supermercado"},
 		},
 		{
 			"transaction not found",
@@ -155,6 +155,26 @@ func TestRenderPerAction(t *testing.T) {
 	}
 }
 
+// A record is a bordered card: the title in the top border, a line per field. The
+// borders are what keep the answer from reading as more typed text.
+func TestRenderDrawsTheCardBorders(t *testing.T) {
+	out := Render(&models.UseCaseOutcome{
+		Classification: classification(), Action: models.ActionContactAdd,
+		Contact: &models.Contact{ID: 7, Name: "Fulano Tal"},
+	})
+	assert.Contains(t, out, "┌ Contato salvo · ID 7")
+	assert.Contains(t, out, "│ nome")
+	assert.Contains(t, out, "└")
+}
+
+// Render is the colorless entry point: whatever reaches a pipe or a file is plain.
+func TestRenderNeverEmitsEscapes(t *testing.T) {
+	out := Render(&models.UseCaseOutcome{
+		Classification: classification(), Action: models.ActionContactNotFound, SearchTerm: "fulano",
+	})
+	assert.NotContains(t, out, "\033", "no escapes when the output is not a terminal")
+}
+
 // A nil payload must still print, not panic: the CLI runs in a request path too.
 func TestRenderNeverPanics(t *testing.T) {
 	for _, action := range []models.Action{
@@ -172,8 +192,9 @@ func TestRenderNeverLeaksPointers(t *testing.T) {
 	out := Render(&models.UseCaseOutcome{
 		Classification: classification(),
 		Action:         models.ActionContactFound,
-		Contact:        &models.Contact{Name: "Sem telefone"},
+		Contact:        &models.Contact{Name: "Fulano"},
 	})
 	assert.NotContains(t, out, "0xc0", "a pointer address leaked into the output")
-	assert.NotContains(t, out, "telefone:")
+	assert.NotContains(t, out, "telefone", "a missing field is left out of the card")
+	assert.NotContains(t, out, "—", "…and is not dashed either")
 }

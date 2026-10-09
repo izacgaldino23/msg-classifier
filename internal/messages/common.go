@@ -28,3 +28,33 @@ func Classification(category, kind string, categoryConfidence, kindConfidence fl
 
 // Field is the label printed next to a value: Field("name"), Field("party")…
 func Field(name string) string { return T("cli.field." + name) }
+
+// Working is the indicator printed while a message waits on the classification call.
+func Working() string { return T("cli.working") }
+
+// HelpHeader titles the command table.
+func HelpHeader() string { return T("cli.help.header") }
+
+// HelpFooter is the line under the command table, explaining what is not a command.
+func HelpFooter() string { return T("cli.help.footer") }
+
+// HelpFor describes one command: HelpFor("contatos").
+func HelpFor(command string) string { return T("cli.help." + command) }
+
+// CommandUnknown is the line for a line that starts with "/" and matches no command.
+func CommandUnknown(command string) string { return format("cli.cmd.unknown", command) }
+
+// CommandBadFilter is the line for a filter word nobody recognizes.
+func CommandBadFilter(word string) string { return format("cli.cmd.bad_filter", word) }
+
+// CommandBadArgs is the line for an argument a one-argument command cannot use.
+func CommandBadArgs(word string) string { return format("cli.cmd.bad_args", word) }
+
+// ListCount titles a listing: ListCount("contacts", 2).
+func ListCount(kind string, count int) string { return format("cli.list."+kind, count) }
+
+// ListTotal is the total line of a finance listing, already formatted.
+func ListTotal(value string) string { return format("cli.list.total", value) }
+
+// ListEmpty is the line a listing with no rows prints: ListEmpty("contact").
+func ListEmpty(kind string) string { return T("cli.list.empty." + kind) }

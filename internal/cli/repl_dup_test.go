@@ -48,7 +48,7 @@ func TestRunnerDuplicateConfirmUpdate(t *testing.T) {
 	var action models.Action
 	var dupAction, message string
 
-	runner := New(okClassify, dupDispatch(&action, &dupAction, &message),
+	runner := New(okClassify, dupDispatch(&action, &dupAction, &message), &fakeData{},
 		strings.NewReader("09292929290 Fulano\nu\nexit\n"), &out)
 
 	require.NoError(t, runner.Run(), "Run()")
@@ -66,7 +66,7 @@ func TestRunnerDuplicateConfirmNew(t *testing.T) {
 	var action models.Action
 	var dupAction, message string
 
-	runner := New(okClassify, dupDispatch(&action, &dupAction, &message),
+	runner := New(okClassify, dupDispatch(&action, &dupAction, &message), &fakeData{},
 		strings.NewReader("09292929290 Fulano\nn\nexit\n"), &out)
 
 	require.NoError(t, runner.Run(), "Run()")
@@ -86,6 +86,7 @@ func TestRunnerDuplicateCancel(t *testing.T) {
 			calls++
 			return dupDispatch(&action, &dupAction, &message)(request, c)
 		},
+		&fakeData{},
 		strings.NewReader("09292929290 Fulano\nc\nexit\n"), &out)
 
 	require.NoError(t, runner.Run(), "Run()")
@@ -99,7 +100,7 @@ func TestRunnerDuplicateUnknownLineCancelsAndTreatsAsNewMessage(t *testing.T) {
 	var action models.Action
 	var dupAction, message string
 
-	runner := New(okClassify, dupDispatch(&action, &dupAction, &message),
+	runner := New(okClassify, dupDispatch(&action, &dupAction, &message), &fakeData{},
 		strings.NewReader("09292929290 Fulano\noutro texto qualquer\nexit\n"), &out)
 
 	require.NoError(t, runner.Run(), "Run()")
@@ -107,6 +108,30 @@ func TestRunnerDuplicateUnknownLineCancelsAndTreatsAsNewMessage(t *testing.T) {
 	assert.Equal(t, "outro texto qualquer", message, "a non-answer becomes the next message")
 	assert.Equal(t, "", dupAction, "the fresh message carries no dup_action")
 	assert.NotContains(t, out.String(), messages.Cancelled())
+}
+
+// A command is not a duplicate answer: it drops the pending confirmation and runs,
+// which keeps the two loops from swallowing each other's lines.
+func TestRunnerCommandDuringPendingDuplicateCancelsIt(t *testing.T) {
+	var out strings.Builder
+	var action models.Action
+	var dupAction, message string
+	calls := 0
+
+	runner := New(okClassify,
+		func(request *models.ReceiveMessageRequest, c *models.Classification) (*models.UseCaseOutcome, error) {
+			calls++
+			return dupDispatch(&action, &dupAction, &message)(request, c)
+		},
+		&fakeData{contacts: []models.Contact{{ID: 3, Name: "Maria"}}},
+		strings.NewReader("09292929290 Fulano\n/contatos\nexit\n"), &out)
+
+	require.NoError(t, runner.Run(), "Run()")
+
+	assert.Equal(t, 1, calls, "the command is not re-posted as a confirmation")
+	body := out.String()
+	assert.Contains(t, body, "Maria", "the command ran")
+	assert.NotContains(t, body, "Contato salvo", "the pending confirmation was dropped")
 }
 
 func TestRenderResultDuplicateNoteBlock(t *testing.T) {
@@ -117,7 +142,8 @@ func TestRenderResultDuplicateNoteBlock(t *testing.T) {
 		Message:        "lembra de pagar conta",
 	})
 	assert.Contains(t, body, "Nota já existe: pagar conta")
-	assert.Contains(t, body, "conteúdo: pagar conta")
+	assert.Contains(t, body, "pagar conta")
+	assert.Contains(t, body, "▸ lembra de pagar conta")
 }
 
 func TestRenderResultDuplicateTransactionBlock(t *testing.T) {
@@ -130,5 +156,5 @@ func TestRenderResultDuplicateTransactionBlock(t *testing.T) {
 		Message: "comprei 20",
 	})
 	assert.Contains(t, body, "Transação já existe")
-	assert.Contains(t, body, "estabelecimento: mercado")
+	assert.Contains(t, body, "mercado")
 }

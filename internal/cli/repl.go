@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -23,46 +24,54 @@ const userID = "cli"
 type ClassifyFunc func(request *models.ReceiveMessageRequest) (*models.Classification, error)
 type DispatchFunc func(request *models.ReceiveMessageRequest, classification *models.Classification) (*models.UseCaseOutcome, error)
 
-// Runner is the interactive loop: prompt, read a line, classify, dispatch, print.
+// Runner is the interactive loop: prompt, read a line, classify, dispatch, print. A
+// line that names a command goes to commands.go instead of the classifier.
 type Runner struct {
 	classify ClassifyFunc
 	dispatch DispatchFunc
+	data     DataLister
 	in       io.Reader
 	out      io.Writer
+	style    style
 
 	// pending is the message awaiting a duplicate answer (u/n/c, DC-008); empty
 	// means the loop is closed and the next line is a fresh message.
 	pending string
 }
 
-func New(classify ClassifyFunc, dispatch DispatchFunc, in io.Reader, out io.Writer) *Runner {
-	return &Runner{classify: classify, dispatch: dispatch, in: in, out: out}
+// New wires the loop. data is read only by the /commands.
+func New(classify ClassifyFunc, dispatch DispatchFunc, data DataLister, in io.Reader, out io.Writer) *Runner {
+	return &Runner{classify: classify, dispatch: dispatch, data: data, in: in, out: out, style: newStyle(out)}
 }
 
-// Run reads lines until "exit" or EOF. A failed message prints one line and the
-// loop continues, because a hiccup in one Jev call should not end the session.
+// Run reads lines until the exit command, "exit"/"sair"/"quit", or EOF. A failed
+// message prints one line and the loop continues, because a hiccup in one Jev call
+// should not end the session.
 //
 // ponytail: Ctrl+C needs no handler — SIGINT already ends the process, so a
 // signal.Notify would be code that changes nothing.
 func (r *Runner) Run() error {
 	scanner := bufio.NewScanner(r.in)
 	for {
-		fmt.Fprint(r.out, Prompt)
+		fmt.Fprint(r.out, r.style.accent(Prompt))
 
 		if !scanner.Scan() {
 			fmt.Fprintln(r.out)
 			return scanner.Err()
 		}
 		line := strings.TrimSpace(scanner.Text())
-		switch line {
-		case "":
+		if line == "" {
 			continue
-		case "exit", "sair", "quit":
+		}
+
+		cmd, args, isCommand, known := parse(line)
+		if isCommand && known && cmd.name == "/sair" {
 			return nil
 		}
 
 		// Duplicate confirmation loop (DC-008): only the first line after a
-		// duplicate is read as an answer; anything else cancels and starts over.
+		// duplicate is read as an answer; a command or any other line drops the
+		// pending and is handled on its own below.
 		if r.pending != "" {
 			switch answer := confirmAction(line); answer {
 			case "cancel":
@@ -72,35 +81,52 @@ func (r *Runner) Run() error {
 			case "update", "new":
 				message := r.pending
 				r.pending = ""
-				outcome, err := r.handle(message, answer)
-				if err != nil {
-					fmt.Fprintln(r.out, messages.ErrorLine(err))
-				} else {
-					fmt.Fprint(r.out, Render(outcome))
-					r.remember(outcome)
-				}
+				r.answerMessage(message, answer)
 				continue
-			default:
-				// Not an answer: the pending loop is dropped and this line is a
-				// fresh message.
-				r.pending = ""
 			}
+			r.pending = ""
 		}
 
-		outcome, err := r.handle(line, "")
-		if err != nil {
-			fmt.Fprintln(r.out, messages.ErrorLine(err))
+		if isCommand {
+			if !known {
+				r.reportBad(messages.CommandUnknown(cmd.name))
+				continue
+			}
+			if err := cmd.run(r, args); err != nil {
+				if errors.Is(err, errExitSession) {
+					return nil
+				}
+				fmt.Fprintln(r.out, messages.ErrorLine(err))
+			}
 			continue
 		}
-		fmt.Fprint(r.out, Render(outcome))
-		r.remember(outcome)
+
+		r.answerMessage(line, "")
 	}
+}
+
+// answerMessage classifies one message and prints its block. The in-flight indicator
+// is written only when the terminal can erase it again.
+func (r *Runner) answerMessage(message, dupAction string) {
+	if r.style.active() {
+		fmt.Fprint(r.out, r.style.dim(messages.Working()))
+	}
+	outcome, err := r.handle(message, dupAction)
+	if r.style.active() {
+		fmt.Fprint(r.out, "\r\033[K")
+	}
+	if err != nil {
+		fmt.Fprintln(r.out, messages.ErrorLine(err))
+		return
+	}
+	fmt.Fprint(r.out, r.style.render(outcome))
+	r.remember(outcome)
 }
 
 // remember opens the confirmation loop when the outcome is a duplicate.
 func (r *Runner) remember(outcome *models.UseCaseOutcome) {
 	if isDuplicate(outcome.Action) {
-		fmt.Fprintln(r.out, messages.DupOptions())
+		fmt.Fprintln(r.out, r.style.dim(messages.DupOptions()))
 		r.pending = outcome.Message
 		return
 	}

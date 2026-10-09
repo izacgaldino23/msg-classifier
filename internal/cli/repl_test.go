@@ -27,6 +27,7 @@ func okDispatch(request *models.ReceiveMessageRequest, _ *models.Classification)
 		},
 		Action:  models.ActionContactAdd,
 		Contact: &models.Contact{ID: 7, Name: "Fulano Tal"},
+		Message: request.Message,
 	}, nil
 }
 
@@ -39,6 +40,7 @@ func TestRunnerClassifiesAndPrintsEachLine(t *testing.T) {
 			return okClassify(request)
 		},
 		okDispatch,
+		&fakeData{},
 		strings.NewReader("salva o fulano\nexit\n"),
 		&out,
 	)
@@ -49,7 +51,9 @@ func TestRunnerClassifiesAndPrintsEachLine(t *testing.T) {
 	body := out.String()
 	assert.Contains(t, body, Prompt)
 	assert.Contains(t, body, "Contato salvo · ID 7")
-	assert.Contains(t, body, "nome: Fulano Tal")
+	assert.Contains(t, body, "nome")
+	assert.Contains(t, body, "Fulano Tal")
+	assert.Contains(t, body, "▸ salva o fulano", "the answer echoes what was typed")
 }
 
 // One failure must print one line and the loop must keep going: losing the session
@@ -66,6 +70,7 @@ func TestRunnerContinuesAfterAnError(t *testing.T) {
 			return okClassify(request)
 		},
 		okDispatch,
+		&fakeData{},
 		strings.NewReader("primeira\nsegunda\nexit\n"),
 		&out,
 	)
@@ -86,6 +91,7 @@ func TestRunnerSkipsBlankLines(t *testing.T) {
 			return okClassify(request)
 		},
 		okDispatch,
+		&fakeData{},
 		strings.NewReader("\n   \n\nexit\n"),
 		&out,
 	)
@@ -96,16 +102,16 @@ func TestRunnerSkipsBlankLines(t *testing.T) {
 
 func TestRunnerExitsOnEOF(t *testing.T) {
 	var out strings.Builder
-	runner := New(okClassify, okDispatch, strings.NewReader("oi\n"), &out)
+	runner := New(okClassify, okDispatch, &fakeData{}, strings.NewReader("oi\n"), &out)
 
 	require.NoError(t, runner.Run(), "EOF is a normal exit")
 	assert.Contains(t, out.String(), "Contato salvo · ID 7")
 }
 
 func TestRunnerExitWords(t *testing.T) {
-	for _, word := range []string{"exit", "sair", "quit", "  exit  "} {
+	for _, word := range []string{"exit", "sair", "quit", "  exit  ", "/sair"} {
 		var out strings.Builder
-		runner := New(okClassify, okDispatch, strings.NewReader(word+"\n"), &out)
+		runner := New(okClassify, okDispatch, &fakeData{}, strings.NewReader(word+"\n"), &out)
 		require.NoError(t, runner.Run(), "Run() with %q", word)
 		assert.NotContains(t, out.String(), "Contato salvo", "%q must stop before classifying", word)
 	}
@@ -119,6 +125,7 @@ func TestRunnerSendsTheCLIUserID(t *testing.T) {
 			return okClassify(request)
 		},
 		okDispatch,
+		&fakeData{},
 		strings.NewReader("oi\n"),
 		&strings.Builder{},
 	)
@@ -130,7 +137,7 @@ func TestRunnerSendsTheCLIUserID(t *testing.T) {
 
 func TestRunnerReturnsTheScannerError(t *testing.T) {
 	failing := &erroringReader{}
-	runner := New(okClassify, okDispatch, failing, &strings.Builder{})
+	runner := New(okClassify, okDispatch, &fakeData{}, failing, &strings.Builder{})
 
 	err := runner.Run()
 	require.Error(t, err, "a read failure must surface")
