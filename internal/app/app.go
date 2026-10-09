@@ -30,12 +30,31 @@ type App struct {
 	Prompts    *services.PromptService
 }
 
+// jevParts builds the four Jev-side dependencies from config once, so the full
+// core (New) and the database-free prompt runner (NewEvaluator) share the same
+// wiring instead of drifting in two copies.
+func jevParts() (*services.ClassificationService, *contact.ContactExtractor, *notes.NoteExtractor, *finance.FinanceExtractor) {
+	env := config.GetEnv()
+	jevClient := jev.NewClient(env.TypesafeApiUrl, env.TypesafeToken, env.TypesafeModel)
+	return services.NewClassificationService(jevClient),
+		contact.NewExtractor(jevClient),
+		notes.NewExtractor(jevClient),
+		finance.NewExtractor(jevClient)
+}
+
+// NewEvaluator wires only the Jev side — no database, no migration — so
+// cmd/prompts can run the prompt examples and measure a flow without ever
+// opening a SQLite file.
+func NewEvaluator() *services.PromptEvaluator {
+	classifier, extractor, noteExtractor, financeExtractor := jevParts()
+	return services.NewPromptEvaluator(classifier, extractor, noteExtractor, financeExtractor)
+}
+
 // New wires the whole core over dbPath. dbPath is a parameter rather than a config
 // read so a test can pass ":memory:"; the Jev credentials still come from config
 // because only the request path needs them and New never makes a call.
 func New(dbPath string) (*App, error) {
-	env := config.GetEnv()
-	jevClient := jev.NewClient(env.TypesafeApiUrl, env.TypesafeToken, env.TypesafeModel)
+	classifier, extractor, noteExtractor, financeExtractor := jevParts()
 
 	db, err := gorm.Open(sqlite.Open(dsn(dbPath)), &gorm.Config{})
 	if err != nil {
@@ -51,11 +70,6 @@ func New(dbPath string) (*App, error) {
 	if err := db.AutoMigrate(&models.Contact{}, &models.JevPrompt{}, &models.Note{}, &models.TodoItem{}, &models.Transaction{}); err != nil {
 		return nil, fmt.Errorf("failed to migrate database: %w", err)
 	}
-
-	classifier := services.NewClassificationService(jevClient)
-	extractor := contact.NewExtractor(jevClient)
-	noteExtractor := notes.NewExtractor(jevClient)
-	financeExtractor := finance.NewExtractor(jevClient)
 
 	contactRepo := repository.NewContactRepository(db)
 	notesRepo := repository.NewNotesRepository(db)
@@ -77,7 +91,8 @@ func New(dbPath string) (*App, error) {
 		}),
 		Data: services.NewDataService(contactRepo, notesRepo, transactionsRepo),
 		Prompts: services.NewPromptService(
-			repository.NewPromptRepository(db), classifier, extractor, noteExtractor, financeExtractor,
+			repository.NewPromptRepository(db),
+			services.NewPromptEvaluator(classifier, extractor, noteExtractor, financeExtractor),
 		),
 	}, nil
 }

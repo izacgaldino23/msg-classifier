@@ -25,7 +25,7 @@ func newPromptService(t *testing.T, classifier *ClassificationService, extractor
 	t.Helper()
 	db := newTestDB(t)
 	require.NoError(t, db.AutoMigrate(&models.JevPrompt{}), "AutoMigrate(JevPrompt)")
-	return NewPromptService(repository.NewPromptRepository(db), classifier, extractor, noteExtractor, financeExtractor), db
+	return NewPromptService(repository.NewPromptRepository(db), NewPromptEvaluator(classifier, extractor, noteExtractor, financeExtractor)), db
 }
 
 // failFirstJevClient fails the first Jev call, then succeeds — for per-prompt error capture.

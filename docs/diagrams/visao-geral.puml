@@ -1,6 +1,6 @@
 @startuml visao-geral
 !theme plain
-title msg-classifier — três entrypoints sobre um core só
+title msg-classifier — quatro entrypoints sobre um core só
 
 skinparam shadowing false
 skinparam linetype ortho
@@ -11,6 +11,7 @@ rectangle "Apresentação — um presenter por entrypoint, nenhuma regra de neg�
   component "cmd/web\nhtmx + templates · :8080" as web
   component "cmd/api\nJSON + swagger · :8081" as api
   component "cmd/cli\nREPL no terminal" as cli
+  component "cmd/prompts\nrunner de exemplos (make prompts)" as pcli
 }
 
 rectangle "Core — internal/app amarra tudo" as core {
@@ -20,7 +21,7 @@ rectangle "Core — internal/app amarra tudo" as core {
   component "NotesService" as notes
   component "FinanceService" as finance
   component "DataService\nlistar · editar · apagar" as data
-  component "PromptService\nharness do /prompts" as prompts
+  component "PromptService + PromptEvaluator\nharness do /prompts + runner por arquivo" as prompts
 }
 
 rectangle "Infraestrutura" as infra {
@@ -42,6 +43,7 @@ api --> classify
 api --> data : só leitura
 cli --> classify
 cli --> data : listagens
+pcli --> prompts : sem banco
 
 classify --> dispatch
 dispatch --> contact
@@ -68,7 +70,10 @@ end note
 note bottom of prompts
   o harness reusa os extractors do fluxo
   de mensagem (Classify, ExtractName,
-  ExtractType, Extract) — não há caminho paralelo
+  ExtractType, Extract) — não há caminho paralelo.
+  cmd/prompts usa só o PromptEvaluator (Jev,
+  sem SQLite): lê scripts/prompts/exemplos.json
+  e gera o seed SQL — uma fonte, sem drift
 end note
 
 @enduml

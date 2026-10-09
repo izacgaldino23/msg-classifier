@@ -10,7 +10,7 @@ And the **finance** flow (`FinanceService`): a second Jev call asks for the tran
 
 A third surface, **`/data`**, browses and edits what those flows persisted, one tab per kind. `DataService` composes `ContactRepository`, `NotesRepository` and `TransactionRepository` directly — `ContactService`/`NotesService`/`FinanceService` belong to the classification flow and are not reused here — and `DataController` exposes it as htmx partials: filter pills, a search box on every tab, a per-record edit panel and bulk delete. No Jev call happens on this screen.
 
-Since DC-009 the same core is served by **three entrypoints** — `cmd/web` (the htmx app), `cmd/api` (a read-only JSON REST API with swagger) and `cmd/cli` (a terminal REPL) — all wired through `internal/app`. Each entrypoint brings its own presenter (`internal/views`, `internal/api`, `internal/cli`) and none of them re-implements business logic or PT-BR formatting.
+Since DC-009 the same core is served by **four entrypoints** — `cmd/web` (the htmx app), `cmd/api` (a read-only JSON REST API with swagger), `cmd/cli` (a terminal REPL) and `cmd/prompts` (the batch prompt runner, IMP-008) — all wired through `internal/app`. Each entrypoint brings its own presenter (`internal/views`, `internal/api`, `internal/cli`) and none of them re-implements business logic or PT-BR formatting; `cmd/prompts` brings no presenter at all, it prints the evaluator's rows directly.
 
 The codebase follows a **semantic MVC pattern** on an idiomatic Go layout:
 
@@ -43,6 +43,8 @@ msg-classifier/
 │   │   └── main.go              # REST entrypoint (DC-009): JSON routes + swagger UI, nothing else
 │   ├── cli/
 │   │   └── main.go              # Terminal REPL entrypoint (DC-009): one line in, plain-text outcome out
+│   ├── prompts/
+│   │   └── main.go              # Batch prompt runner (IMP-008): JSON/CSV de exemplos → avaliação Jev sem banco, exit não-zero em falha (make prompts)
 │   └── web/
 │       └── main.go              # Composition root is internal/app; this is templates + routes only
 ├── internal/                    # Private application code (not importable externally)
@@ -52,7 +54,7 @@ msg-classifier/
 │   │   ├── message_controller.go# POST /api/v1/messages (bind → Classify → Dispatch → JSON)
 │   │   └── data_controller.go   # read-only GET /contacts, /notes, /transactions over DataService
 │   ├── app/
-│   │   └── app.go               # composition root: config → jev → db → repos → services → dispatcher
+│   │   └── app.go               # composition root: config → jev → db → repos → services → dispatcher; NewEvaluator (Jev only)
 │   ├── cli/                     # C — the terminal presenter over the same core (no views/api import)
 │   │   ├── commands.go          # the /commands: the parser, the PT-BR filters and the three listings
 │   │   ├── editor.go            # the line editor: raw switch per line + the session history (↑/↓)
@@ -93,7 +95,9 @@ msg-classifier/
 │   ├── services/                     # M — business rules
 │   │   ├── classification.go         # ClassificationService (single Jev call, checked answer mapping)
 │   │   ├── dispatcher.go             # Dispatcher (category → handler registry) + CategoryHandler interface
-│   │   ├── prompt.go                 # PromptService (validation harness: Add, ListByFlow, Evaluate, ExportCSV)
+│   │   ├── prompt.go                 # PromptService (harness persistido: Add, ListByFlow, seleção + delegação de export)
+│   │   ├── prompt_eval.go            # PromptEvaluator (Jev puro, sem banco): evaluateOne, ExportCSV, WriteResultsCSV
+│   │   ├── prompt_file.go            # LoadPromptsFile (JSON/CSV) + SeedSQL (exemplos.json → seed_prompts.sql)
 │   │   ├── data.go                   # DataService (browse/edit/delete over ContactRepository + NotesRepository + TransactionRepository)
 │   │   ├── contact/                  # the contact use case, end to end
 │   │   │   ├── contact.go            # ContactService (add + duplicate check + NameNorm backfill; require routing)
@@ -141,8 +145,10 @@ msg-classifier/
 │           ├── data_detail.html         # drawer panel body: contact/note/transaction form in view + edit mode
 │           ├── data_item_row.html       # one to-do item row (existing rows reuse it via {{ template }})
 ├── scripts/
+│   ├── prompts/
+│   │   └── exemplos.json    # o catálogo de exemplos — uma fonte (JSON), o que make prompts roda
 │   └── sql/
-│       └── seed_prompts.sql    # wipe + re-seed jev_prompts examples
+│       └── seed_prompts.sql    # wipe + re-seed jev_prompts examples (gerado de exemplos.json via make prompts-sql)
 ├── go.mod / go.sum              # Module "msg-classifier", Go 1.25.4
 ├── local.env                    # Env vars (not committed secrets)
 ├── .vscode/launch.json          # Go debug config for cmd/web/main.go
@@ -277,10 +283,13 @@ msg-classifier/
 - `data_detail.html`: the drawer panel body. One form serves both modes — `view` renders the `fieldset` disabled with an "Editar" button that fetches the same record with `mode=edit`. A reminder shows date + time, a to-do a `#todo-items` editor with add/remove rows, a plain note only the content, and a transaction a type `<wa-select>` + amount + date + party + original message.
 - `data_item_row.html`: a single to-do row (text input + done checkbox + delete button). Existing rows render it with `{{ template }}` and "Adicionar item" fetches the same partial from `/data/item-row` — one row markup, not two.
 
-### 12. Prompt Service (validation harness) — `internal/services/prompt.go` + `prompt_controller.go`
-- `PromptService` orchestrates the Jev validation harness: `Add` (validates flow ∈ {classification, name, note, finance} and non-empty fields, `ErrInvalidPrompt` → 400), `ListByFlow`, `Evaluate` (loads prompts by flow, filters to selected ids, runs the exact production paths — `ClassificationService.Classify` for classification, `ContactExtractor.ExtractName` for name (with the phone/email spans stripped first, exactly as `ContactService.Add` does, so the email/phone is never a name segment), `NoteExtractor.ExtractType` for note (expected/obtained are the sub-type, compared case-insensitively) and `FinanceExtractor.Extract` for finance (expected/obtained are the transaction type, and the party fan-out's segment trace rides along in the row) — and compares expected vs obtained; a Jev failure for one prompt is captured in its row as the obtained result with match=false and evaluation continues), and `ExportCSV` (writes the given evaluation results to `exports/<flow>-<yyyyMMdd-HHmmss>.csv` via `encoding/csv`, folder created on demand — no re-run, the CSV mirrors the evaluation the user just saw).
+### 12. Prompt Service & Runner (validation harness) — `internal/services/prompt.go` + `prompt_eval.go` + `prompt_file.go` + `cmd/prompts/main.go`
+- The harness is split in two on the database seam. `PromptService` owns the persisted side — `Add` (validates flow ∈ {classification, name, note, finance} and non-empty fields via the shared `validatePrompt`, `ErrInvalidPrompt` → 400), `ListByFlow`, `Evaluate` (loads by flow, filters to selected ids, delegates to the evaluator) and `ExportCSV` (delegates to the evaluator). The web (`PromptController`) is unchanged and still reads the database.
+- `PromptEvaluator` is the Jev-only half: it takes the four production dependencies and no repository, so the same evaluation runs from the browser and from a file. `evaluateOne` runs the exact production paths — `ClassificationService.Classify` for classification, `ContactExtractor.ExtractName` for name (with the phone/email spans stripped first, exactly as `ContactService.Add` does, so the email/phone is never a name segment), `NoteExtractor.ExtractType` for note (expected/obtained are the sub-type, compared case-insensitively) and `FinanceExtractor.Extract` for finance (expected/obtained are the transaction type, with the party fan-out's segment trace riding along in the row); a Jev failure for one prompt is captured in its row as the obtained result with match=false and evaluation continues. `WriteResultsCSV` is the shared CSV layout (`id, message, expected_result, obtained_result, match, executed_at`); `ExportCSV` wraps it for the web export at `exports/<flow>-<yyyyMMdd-HHmmss>.csv` (folder created on demand, no re-run).
+- `app.New` wires the full core (SQLite + repos + the evaluator); `app.NewEvaluator` wires only the Jev parts (`jevParts`, the one construction site for the four Jev dependencies) — no SQLite, no migration — and is what `cmd/prompts` uses. The two entrypoints can never drift because they share `jevParts`.
+- `cmd/prompts` is the batch runner: `-file` (JSON or CSV of `{flow, message, expected_result}`, default `scripts/prompts/exemplos.json`), `-flow`, `-workers` (a worker pool, default 4, results back in file order), `-csv` (write the results) and `-sql` (regenerate the seed SQL and exit); it prints ✓/✗ per row plus a summary and exits 1 when any row misses, so a script or CI can gate on it. The examples live **once** in `scripts/prompts/exemplos.json` — a JSON array in `models.JevPrompt` shape (id/timestamps ignored; CSV accepted on read with the `flow,message,expected_result` header, and the same `validatePrompt` rule per row, so a bad row fails the run, not the web). `make prompts-sql` regenerates `scripts/sql/seed_prompts.sql` from it (`SeedSQL` renders a wipe + a single INSERT grouped by flow, byte-identical to the committed file), so the web harness and the runner can never drift. `make prompts` / `make prompts-sql` are the two Make targets.
 - `PromptController` is thin: `Page` renders the page, `Table` renders the `prompt_table` partial, `Add` persists and re-renders the table, `Evaluate` renders `evaluation_results` (and, when the form's export checkbox is set, saves the CSV first). Bind failures → 400, invalid prompt → 400, service failures → 500 (existing `renderServiceError`).
-- The harness reuses the exact production Jev paths — no new request-building code.
+- The harness reuses the exact production Jev paths — no new request-building code, on the web or in the runner.
 
 ### 13. Data Screen — `internal/services/data.go` + `internal/controllers/data_controller.go`
 - `DataService` is the browse/edit/delete use case for persisted contacts, notes and transactions. It composes `ContactRepository`, `NotesRepository` and `TransactionRepository` directly instead of going through `ContactService`/`NotesService`/`FinanceService`, which carry classification-flow extraction logic that means nothing here. It reuses the note flow's `ParseDate`/`ParseTime`, the finance flow's `ParseAmount`/`ParseEventDate`, so there is still one PT-BR date and money implementation.
@@ -502,13 +511,18 @@ make web    # loads local.env, serves on :8080
 make api    # serves JSON on :8081 — API_PORT
 make cli    # terminal REPL (msg> prompt)
 
+# The prompt harness — no database
+make prompts       # run scripts/prompts/exemplos.json through the real Jev paths (exit ≠ 0 on miss)
+make prompts-sql   # regenerate scripts/sql/seed_prompts.sql from the JSON examples
+
 # Or directly
 go run ./cmd/web   # Web
 go run ./cmd/api   # REST API
 go run ./cmd/cli   # CLI
+go run ./cmd/prompts -file scripts/prompts/exemplos.json   # prompt runner
 
 # Build binaries
-go build ./cmd/web ./cmd/api ./cmd/cli
+go build ./cmd/web ./cmd/api ./cmd/cli ./cmd/prompts
 
 # Debug (VS Code)
 # .vscode/launch.json → "API Debug" runs cmd/web/main.go from workspace root

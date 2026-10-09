@@ -94,5 +94,11 @@
   "cli.field.amount": "valor",
   "cli.field.party": "estabelecimento",
   "cli.field.message": "mensagem",
-  "cli.field.total": "total"
+  "cli.field.total": "total",
+  "prompts.run.ok": "✓ [%s] %s",
+  "prompts.run.mismatch": "✗ [%s] esperado %s · obtido %s",
+  "prompts.run.summary": "ok %d de %d · %d falha(s)",
+  "prompts.run.file_empty": "nenhum prompt do fluxo %s em %s",
+  "prompts.run.csv_written": "csv: %s",
+  "prompts.run.sql_written": "seed sql: %d prompt(s) → %s"
 }
