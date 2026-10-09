@@ -5,6 +5,7 @@
 To learn fast, check ARCHITECTURE.md and CODE_STYLE.md.
 - `/prompts` — Jev validation harness (examples in `scripts/sql/seed_prompts.sql`, CSV exports to `exports/`).
 - `/data` — data screen (DC-006): browse/edit/delete contacts, notes and transactions, no Jev calls.
+- `docs/diagrams/` — os diagramas de fluxo em PlantUML (fonte versionado; nenhuma imagem).
 
 ## After editing the code
 
@@ -21,6 +22,17 @@ Also after implementing anything from docs/decisions, add a subheading with a su
 ## Text
 
 - Todo texto que o usuario le vem de `internal/messages` (locales/*.json). Nunca hardcodar portugues em Go, e nunca chamar uma chave crua no call site: use a funcao tipada (`messages.ContactSaved(id)`). Layout (indentacao, HTML, `": "`) continua na superficie.
+
+## Diagramas de fluxo
+
+O fluxo vive em `docs/diagrams/*.puml` (PlantUML, so o fonte — nenhuma imagem e gerada ou commitada). Se voce mudar o fluxo — uma categoria, uma action, uma rota, um comando, um filtro, uma tela — **atualize o diagrama na mesma mudanca**, senao a visao geral passa a mentir.
+
+- `visao-geral.puml` — os tres entrypoints (web · api · cli) sobre um core so.
+- `fluxo-mensagem.puml` — o limite de uma mensagem: classificacao, contact · notes · finance (add x require) e o loop de duplicado.
+- `fluxo-dados.puml` — a tela `/data` (e quem mais le o mesmo DataService).
+- `fluxo-cli.puml` — o REPL: comando x mensagem.
+
+Valide a sintaxe com `java -jar plantuml.jar -checkonly docs/diagrams/*.puml`.
 
 ## Git
 
