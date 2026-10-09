@@ -5,3 +5,4 @@ thoughts/
 *.db-wal
 .vscode
 exports/
+.gocache/
