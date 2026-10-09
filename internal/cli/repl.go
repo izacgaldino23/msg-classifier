@@ -88,8 +88,17 @@ func (r *Runner) Run() error {
 		}
 
 		if isCommand {
+			// Separate the answer from the prompt, the way the message block does:
+			// the table would otherwise start on the prompt line.
+			fmt.Fprintln(r.out)
 			if !known {
 				r.reportBad(messages.CommandUnknown(cmd.name))
+				continue
+			}
+			// "--ajuda" (or "-h") on any command prints that command's long
+			// help instead of running it.
+			if isHelpFlag(args) {
+				r.printCommandHelp(cmd.name)
 				continue
 			}
 			if err := cmd.run(r, args); err != nil {

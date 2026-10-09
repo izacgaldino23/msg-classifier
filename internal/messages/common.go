@@ -38,17 +38,18 @@ func HelpHeader() string { return T("cli.help.header") }
 // HelpFooter is the line under the command table, explaining what is not a command.
 func HelpFooter() string { return T("cli.help.footer") }
 
-// HelpFor describes one command: HelpFor("contatos").
+// HelpFor describes one command in the short table: HelpFor("contatos").
 func HelpFor(command string) string { return T("cli.help." + command) }
+
+// HelpDetail is one command's long help — what it does, its filters and examples:
+// HelpDetail("contatos").
+func HelpDetail(command string) string { return T("cli.help." + command + ".detail") }
+
+// HelpHint points from the short table to the per-command help.
+func HelpHint() string { return T("cli.help.hint") }
 
 // CommandUnknown is the line for a line that starts with "/" and matches no command.
 func CommandUnknown(command string) string { return format("cli.cmd.unknown", command) }
-
-// CommandBadFilter is the line for a filter word nobody recognizes.
-func CommandBadFilter(word string) string { return format("cli.cmd.bad_filter", word) }
-
-// CommandBadArgs is the line for an argument a one-argument command cannot use.
-func CommandBadArgs(word string) string { return format("cli.cmd.bad_args", word) }
 
 // ListCount titles a listing: ListCount("contacts", 2).
 func ListCount(kind string, count int) string { return format("cli.list."+kind, count) }

@@ -12,10 +12,11 @@ import (
 
 // DataLister is the browse surface the /commands read. *services.DataService
 // satisfies it, and this interface is all the CLI knows of the service layer — the
-// same reason classify and dispatch arrive as plain functions.
+// same reason classify and dispatch arrive as plain functions. Each listing takes a
+// filter token and an optional search term.
 type DataLister interface {
-	ListContacts(filter string) ([]models.Contact, error)
-	ListNotes(filter string) ([]*models.Note, error)
+	ListContacts(filter, term string) ([]models.Contact, error)
+	ListNotes(filter, term string) ([]*models.Note, error)
 	ListTransactions(filter, term string) ([]*models.Transaction, error)
 }
 
@@ -36,20 +37,21 @@ type command struct {
 // initialization cycle.
 func commandTable() []command {
 	return []command{
-		{"/ajuda", "", "ajuda", func(r *Runner, _ []string) error { return r.showHelp() }},
-		{"/contatos", "[filtro]", "contatos", (*Runner).showContacts},
-		{"/notas", "[filtro]", "notas", (*Runner).showNotes},
+		{"/ajuda", "[comando]", "ajuda", (*Runner).showHelp},
+		{"/contatos", "[filtro] [termo]", "contatos", (*Runner).showContacts},
+		{"/notas", "[filtro] [termo]", "notas", (*Runner).showNotes},
 		{"/financas", "[filtro] [termo]", "financas", (*Runner).showTransactions},
 		{"/limpar", "", "limpar", (*Runner).clearScreen},
 		{"/sair", "", "sair", func(*Runner, []string) error { return errExitSession }},
 	}
 }
 
-// aliases resolve a typed word to a canonical command: the short forms and the bare
-// words the terminal has always accepted for exit. The bare letters u/n/c are NOT
-// here — they answer the duplicate confirmation loop (DC-008).
+// aliases resolve a typed word to a canonical command: the short forms, the bare
+// words the terminal has always accepted for exit, and the help flags. The bare
+// letters u/n/c are NOT here — they answer the duplicate confirmation loop (DC-008).
 var aliases = map[string]string{
 	"/ajuda": "/ajuda", "/?": "/ajuda", "/help": "/ajuda", "ajuda": "/ajuda", "?": "/ajuda",
+	"--ajuda": "/ajuda", "-h": "/ajuda",
 	"/contatos": "/contatos", "/c": "/contatos",
 	"/notas": "/notas", "/n": "/notas",
 	"/financas": "/financas", "/f": "/financas",
@@ -92,8 +94,17 @@ func parse(line string) (cmd command, args []string, isCommand, known bool) {
 	return command{name: name}, nil, true, false
 }
 
-// showHelp prints the command table: the command in the accent color, the description dim.
-func (r *Runner) showHelp() error {
+// showHelp prints the short command table, or one command's long help when a command
+// is named: "/ajuda contatos" is the same as "/contatos --ajuda".
+func (r *Runner) showHelp(args []string) error {
+	if len(args) > 0 {
+		name := canonicalCommand(args[0])
+		if name == "" {
+			return r.reportBad(messages.CommandUnknown(args[0]))
+		}
+		r.printCommandHelp(name)
+		return nil
+	}
 	rows := make([][]string, 0, len(commandTable()))
 	for _, cmd := range commandTable() {
 		line := cmd.name
@@ -104,15 +115,53 @@ func (r *Runner) showHelp() error {
 	}
 	fmt.Fprint(r.out, r.style.box(messages.HelpHeader(), nil, rows, nil, []string{"accent", "dim"}))
 	fmt.Fprintln(r.out, "  "+r.style.dim(messages.HelpFooter()))
+	fmt.Fprintln(r.out, "  "+r.style.dim(messages.HelpHint()))
 	return nil
 }
 
-func (r *Runner) showContacts(args []string) error {
-	filter, bad := oneFilter(args, contactFilters)
-	if bad != "" {
-		return r.reportBad(bad)
+// printCommandHelp prints one command's long help — what it does, its filters and its
+// examples — in the same box the short table uses. The text is one locale string per
+// command, split into lines.
+func (r *Runner) printCommandHelp(name string) {
+	lines := strings.Split(messages.HelpDetail(strings.TrimPrefix(name, "/")), "\n")
+	rows := make([][]string, 0, len(lines))
+	for _, line := range lines {
+		rows = append(rows, []string{line})
 	}
-	contacts, err := r.data.ListContacts(filter)
+	fmt.Fprint(r.out, r.style.box(name, nil, rows, nil, nil))
+}
+
+// canonicalCommand resolves a word or an alias to a command name, or "" when nobody
+// knows it: "contatos" and "/c" both land on "/contatos".
+func canonicalCommand(word string) string {
+	word = strings.ToLower(strings.TrimSpace(word))
+	if name, ok := aliases[word]; ok {
+		return name
+	}
+	if !strings.HasPrefix(word, "/") {
+		word = "/" + word
+	}
+	for _, candidate := range commandTable() {
+		if candidate.name == word {
+			return word
+		}
+	}
+	return ""
+}
+
+// isHelpFlag reports whether a command line carries the long-help flag.
+func isHelpFlag(args []string) bool {
+	for _, arg := range args {
+		if arg == "--ajuda" || arg == "-h" {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *Runner) showContacts(args []string) error {
+	filter, term := filterAndTerm(args, contactFilters)
+	contacts, err := r.data.ListContacts(filter, term)
 	if err != nil {
 		return err
 	}
@@ -135,11 +184,8 @@ func (r *Runner) showContacts(args []string) error {
 }
 
 func (r *Runner) showNotes(args []string) error {
-	filter, bad := oneFilter(args, noteFilters)
-	if bad != "" {
-		return r.reportBad(bad)
-	}
-	notes, err := r.data.ListNotes(filter)
+	filter, term := filterAndTerm(args, noteFilters)
+	notes, err := r.data.ListNotes(filter, term)
 	if err != nil {
 		return err
 	}
@@ -171,7 +217,7 @@ func (r *Runner) showNotes(args []string) error {
 }
 
 func (r *Runner) showTransactions(args []string) error {
-	filter, term := transactionFilter(args)
+	filter, term := filterAndTerm(args, transactionFilters)
 	transactions, err := r.data.ListTransactions(filter, term)
 	if err != nil {
 		return err
@@ -213,34 +259,19 @@ func (r *Runner) clearScreen(_ []string) error {
 	return nil
 }
 
-// transactionFilter reads the optional filter word and the search term: the first
-// argument is a filter only when it names a type, so "/financas mercado" searches for
-// "mercado" across every type.
-func transactionFilter(args []string) (filter, term string) {
+// filterAndTerm reads the optional filter word and the search term the way every
+// listing does: the first argument is a filter only when it names one, so
+// "/contatos silva" searches for "silva" while "/contatos telefone silva" filters by
+// phone and searches. Everything after the filter is the term.
+func filterAndTerm(args []string, filters map[string]string) (filter, term string) {
 	filter = "all"
 	if len(args) == 0 {
 		return filter, ""
 	}
-	if token, ok := transactionFilters[strings.ToLower(args[0])]; ok {
+	if token, ok := filters[strings.ToLower(args[0])]; ok {
 		filter, args = token, args[1:]
 	}
 	return filter, strings.Join(args, " ")
-}
-
-// oneFilter maps the optional PT-BR filter word to the service token. A word nobody
-// knows and a second argument both come back as the text of one line to print.
-func oneFilter(args []string, filters map[string]string) (filter, bad string) {
-	switch len(args) {
-	case 0:
-		return "all", ""
-	case 1:
-		if token, ok := filters[strings.ToLower(args[0])]; ok {
-			return token, ""
-		}
-		return "", messages.CommandBadFilter(args[0])
-	default:
-		return "", messages.CommandBadArgs(args[1])
-	}
 }
 
 // reportBad prints an error line a command produced from user input: expected, so it
