@@ -10,20 +10,32 @@
 
         <wa-tab-panel id="pane-contacts" name="contacts" active>
             <div class="filter-pills wa-cluster wa-gap-xs">
-                <wa-button size="s" variant="brand" data-filter-pill hx-get="/data/table?kind=contact&filter=all" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" hx-trigger="load, click" onclick="markFilterPill(this)">Todos</wa-button>
-                <wa-button size="s" data-filter-pill hx-get="/data/table?kind=contact&filter=phone" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" onclick="markFilterPill(this)">Com telefone</wa-button>
-                <wa-button size="s" data-filter-pill hx-get="/data/table?kind=contact&filter=email" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" onclick="markFilterPill(this)">Com e-mail</wa-button>
-                <wa-button size="s" data-filter-pill hx-get="/data/table?kind=contact&filter=name" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" onclick="markFilterPill(this)">Só nome</wa-button>
+                <wa-button size="s" variant="brand" data-filter-pill data-filter="all" hx-get="/data/table?kind=contact&filter=all" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" hx-trigger="load, click" onclick="markFilterPill(this)">Todos</wa-button>
+                <wa-button size="s" data-filter-pill data-filter="phone" hx-get="/data/table?kind=contact&filter=phone" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" onclick="markFilterPill(this)">Com telefone</wa-button>
+                <wa-button size="s" data-filter-pill data-filter="email" hx-get="/data/table?kind=contact&filter=email" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" onclick="markFilterPill(this)">Com e-mail</wa-button>
+                <wa-button size="s" data-filter-pill data-filter="name" hx-get="/data/table?kind=contact&filter=name" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" onclick="markFilterPill(this)">Só nome</wa-button>
             </div>
+            <form id="contactSearchForm" class="wa-cluster wa-gap-xs" hx-get="/data/table" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" hx-trigger="input changed delay:400ms from:#contactSearch, search, submit">
+                <input type="hidden" name="kind" value="contact">
+                <input type="hidden" name="filter" value="all" class="search-filter">
+                <input type="search" id="contactSearch" name="search" placeholder="Buscar por nome, telefone ou e-mail...">
+                <wa-button type="submit" variant="brand">Buscar</wa-button>
+            </form>
         </wa-tab-panel>
 
         <wa-tab-panel id="pane-notes" name="notes">
             <div class="filter-pills wa-cluster wa-gap-xs">
-                <wa-button size="s" variant="brand" data-filter-pill hx-get="/data/table?kind=notes&filter=all" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" onclick="markFilterPill(this)">Todas</wa-button>
-                <wa-button size="s" data-filter-pill hx-get="/data/table?kind=notes&filter=note" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" onclick="markFilterPill(this)">Notas</wa-button>
-                <wa-button size="s" data-filter-pill hx-get="/data/table?kind=notes&filter=reminder" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" onclick="markFilterPill(this)">Lembretes</wa-button>
-                <wa-button size="s" data-filter-pill hx-get="/data/table?kind=notes&filter=todo" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" onclick="markFilterPill(this)">Listas</wa-button>
+                <wa-button size="s" variant="brand" data-filter-pill data-filter="all" hx-get="/data/table?kind=notes&filter=all" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" onclick="markFilterPill(this)">Todas</wa-button>
+                <wa-button size="s" data-filter-pill data-filter="note" hx-get="/data/table?kind=notes&filter=note" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" onclick="markFilterPill(this)">Notas</wa-button>
+                <wa-button size="s" data-filter-pill data-filter="reminder" hx-get="/data/table?kind=notes&filter=reminder" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" onclick="markFilterPill(this)">Lembretes</wa-button>
+                <wa-button size="s" data-filter-pill data-filter="todo" hx-get="/data/table?kind=notes&filter=todo" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" onclick="markFilterPill(this)">Listas</wa-button>
             </div>
+            <form id="noteSearchForm" class="wa-cluster wa-gap-xs" hx-get="/data/table" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" hx-trigger="input changed delay:400ms from:#noteSearch, search, submit">
+                <input type="hidden" name="kind" value="notes">
+                <input type="hidden" name="filter" value="all" class="search-filter">
+                <input type="search" id="noteSearch" name="search" placeholder="Buscar no conteúdo...">
+                <wa-button type="submit" variant="brand">Buscar</wa-button>
+            </form>
         </wa-tab-panel>
 
         <wa-tab-panel id="pane-finance" name="finance">
@@ -36,7 +48,7 @@
             </div>
             <form id="txSearchForm" class="wa-cluster wa-gap-xs" hx-get="/data/table" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" hx-trigger="input changed delay:400ms from:#txSearch, search, submit">
                 <input type="hidden" name="kind" value="transaction">
-                <input type="hidden" name="filter" value="all" id="txSearchFilter">
+                <input type="hidden" name="filter" value="all" id="txSearchFilter" class="search-filter">
                 <input type="search" id="txSearch" name="search" placeholder="Buscar por estabelecimento, pessoa ou valor...">
                 <wa-button type="submit" variant="brand">Buscar</wa-button>
             </form>
@@ -61,11 +73,12 @@
         function markFilterPill(pill) {
             pill.closest('.filter-pills').querySelectorAll('wa-button')
                 .forEach(p => p.setAttribute('variant', p === pill ? 'brand' : 'neutral'));
-            // The finance search box carries its own filter, so a pill click
-            // re-points it: otherwise a search would filter a different type
-            // than the one on screen.
-            if (pill.dataset.filter) {
-                document.getElementById('txSearchFilter').value = pill.dataset.filter;
+            // Every search box carries its own filter, so a pill click
+            // re-points the one on its pane: otherwise a search would filter a
+            // different type than the one on screen.
+            const hidden = pill.closest('wa-tab-panel')?.querySelector('.search-filter');
+            if (pill.dataset.filter && hidden) {
+                hidden.value = pill.dataset.filter;
             }
         }
 

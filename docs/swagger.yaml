@@ -162,6 +162,10 @@ paths:
         in: query
         name: filter
         type: string
+      - description: term matched against the name, the phone or the email
+        in: query
+        name: search
+        type: string
       produces:
       - application/json
       responses:
@@ -230,6 +234,10 @@ paths:
       - description: all|note|reminder|todo
         in: query
         name: filter
+        type: string
+      - description: term matched against the note content
+        in: query
+        name: search
         type: string
       produces:
       - application/json

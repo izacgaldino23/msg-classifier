@@ -40,28 +40,44 @@ func noteTestDate() time.Time { return time.Date(2026, 5, 10, 0, 0, 0, 0, time.U
 
 func TestDataServiceListContacts(t *testing.T) {
 	service, db := newDataService(t)
-	db.Create(&models.Contact{Name: "Só telefone", Phone: strPtr("1111111111")})
-	db.Create(&models.Contact{Name: "Só nome"})
+	db.Create(&models.Contact{Name: "Só telefone", NameNorm: "so telefone", Phone: strPtr("1111111111")})
+	db.Create(&models.Contact{Name: "Só nome", NameNorm: "so nome"})
 
-	all, err := service.ListContacts(ContactFilterAll)
+	all, err := service.ListContacts(ContactFilterAll, "")
 	require.NoError(t, err)
 	assert.Len(t, all, 2)
 
-	empty, err := service.ListContacts("")
+	empty, err := service.ListContacts("", "")
 	require.NoError(t, err, "an empty filter means all")
 	assert.Len(t, empty, 2)
 
-	phone, err := service.ListContacts(ContactFilterPhone)
+	phone, err := service.ListContacts(ContactFilterPhone, "")
 	require.NoError(t, err)
 	require.Len(t, phone, 1)
 	assert.Equal(t, "Só telefone", phone[0].Name)
 
-	name, err := service.ListContacts(ContactFilterName)
+	name, err := service.ListContacts(ContactFilterName, "")
 	require.NoError(t, err)
 	require.Len(t, name, 1)
 	assert.Equal(t, "Só nome", name[0].Name)
 
-	_, err = service.ListContacts("bogus")
+	// The term is normalized before it reaches the column, so an accented
+	// "só" still finds the accent-folded name_norm.
+	byName, err := service.ListContacts(ContactFilterAll, "SÓ")
+	require.NoError(t, err)
+	assert.Len(t, byName, 2)
+
+	byPhone, err := service.ListContacts(ContactFilterAll, "1111")
+	require.NoError(t, err)
+	require.Len(t, byPhone, 1)
+	assert.Equal(t, "Só telefone", byPhone[0].Name)
+
+	// Filter and term compose: the phone filter still excludes the other row.
+	combined, err := service.ListContacts(ContactFilterPhone, "nome")
+	require.NoError(t, err)
+	assert.Len(t, combined, 0)
+
+	_, err = service.ListContacts("bogus", "")
 	assert.ErrorIs(t, err, ErrInvalidFilter)
 }
 
@@ -70,22 +86,31 @@ func TestDataServiceListNotes(t *testing.T) {
 	seedDataNote(t, db, &models.Note{Type: models.NoteTypeNote, Content: "nota"}, nil)
 	seedDataNote(t, db, &models.Note{Type: models.NoteTypeTodo, Content: "todo"}, []models.TodoItem{{Text: "pão", Position: 0}})
 
-	all, err := service.ListNotes(NoteFilterAll)
+	all, err := service.ListNotes(NoteFilterAll, "")
 	require.NoError(t, err)
 	assert.Len(t, all, 2)
 
-	todos, err := service.ListNotes(NoteFilterTodo)
+	todos, err := service.ListNotes(NoteFilterTodo, "")
 	require.NoError(t, err)
 	require.Len(t, todos, 1)
 	assert.Equal(t, "todo", todos[0].Content)
 	assert.Len(t, todos[0].Items, 1, "items are preloaded")
 
-	notes, err := service.ListNotes(NoteFilterNote)
+	notes, err := service.ListNotes(NoteFilterNote, "")
 	require.NoError(t, err)
 	require.Len(t, notes, 1)
 	assert.Equal(t, "nota", notes[0].Content)
 
-	_, err = service.ListNotes("bogus")
+	byTerm, err := service.ListNotes(NoteFilterAll, "todo")
+	require.NoError(t, err)
+	require.Len(t, byTerm, 1)
+	assert.Equal(t, "todo", byTerm[0].Content)
+
+	combined, err := service.ListNotes(NoteFilterTodo, "nota")
+	require.NoError(t, err)
+	assert.Len(t, combined, 0, "the type filter still applies with a term")
+
+	_, err = service.ListNotes("bogus", "")
 	assert.ErrorIs(t, err, ErrInvalidFilter)
 }
 

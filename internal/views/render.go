@@ -116,19 +116,21 @@ type ItemRowData struct {
 	Done bool
 }
 
-// RenderContactsTable renders the "contacts_table" partial (HTTP 200).
-func RenderContactsTable(c *gin.Context, filter string, contacts []models.Contact) {
-	c.HTML(http.StatusOK, contactsTableTmpl, gin.H{"Filter": filter, "Contacts": contacts})
+// RenderContactsTable renders the "contacts_table" partial (HTTP 200). The filter
+// and the search term ride back to the delete endpoint as hidden inputs, so the
+// view the user was on comes back after a delete.
+func RenderContactsTable(c *gin.Context, filter, search string, contacts []models.Contact) {
+	c.HTML(http.StatusOK, contactsTableTmpl, gin.H{"Filter": filter, "Search": search, "Contacts": contacts})
 }
 
 // RenderNotesTable renders the "notes_table" partial (HTTP 200).
-func RenderNotesTable(c *gin.Context, filter string, notes []*models.Note) {
-	c.HTML(http.StatusOK, notesTableTmpl, gin.H{"Filter": filter, "Notes": notes})
+func RenderNotesTable(c *gin.Context, filter, search string, notes []*models.Note) {
+	c.HTML(http.StatusOK, notesTableTmpl, gin.H{"Filter": filter, "Search": search, "Notes": notes})
 }
 
 // RenderTransactionsTable renders the "transactions_table" partial (HTTP 200).
-func RenderTransactionsTable(c *gin.Context, filter string, transactions []*models.Transaction) {
-	c.HTML(http.StatusOK, transactionsTableTmpl, gin.H{"Filter": filter, "Transactions": transactions})
+func RenderTransactionsTable(c *gin.Context, filter, search string, transactions []*models.Transaction) {
+	c.HTML(http.StatusOK, transactionsTableTmpl, gin.H{"Filter": filter, "Search": search, "Transactions": transactions})
 }
 
 // RenderDataDetail renders the "data_detail" partial (HTTP 200).

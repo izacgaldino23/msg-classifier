@@ -30,7 +30,7 @@ func TestNewRunsNameNormBackfill(t *testing.T) {
 	application, err := New(path)
 	require.NoError(t, err, "New()")
 
-	contacts, err := application.Data.ListContacts("all")
+	contacts, err := application.Data.ListContacts("all", "")
 	require.NoError(t, err, "ListContacts()")
 	require.Len(t, contacts, 1, "the seeded row")
 	assert.Equal(t, "maria da silva", contacts[0].NameNorm, "BackfillNameNorm() must fill the pre-migration row")

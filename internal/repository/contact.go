@@ -83,8 +83,15 @@ func (r *ContactRepository) Save(contact *models.Contact) error {
 
 // List returns the contacts matching the filter, newest first. Accepted filters:
 // all, phone, email and name (phone and email both absent or empty). An unknown
-// filter falls back to "all" — the service layer is the gate that rejects it.
-func (r *ContactRepository) List(filter string) ([]models.Contact, error) {
+// filter falls back to "all" — the service layer is the gate that rejects it. A
+// non-empty term narrows the rows to those whose name, phone or email contains it
+// (accent- and case-insensitive, because the service normalizes the term and
+// name_norm is already folded).
+//
+// shortcut: the term must match the stored value whole, so a phone typed with
+// spaces or dashes only matches a phone stored that way — the listing prints the
+// digits the add path stored.
+func (r *ContactRepository) List(filter, term string) ([]models.Contact, error) {
 	query := r.db.Order("id DESC")
 	switch filter {
 	case "phone":
@@ -93,6 +100,13 @@ func (r *ContactRepository) List(filter string) ([]models.Contact, error) {
 		query = query.Where("email IS NOT NULL AND email <> ''")
 	case "name":
 		query = query.Where("(phone IS NULL OR phone = '') AND (email IS NULL OR email = '')")
+	}
+	// The OR is parenthesized so a term clause cannot swallow the filter's, the same
+	// reason scopeTransactions wraps its own. The term arrives normalized: name_norm is
+	// already folded, so an accent-free search finds an accented name.
+	if term != "" {
+		like := likeValue(term)
+		query = query.Where("(LOWER(name_norm) LIKE ? OR LOWER(phone) LIKE ? OR LOWER(email) LIKE ?)", like, like, like)
 	}
 	var contacts []models.Contact
 	if err := query.Find(&contacts).Error; err != nil {

@@ -30,6 +30,12 @@ const docTemplate = `{
                         "description": "all|phone|email|name",
                         "name": "filter",
                         "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "term matched against the name, the phone or the email",
+                        "name": "search",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -123,6 +129,12 @@ const docTemplate = `{
                         "type": "string",
                         "description": "all|note|reminder|todo",
                         "name": "filter",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "term matched against the note content",
+                        "name": "search",
                         "in": "query"
                     }
                 ],

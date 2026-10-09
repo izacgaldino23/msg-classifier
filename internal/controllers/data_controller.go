@@ -146,26 +146,26 @@ func (ctrl *DataController) renderTable(c *gin.Context, kind, filter, search str
 	}
 	switch kind {
 	case services.DataKindContact:
-		contacts, err := ctrl.service.ListContacts(filter)
+		contacts, err := ctrl.service.ListContacts(filter, search)
 		if err != nil {
 			renderDataError(c, err)
 			return
 		}
-		views.RenderContactsTable(c, filter, contacts)
+		views.RenderContactsTable(c, filter, search, contacts)
 	case services.DataKindNotes:
-		notes, err := ctrl.service.ListNotes(filter)
+		notes, err := ctrl.service.ListNotes(filter, search)
 		if err != nil {
 			renderDataError(c, err)
 			return
 		}
-		views.RenderNotesTable(c, filter, notes)
+		views.RenderNotesTable(c, filter, search, notes)
 	case services.DataKindTransactions:
 		transactions, err := ctrl.service.ListTransactions(filter, search)
 		if err != nil {
 			renderDataError(c, err)
 			return
 		}
-		views.RenderTransactionsTable(c, filter, transactions)
+		views.RenderTransactionsTable(c, filter, search, transactions)
 	}
 }
 

@@ -596,6 +596,10 @@ func TestRenderDataPage(t *testing.T) {
 		`id="pane-finance"`,
 		`id="txSearchForm"`,
 		`id="txSearch"`,
+		`id="contactSearchForm"`,
+		`id="contactSearch"`,
+		`id="noteSearchForm"`,
+		`id="noteSearch"`,
 		`id="dataPanel"`,
 		`id="data-panel-body"`,
 		`data-drawer="hide"`,
@@ -605,10 +609,21 @@ func TestRenderDataPage(t *testing.T) {
 			t.Errorf("data page missing %q: %s", want, body)
 		}
 	}
-	// The finance search box posts the kind and the current filter, so a search
-	// never escapes the selected type.
-	if !strings.Contains(body, `<input type="hidden" name="kind" value="transaction">`) {
-		t.Errorf("finance search missing the kind hidden input: %s", body)
+	// Every search box posts the kind and the current filter, so a search never
+	// escapes the selected type.
+	for _, want := range []string{
+		`<input type="hidden" name="kind" value="transaction">`,
+		`<input type="hidden" name="kind" value="contact">`,
+		`<input type="hidden" name="kind" value="notes">`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("search box missing the kind hidden input %q: %s", want, body)
+		}
+	}
+	// Each pane's search box carries a hidden filter that markFilterPill re-points
+	// on a pill click, so a search and the filter on screen never disagree.
+	if got := strings.Count(body, `class="search-filter"`); got != 3 {
+		t.Errorf("search filter hidden inputs = %d, want 3 (one per pane)", got)
 	}
 	// Filter pill state is client-side: without these the "active" class stays
 	// hardcoded on one pill and the highlight never follows the selection.
@@ -662,13 +677,14 @@ func TestRenderContactsTable(t *testing.T) {
 		{ID: 1, Name: "Maria da Silva", NameNorm: "maria da silva", Phone: strPtr("9292929290")},
 		{ID: 2, Name: "João sem contato"},
 	}
-	RenderContactsTable(c, "phone", contacts)
+	RenderContactsTable(c, "phone", "silva", contacts)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
 	body := w.Body.String()
 	for _, want := range []string{
 		`id="data-table-form"`, `name="kind" value="contact"`, `name="filter" value="phone"`,
+		`name="search" value="silva"`,
 		`class="data-check" name="ids" value="1"`, "Maria da Silva", "9292929290",
 		"João sem contato", "Apagar selecionados", `hx-post="/data/delete"`,
 		`hx-get="/data/contact/1"`,
@@ -773,7 +789,7 @@ func TestRenderResultTransactionNoData(t *testing.T) {
 
 func TestRenderContactsTableEmpty(t *testing.T) {
 	c, w := newTestContext()
-	RenderContactsTable(c, "all", nil)
+	RenderContactsTable(c, "all", "", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
@@ -789,13 +805,13 @@ func TestRenderNotesTable(t *testing.T) {
 		{ID: 1, Type: models.NoteTypeReminder, Content: "pagar a conta", Date: &date, Time: strPtr("14:30")},
 		{ID: 2, Type: models.NoteTypeTodo, Content: "comprar", Items: []models.TodoItem{{Text: "pão"}}},
 	}
-	RenderNotesTable(c, "all", notes)
+	RenderNotesTable(c, "all", "pagar", notes)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
 	body := w.Body.String()
 	for _, want := range []string{
-		`name="filter" value="all"`, "pagar a conta", "10/05/2026", "14:30",
+		`name="filter" value="all"`, `name="search" value="pagar"`, "pagar a conta", "10/05/2026", "14:30",
 		"comprar", `variant="warning">Lembrete`, `variant="success">Lista de tarefas`,
 		`hx-get="/data/notes/1"`, "Apagar selecionados",
 	} {
@@ -807,7 +823,7 @@ func TestRenderNotesTable(t *testing.T) {
 
 func TestRenderNotesTableEmpty(t *testing.T) {
 	c, w := newTestContext()
-	RenderNotesTable(c, "todo", nil)
+	RenderNotesTable(c, "todo", "", nil)
 	if body := w.Body.String(); !strings.Contains(body, "Nenhuma nota cadastrada com este filtro.") {
 		t.Errorf("notes table missing empty state: %s", body)
 	}

@@ -20,18 +20,20 @@ func NewDataController(data *services.DataService) *DataController {
 	return &DataController{data: data}
 }
 
-// ListContacts returns the contacts matching the filter, newest first.
+// ListContacts returns the contacts matching the filter and the optional search
+// term, newest first.
 //
 //	@Summary	List contacts
 //	@Tags		contacts
 //	@Produce	json
 //	@Param		filter	query		string	false	"all|phone|email|name"	(default "all")
+//	@Param		search	query		string	false	"term matched against the name, the phone or the email"
 //	@Success	200		{array}		models.Contact
 //	@Failure	400		{object}	ErrorResponse
 //	@Failure	500		{object}	ErrorResponse
 //	@Router		/contacts [get]
 func (ctrl *DataController) ListContacts(c *gin.Context) {
-	contacts, err := ctrl.data.ListContacts(c.Query("filter"))
+	contacts, err := ctrl.data.ListContacts(c.Query("filter"), c.Query("search"))
 	if err != nil {
 		RenderError(c, StatusFor(err), userText(err))
 		return
@@ -42,18 +44,20 @@ func (ctrl *DataController) ListContacts(c *gin.Context) {
 	c.JSON(http.StatusOK, contacts)
 }
 
-// ListNotes returns the notes matching the filter, newest first.
+// ListNotes returns the notes matching the filter and the optional search term,
+// newest first.
 //
 //	@Summary	List notes
 //	@Tags		notes
 //	@Produce	json
 //	@Param		filter	query		string	false	"all|note|reminder|todo"	(default "all")
+//	@Param		search	query		string	false	"term matched against the note content"
 //	@Success	200		{array}		models.Note
 //	@Failure	400		{object}	ErrorResponse
 //	@Failure	500		{object}	ErrorResponse
 //	@Router		/notes [get]
 func (ctrl *DataController) ListNotes(c *gin.Context) {
-	notes, err := ctrl.data.ListNotes(c.Query("filter"))
+	notes, err := ctrl.data.ListNotes(c.Query("filter"), c.Query("search"))
 	if err != nil {
 		RenderError(c, StatusFor(err), userText(err))
 		return

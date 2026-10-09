@@ -100,21 +100,27 @@ func (r *NotesRepository) find(scope func(*gorm.DB) *gorm.DB) ([]*models.Note, e
 
 // List returns every note, newest first, with the to-do items preloaded in
 // position order. An empty table is a valid state, so it never yields ErrNotFound.
-func (r *NotesRepository) List() ([]*models.Note, error) {
-	return r.listBy(func(db *gorm.DB) *gorm.DB { return db })
+// A non-empty term narrows the rows to those whose content contains it
+// (case-insensitive; the content keeps its accents, as FindByTerm does).
+func (r *NotesRepository) List(term string) ([]*models.Note, error) {
+	return r.listBy(func(db *gorm.DB) *gorm.DB { return db }, term)
 }
 
 // ListByType returns the notes of a single sub-type, newest first.
-func (r *NotesRepository) ListByType(noteType string) ([]*models.Note, error) {
-	return r.listBy(func(db *gorm.DB) *gorm.DB { return db.Where("type = ?", noteType) })
+func (r *NotesRepository) ListByType(noteType, term string) ([]*models.Note, error) {
+	return r.listBy(func(db *gorm.DB) *gorm.DB { return db.Where("type = ?", noteType) }, term)
 }
 
 // listBy runs a browse query with the items preloaded. Unlike find it does not
 // map an empty result to ErrNotFound, which is correct for a search but wrong
 // for a browse screen.
-func (r *NotesRepository) listBy(scope func(*gorm.DB) *gorm.DB) ([]*models.Note, error) {
+func (r *NotesRepository) listBy(scope func(*gorm.DB) *gorm.DB, term string) ([]*models.Note, error) {
+	query := scope(r.db)
+	if term != "" {
+		query = query.Where("LOWER(content) LIKE ?", likeValue(term))
+	}
 	var notes []*models.Note
-	err := scope(r.db).
+	err := query.
 		Preload("Items", func(db *gorm.DB) *gorm.DB { return db.Order("position") }).
 		Order("id DESC").
 		Find(&notes).Error

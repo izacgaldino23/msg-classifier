@@ -123,7 +123,7 @@ func TestContactRepositoryListAllNewestFirst(t *testing.T) {
 	db.Create(&models.Contact{Name: "Doutrina"})
 	repo := NewContactRepository(db)
 
-	contacts, err := repo.List("all")
+	contacts, err := repo.List("all", "")
 	require.NoError(t, err)
 	require.Len(t, contacts, 2)
 	assert.Equal(t, "Doutrina", contacts[0].Name, "newest first (id DESC)")
@@ -138,19 +138,19 @@ func TestContactRepositoryListFilters(t *testing.T) {
 	db.Create(&models.Contact{Name: "Vazio", Phone: strPtr(""), Email: strPtr("")})
 	repo := NewContactRepository(db)
 
-	phone, err := repo.List("phone")
+	phone, err := repo.List("phone", "")
 	require.NoError(t, err)
 	require.Len(t, phone, 1)
 	assert.Equal(t, "Só telefone", phone[0].Name)
 
-	email, err := repo.List("email")
+	email, err := repo.List("email", "")
 	require.NoError(t, err)
 	require.Len(t, email, 1)
 	assert.Equal(t, "Só email", email[0].Name)
 
 	// "name" = phone AND email both absent or empty. Newest first (id DESC),
 	// so "Vazio" (created last) comes before "Só nome".
-	name, err := repo.List("name")
+	name, err := repo.List("name", "")
 	require.NoError(t, err)
 	require.Len(t, name, 2)
 	assert.Equal(t, "Vazio", name[0].Name)
@@ -162,7 +162,7 @@ func TestContactRepositoryListUnknownFilterReturnsAll(t *testing.T) {
 	db.Create(&models.Contact{Name: "Fulano"})
 	repo := NewContactRepository(db)
 
-	contacts, err := repo.List("bogus")
+	contacts, err := repo.List("bogus", "")
 	require.NoError(t, err, "the repository never errors on an unknown filter - the service is the gate")
 	assert.Len(t, contacts, 1)
 }
@@ -170,7 +170,7 @@ func TestContactRepositoryListUnknownFilterReturnsAll(t *testing.T) {
 func TestContactRepositoryListEmpty(t *testing.T) {
 	repo := NewContactRepository(newTestDB(t))
 
-	contacts, err := repo.List("all")
+	contacts, err := repo.List("all", "")
 	require.NoError(t, err)
 	assert.Empty(t, contacts)
 }

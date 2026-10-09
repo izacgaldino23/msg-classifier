@@ -137,24 +137,28 @@ func NewDataService(contacts *repository.ContactRepository, notes *repository.No
 	return &DataService{contacts: contacts, notes: notes, transactions: transactions}
 }
 
-// ListContacts returns the contacts matching the filter, newest first. An empty
-// filter means "all"; an unknown one is ErrInvalidFilter.
-func (s *DataService) ListContacts(filter string) ([]models.Contact, error) {
+// ListContacts returns the contacts matching the filter and the optional search
+// term, newest first. An empty filter means "all"; an unknown one is
+// ErrInvalidFilter. The term is normalized so an accent-free search finds an
+// accented name — name_norm is stored folded.
+func (s *DataService) ListContacts(filter, term string) ([]models.Contact, error) {
 	switch filter {
 	case "", ContactFilterAll, ContactFilterPhone, ContactFilterEmail, ContactFilterName:
 	default:
 		return nil, fmt.Errorf("%w: contact filter %q", ErrInvalidFilter, filter)
 	}
-	contacts, err := s.contacts.List(filter)
+	contacts, err := s.contacts.List(filter, ptbr.NormalizeName(term))
 	if err != nil {
 		return nil, fmt.Errorf("failed to list contacts: %w", err)
 	}
 	return contacts, nil
 }
 
-// ListNotes returns the notes matching the filter, newest first. An empty filter
-// means "all"; an unknown one is ErrInvalidFilter.
-func (s *DataService) ListNotes(filter string) ([]*models.Note, error) {
+// ListNotes returns the notes matching the filter and the optional search term,
+// newest first. An empty filter means "all"; an unknown one is ErrInvalidFilter.
+// The note term is only trimmed: the content keeps its accents, so folding the
+// term the way the contact one is folded would stop it from ever matching.
+func (s *DataService) ListNotes(filter, term string) ([]*models.Note, error) {
 	switch filter {
 	case "", NoteFilterAll, NoteFilterNote, NoteFilterReminder, NoteFilterTodo:
 	default:
@@ -164,9 +168,9 @@ func (s *DataService) ListNotes(filter string) ([]*models.Note, error) {
 	var notes []*models.Note
 	var err error
 	if filter == NoteFilterNote || filter == NoteFilterReminder || filter == NoteFilterTodo {
-		notes, err = s.notes.ListByType(filter)
+		notes, err = s.notes.ListByType(filter, strings.TrimSpace(term))
 	} else {
-		notes, err = s.notes.List()
+		notes, err = s.notes.List(strings.TrimSpace(term))
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to list notes: %w", err)

@@ -188,7 +188,7 @@ func TestNotesRepositoryListNewestFirstWithItems(t *testing.T) {
 		{Text: "item b", Position: 0},
 	}))
 
-	notes, err := repo.List()
+	notes, err := repo.List("")
 	require.NoError(t, err)
 	require.Len(t, notes, 2)
 	assert.Equal(t, "segunda", notes[0].Content, "newest first (id DESC)")
@@ -200,7 +200,7 @@ func TestNotesRepositoryListNewestFirstWithItems(t *testing.T) {
 func TestNotesRepositoryListEmptyIsNotAnError(t *testing.T) {
 	repo := NewNotesRepository(newNoteTestDB(t))
 
-	notes, err := repo.List()
+	notes, err := repo.List("")
 	require.NoError(t, err, "an empty table is a valid state, not a not-found")
 	assert.Empty(t, notes)
 }
@@ -212,17 +212,17 @@ func TestNotesRepositoryListByType(t *testing.T) {
 	require.NoError(t, repo.Create(&models.Note{Type: models.NoteTypeReminder, Content: "lembrete", Date: datePtr(fixedDate())}, nil))
 	require.NoError(t, repo.Create(&models.Note{Type: models.NoteTypeReminder, Content: "outro lembrete"}, nil))
 
-	reminders, err := repo.ListByType(models.NoteTypeReminder)
+	reminders, err := repo.ListByType(models.NoteTypeReminder, "")
 	require.NoError(t, err)
 	require.Len(t, reminders, 2)
 	assert.Equal(t, "outro lembrete", reminders[0].Content)
 
-	notes, err := repo.ListByType(models.NoteTypeNote)
+	notes, err := repo.ListByType(models.NoteTypeNote, "")
 	require.NoError(t, err)
 	require.Len(t, notes, 1)
 	assert.Equal(t, "nota", notes[0].Content)
 
-	todos, err := repo.ListByType(models.NoteTypeTodo)
+	todos, err := repo.ListByType(models.NoteTypeTodo, "")
 	require.NoError(t, err)
 	assert.Empty(t, todos)
 }
