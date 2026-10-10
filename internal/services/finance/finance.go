@@ -51,7 +51,7 @@ func (s *FinanceService) Add(request *models.ReceiveMessageRequest, classificati
 		date = ptbr.StartOfDay(now)
 	}
 
-	result, err := s.extractor.Extract(content)
+	result, err := s.extractor.ExtractFromClassification(content, classification)
 	if err != nil {
 		return nil, err
 	}

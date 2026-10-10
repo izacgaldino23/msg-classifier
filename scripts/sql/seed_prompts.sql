@@ -11,7 +11,7 @@ INSERT INTO jev_prompts (flow, message, expected_result) VALUES
 ('classification', 'Que horas é minha consulta na sexta?', 'schedule:require'),
 ('classification', 'Anota que preciso comprar pão', 'notes:add'),
 ('classification', 'Me mostra minhas anotações sobre o projeto', 'notes:require'),
-('classification', 'Isso não é nada importante', 'other:add'),
+('classification', 'Isso não é nada importante', 'other:require'),
 ('name', 'Salva o contato do João da Silva, telefone (11) 91234-5678', 'João da Silva'),
 ('name', 'Adiciona Maria Clara Oliveira ao catálogo', 'Maria Clara Oliveira'),
 ('name', 'Cadastra o Pedro Henrique Santos', 'Pedro Henrique Santos'),

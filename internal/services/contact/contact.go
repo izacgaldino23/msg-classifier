@@ -62,7 +62,7 @@ func (s *ContactService) Add(request *models.ReceiveMessageRequest, classificati
 		spans = append(spans, emailSpan)
 	}
 
-	nameResult, err := s.extractor.ExtractName(request.Message, spans)
+	nameResult, err := s.extractor.ExtractNameFromClassification(request.Message, spans, classification)
 	if err != nil {
 		return nil, err
 	}

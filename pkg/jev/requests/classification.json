@@ -1,25 +1,53 @@
 {
-	"state": {},
-	"questions": {
-		"classification": {
-			"type": "choice",
-			"instructions": "Which category does this message belong to",
-			"criteria": {
-				"contact":  "contact information, phone numbers, email addresses",
-				"finance":  "payment, billing, or financial information",
-				"schedule": "alarms, meetings or future events",
-				"notes":    "notes, reminders, or to-do lists",
-				"other":    "none of other categories"
-			}
-		},
-		"adding_or_requiring": {
-			"type": "choice",
-			"instructions": "Does the user want to store new information or retrieve existing information?",
-			"criteria": {
-				"add":    "the user wants to store new information: the message contains the actual data (a phone number, email, or address, amount of money, or a note for example), even without verbs like save or add",
-				"require": "the user wants to retrieve existing information: the message asks for or mentions data whose value is not in the message, such as someone's number, a balance, or a saved note",
-				"both":   "the message both provides new data to store and asks for existing information"
-			}
-		}
-	}
+  "state": { "user": "user" },
+  "questions": {
+    "classification": {
+      "type": "choice",
+      "instructions": "What category does the user message belong to?",
+      "criteria": {
+        "contact": "Contato, pessoa, telefone, e-mail, nome",
+        "finance": "Finanças, dinheiro, transação, compra, venda, pagamento",
+        "schedule": "Agenda, data, hora, compromisso, reunião, evento",
+        "notes": "Nota, lembrete, lista, tarefa, recado",
+        "other": "Outra coisa, não se encaixa"
+      }
+    },
+    "adding_or_requiring": {
+      "type": "choice",
+      "instructions": "Does the user want to add something or require information?",
+      "criteria": {
+        "add": "O usuário quer registrar, salvar, adicionar, criar algo",
+        "require": "O usuário quer buscar, listar, consultar, saber de algo",
+        "both": "Ambos: quer salvar e também consultar"
+      }
+    },
+    "category_subtype": {
+      "type": "choice",
+      "instructions": "What specific type of action within the category?",
+      "criteria": {
+        "contact_add": "Contato com dados de conta (nome, telefone, e-mail)",
+        "contact_req": "Busca por contato existente",
+        "finance_compra": "Transação de compra",
+        "finance_venda": "Transação de venda",
+        "finance_pagamento": "Pagamento",
+        "finance_recebimento": "Recebimento",
+        "finance_transferencia": "Transferência",
+        "note_reminder": "Nota com lembrete/tempo",
+        "note_todo": "Nota com lista de tarefas",
+        "schedule_reminder": "Agenda como lembrete (sei data/hora)",
+        "schedule_event": "Evento de agenda (tenho hora/data)"
+      }
+    },
+    "request_intent": {
+      "type": "choice",
+      "instructions": "What is the user's intent when requesting information?",
+      "criteria": {
+        "list": "Listar, enumerar, ver todos",
+        "sum": "Somar, calcular total, quanto gastou",
+        "pending": "Pendentes, não feitas, faltam",
+        "by_date": "Por data, pelo dia, esta semana",
+        "last": "Último, mais recente, o último"
+      }
+    }
+  }
 }

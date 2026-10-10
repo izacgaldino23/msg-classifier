@@ -76,6 +76,8 @@ type FinanceResult struct {
 
 // FinanceExtractor asks Jev for the transaction type and, in the same request,
 // which words of the establishment candidate are actually the shop or the person.
+// If a pre-classified subtype and party segments are available from the composite
+// request, it uses those instead of making a second Jev call.
 type FinanceExtractor struct {
 	jev jevq.Requester
 }
@@ -98,11 +100,11 @@ func (e *FinanceExtractor) Extract(message string) (FinanceResult, error) {
 	candidate := partyCandidateFrom(message)
 	extra := map[string]jev.JevQuestionInterface{typeAnswerKey: typeQuestion()}
 
+	// ponytail: The request for transaction type + party segments rides together
+	// in a single dynamic Jev request. A request mixing both question kinds could be 
+	// rejected; the type is what matters, so we have a retry path for type alone.
 	resp, trace, err := jevq.NoulSegments(e.jev, message, candidate.Segments, partySegmentQuestion, extra)
 	if err != nil && len(candidate.Segments) > 0 {
-		// The party fan-out rides along with the type question, but a request mixing
-		// both question kinds could be rejected. The type is what matters, so retry
-		// without the fan-out and carry on without a party.
 		resp, trace, err = jevq.NoulSegments(e.jev, message, nil, partySegmentQuestion, extra)
 	}
 	if err != nil {
@@ -121,12 +123,65 @@ func (e *FinanceExtractor) Extract(message string) (FinanceResult, error) {
 
 	party := joinIncluded(trace)
 	if party == "" && len(trace) > 0 {
-		// The fan-out ran and kept nothing: fall back to the candidate as it was
-		// written. Without a trace there was no fan-out (no candidate, or the
-		// degraded retry), so there is no raw candidate to fall back to.
 		party = candidate.Raw
 	}
 	return FinanceResult{Type: transactionType, Party: party, Segments: trace}, nil
+}
+
+// ExtractFromClassification uses pre-classified subtype and party segments from the
+// composite Jev request (if available) instead of making a new Jev call.
+func (e *FinanceExtractor) ExtractFromClassification(message string, classification *models.Classification) (FinanceResult, error) {
+	if classification != nil && classification.Subtype.Choice != "" {
+		transactionType := mapSubtypeToTransactionType(classification.Subtype.Choice)
+		// Use pre-classified party segments if available.
+		if len(classification.PartySegments) > 0 {
+			party := joinIncluded(classification.PartySegments)
+			return FinanceResult{Type: transactionType, Party: party, Segments: classification.PartySegments}, nil
+		}
+		// Subtype available but no party segments: run party fan-out if candidate found.
+		return e.extractPartyOnly(message, transactionType)
+	}
+	// No pre-classified subtype: fall back to regular Extract (makes Jev call).
+	return e.Extract(message)
+}
+
+// extractPartyOnly runs just the party fan-out for a known transaction type.
+func (e *FinanceExtractor) extractPartyOnly(message string, transactionType string) (FinanceResult, error) {
+	candidate := partyCandidateFrom(message)
+	if len(candidate.Segments) == 0 {
+		return FinanceResult{Type: transactionType, Party: "", Segments: nil}, nil
+	}
+
+	// Run only the party fan-out (no type question).
+	_, trace, err := jevq.NoulSegments(e.jev, message, candidate.Segments, partySegmentQuestion, nil)
+	if err != nil {
+		return FinanceResult{Type: transactionType, Party: candidate.Raw, Segments: nil}, nil
+	}
+
+	party := joinIncluded(trace)
+	if party == "" {
+		party = candidate.Raw
+	}
+	return FinanceResult{Type: transactionType, Party: party, Segments: trace}, nil
+}
+
+// mapSubtypeToTransactionType maps the composite classification subtype to
+// the internal transaction type.
+func mapSubtypeToTransactionType(subtype string) string {
+	switch subtype {
+	case "finance_compra":
+		return models.TransactionTypePurchase
+	case "finance_venda":
+		return models.TransactionTypeSale
+	case "finance_pagamento":
+		return models.TransactionTypePayment
+	case "finance_recebimento":
+		return models.TransactionTypeReceipt
+	case "finance_transferencia":
+		return models.TransactionTypeTransfer
+	default:
+		return models.TransactionTypePurchase
+	}
 }
 
 // typeQuestion asks which side of a financial movement the message describes.

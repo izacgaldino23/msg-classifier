@@ -16,7 +16,8 @@ type NameResult struct {
 	Segments []models.SegmentScore
 }
 
-// ContactExtractor pulls phone/email via regex and the name via a Jev Noul fan-out.
+// ContactExtractor pulls phone/email via regex and the name via a Jev Noul fan-out
+// (or uses pre-classified segments from the composite Jev request).
 type ContactExtractor struct {
 	jev jevq.Requester
 }
@@ -67,7 +68,30 @@ func (e *ContactExtractor) ExtractName(message string, spans []jevq.Span) (NameR
 	if err != nil {
 		return NameResult{}, err
 	}
+	return e.postFilterName(message, trace)
+}
 
+// ExtractNameFromClassification uses pre-classified party segments from the
+// composite Jev request (if available) instead of making a second Jev call.
+func (e *ContactExtractor) ExtractNameFromClassification(message string, spans []jevq.Span, classification *models.Classification) (NameResult, error) {
+	if classification != nil && len(classification.PartySegments) > 0 {
+		// Map the pre-classified segments back to the name extraction format.
+		trace := make([]models.SegmentScore, 0, len(classification.PartySegments))
+		for _, seg := range classification.PartySegments {
+			if seg.Included {
+				trace = append(trace, seg)
+			}
+		}
+		if len(trace) > 0 {
+			return e.postFilterName(message, trace)
+		}
+	}
+	// Fallback: no pre-classified segments, call Jev.
+	return e.ExtractName(message, spans)
+}
+
+// postFilterName applies the deterministic particle post-filter to a trace.
+func (e *ContactExtractor) postFilterName(message string, trace []models.SegmentScore) (NameResult, error) {
 	// Deterministic post-filter over Jev's per-segment verdicts. The Noul scores
 	// for name particles ("do"/"da"/"de") hover around the 0.5 threshold and flip
 	// between runs, so the AI verdict alone is not reproducible. Particles are

@@ -9,8 +9,11 @@ type ReceiveMessageRequest struct {
 
 // Classification is the domain result with raw numeric confidences.
 type Classification struct {
-	Category CategoryFinding `json:"category"`
-	Kind     KindFinding     `json:"kind"`
+	Category        CategoryFinding `json:"category"`
+	Kind            KindFinding     `json:"kind"`
+	Subtype         SubtypeFinding  `json:"subtype,omitempty"`
+	PartySegments   []SegmentScore  `json:"party_segments,omitempty"`
+	RequestIntent   IntentFinding   `json:"request_intent,omitempty"`
 }
 
 type CategoryFinding struct {
@@ -19,6 +22,16 @@ type CategoryFinding struct {
 }
 
 type KindFinding struct {
+	Choice     string  `json:"choice"`
+	Confidence float64 `json:"confidence"`
+}
+
+type SubtypeFinding struct {
+	Choice     string  `json:"choice"`
+	Confidence float64 `json:"confidence"`
+}
+
+type IntentFinding struct {
 	Choice     string  `json:"choice"`
 	Confidence float64 `json:"confidence"`
 }

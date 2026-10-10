@@ -33,7 +33,7 @@ func (s *NotesService) Handle(request *models.ReceiveMessageRequest, classificat
 // content, a reminder requires a date (time optional) and a to-do list is split
 // into items. A missing reminder date or an unknown sub-type is a no-data outcome.
 func (s *NotesService) Add(request *models.ReceiveMessageRequest, classification *models.Classification) (*models.UseCaseOutcome, error) {
-	noteType, err := s.extractor.ExtractType(request)
+	noteType, err := s.extractor.ExtractTypeFromClassification(request, classification)
 	if err != nil {
 		return nil, err
 	}

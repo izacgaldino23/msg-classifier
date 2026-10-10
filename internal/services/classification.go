@@ -39,7 +39,11 @@ func (s *ClassificationService) Classify(request *models.ReceiveMessageRequest) 
 		return nil, fmt.Errorf("%w: %w", jevq.ErrUpstream, err)
 	}
 
-	return &models.Classification{
+	subtype, _ := jevq.AnswerChoice(categoryResp, "category_subtype")
+	partySegmentsRaw, _ := jevq.AnswerNoulSegments(categoryResp)
+	intent, _ := jevq.AnswerChoice(categoryResp, "request_intent")
+
+	class := &models.Classification{
 		Category: models.CategoryFinding{
 			Choice:     category.Choice,
 			Confidence: category.Confidence,
@@ -48,5 +52,25 @@ func (s *ClassificationService) Classify(request *models.ReceiveMessageRequest) 
 			Choice:     kind.Choice,
 			Confidence: kind.Confidence,
 		},
-	}, nil
+	}
+	if subtype != nil {
+		class.Subtype = models.SubtypeFinding{
+			Choice:     subtype.Choice,
+			Confidence: subtype.Confidence,
+		}
+	}
+	if len(partySegmentsRaw) > 0 {
+		partySegments := make([]models.SegmentScore, len(partySegmentsRaw))
+		for i, seg := range partySegmentsRaw {
+			partySegments[i] = models.SegmentScore{Score: seg.Score, Included: seg.Included}
+		}
+		class.PartySegments = partySegments
+	}
+	if intent != nil {
+		class.RequestIntent = models.IntentFinding{
+			Choice:     intent.Choice,
+			Confidence: intent.Confidence,
+		}
+	}
+	return class, nil
 }

@@ -52,3 +52,30 @@ func AnswerNoul(resp *jev.JevResponse, key string) (*jev.JevAnswerNoul, error) {
 	}
 	return noul, nil
 }
+
+// NoulSegmentResult is a lightweight segment score from a template-based Noul
+// answer (which doesn't include the segment text). Callers that have the text
+// can convert this to their own SegmentScore type.
+type NoulSegmentResult struct {
+	Score    float64
+	Included bool
+}
+
+// AnswerNoulSegments extracts all segment_N answers from a template-based response
+// and returns them as NoulSegmentResult slice. Used by the composite classification request.
+func AnswerNoulSegments(resp *jev.JevResponse) ([]NoulSegmentResult, error) {
+	var trace []NoulSegmentResult
+	for i := 0; ; i++ {
+		key := SegmentKey(i)
+		answer, ok := resp.Answers[key]
+		if !ok {
+			break
+		}
+		noul, ok := answer.(*jev.JevAnswerNoul)
+		if !ok {
+			return nil, fmt.Errorf("answer %q has type %T, want *jev.JevAnswerNoul", key, answer)
+		}
+		trace = append(trace, NoulSegmentResult{Score: noul.Noul, Included: noul.Noul > NoulThreshold})
+	}
+	return trace, nil
+}
