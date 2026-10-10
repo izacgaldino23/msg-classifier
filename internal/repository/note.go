@@ -59,7 +59,8 @@ func (r *NotesRepository) FindUnfinished() ([]*models.Note, error) {
 // or ErrNotFound.
 func (r *NotesRepository) FindByTerm(term string) ([]*models.Note, error) {
 	return r.find(func(db *gorm.DB) *gorm.DB {
-		return db.Where("LOWER(content) LIKE ?", "%"+strings.ToLower(term)+"%")
+		like := "%" + strings.ToLower(term) + "%"
+		return db.Where("(LOWER(content) LIKE ? OR LOWER(topic) LIKE ?)", like, like)
 	})
 }
 
@@ -117,7 +118,8 @@ func (r *NotesRepository) ListByType(noteType, term string) ([]*models.Note, err
 func (r *NotesRepository) listBy(scope func(*gorm.DB) *gorm.DB, term string) ([]*models.Note, error) {
 	query := scope(r.db)
 	if term != "" {
-		query = query.Where("LOWER(content) LIKE ?", likeValue(term))
+		like := likeValue(term)
+		query = query.Where("(LOWER(content) LIKE ? OR LOWER(topic) LIKE ?)", like, like)
 	}
 	var notes []*models.Note
 	err := query.
@@ -140,6 +142,24 @@ func (r *NotesRepository) FindByID(id uint) (*models.Note, error) {
 		return nil, err
 	}
 	return &note, nil
+}
+
+// ListUntopiced returns the notes that still have no topic, oldest first — the
+// rows the data screen's "Classificar pendentes" action works through. No items
+// are preloaded: only the topic is written.
+func (r *NotesRepository) ListUntopiced() ([]*models.Note, error) {
+	var notes []*models.Note
+	err := r.db.Where("topic IS NULL OR topic = ''").Order("id").Find(&notes).Error
+	if err != nil {
+		return nil, err
+	}
+	return notes, nil
+}
+
+// UpdateTopic sets one note's topic, leaving the content, the items and the rest
+// untouched — the backfill never goes through Save, which would rebuild items.
+func (r *NotesRepository) UpdateTopic(id uint, topic string) error {
+	return r.db.Model(&models.Note{}).Where("id = ?", id).Update("topic", topic).Error
 }
 
 // Save updates the note fields and replaces its to-do items atomically: the

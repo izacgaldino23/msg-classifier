@@ -7,6 +7,7 @@ import (
 	"msg-classifier/internal/app"
 	"msg-classifier/internal/config"
 	"msg-classifier/internal/controllers"
+	"msg-classifier/internal/models"
 	"msg-classifier/internal/views"
 
 	"github.com/gin-gonic/gin"
@@ -44,7 +45,9 @@ func main() {
 	promptController := controllers.NewPromptController(application.Prompts)
 	webController := controllers.NewWebController()
 	messageController := controllers.NewMessageController(application.Classifier, application.Dispatcher)
-	dataController := controllers.NewDataController(application.Data)
+	dataController := controllers.NewDataController(application.Data, func(message string) (*models.Classification, error) {
+		return application.Classifier.Classify(&models.ReceiveMessageRequest{Message: message})
+	})
 
 	router.GET("/", webController.Home)
 	router.GET("/prompts", promptController.Page)
@@ -57,6 +60,7 @@ func main() {
 	router.GET("/data", dataController.Page)
 	router.GET("/data/table", dataController.Table)
 	router.GET("/data/item-row", dataController.ItemRow)
+	router.POST("/data/classify-pending", dataController.ClassifyPending)
 	router.GET("/data/:kind/:id", dataController.Detail)
 	router.POST("/data/:kind/:id", dataController.Update)
 	router.POST("/data/delete", dataController.Delete)

@@ -13,6 +13,8 @@ type DataForm struct {
 	Date     string   `json:"date" form:"date"`
 	Time     string   `json:"time" form:"time"`
 	Type     string   `json:"type" form:"type"`
+	Category string   `json:"category" form:"category"`
+	Topic    string   `json:"topic" form:"topic"`
 	Amount   string   `json:"amount" form:"amount"`
 	Party    string   `json:"party" form:"party"`
 	ItemText []string `json:"item_text" form:"item_text"`

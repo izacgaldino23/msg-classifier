@@ -10,6 +10,7 @@
                     <th><input type="checkbox" onchange="document.querySelectorAll('.data-check').forEach(cb => cb.checked = this.checked)"></th>
                     <th>#</th>
                     <th>Tipo</th>
+                    <th>Tópico</th>
                     <th>Conteúdo</th>
                     <th>Data</th>
                     <th>Horário</th>
@@ -24,6 +25,7 @@
                         <td><input type="checkbox" class="data-check" name="ids" value="{{ .ID }}"></td>
                         <td>{{ .ID }}</td>
                         <td><wa-badge variant="{{ badge .Type }}">{{ label .Type }}</wa-badge></td>
+                        <td>{{ if .Topic }}<wa-badge variant="neutral">{{ label .Topic }}</wa-badge>{{ end }}</td>
                         <td>{{ .Content }}</td>
                         <td>{{ dateBR .Date }}</td>
                         <td>{{ deref .Time }}</td>
@@ -34,12 +36,14 @@
                     </tr>
                     {{ end }}
                 {{ else }}
-                    <tr><td colspan="8">Nenhuma nota cadastrada com este filtro.</td></tr>
+                    <tr><td colspan="9">Nenhuma nota cadastrada com este filtro.</td></tr>
                 {{ end }}
             </tbody>
         </table>
     </wa-scroller>
     <wa-button variant="danger" hx-post="/data/delete" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" hx-include="#data-table-form" hx-confirm="Apagar as notas selecionadas?" hx-indicator="#delete-notes-spinner" hx-disabled-elt="this">Apagar selecionados</wa-button>
     <wa-spinner id="delete-notes-spinner" class="htmx-indicator" aria-hidden="true"></wa-spinner>
+    <wa-button variant="neutral" hx-post="/data/classify-pending" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" hx-include="#data-table-form" hx-confirm="Classificar agora as notas sem tópico? (usa Jev)" hx-indicator="#classify-notes-spinner" hx-disabled-elt="this">Classificar pendentes</wa-button>
+    <wa-spinner id="classify-notes-spinner" class="htmx-indicator" aria-hidden="true"></wa-spinner>
 </form>
 {{ end }}

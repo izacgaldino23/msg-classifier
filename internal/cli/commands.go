@@ -203,15 +203,15 @@ func (r *Runner) showNotes(args []string) error {
 			clock = *note.Time
 		}
 		rows = append(rows, []string{
-			fmt.Sprintf("%d", note.ID), messages.Label(note.Type), date, clock, note.Content,
+			fmt.Sprintf("%d", note.ID), messages.Label(note.Type), messages.Label(note.Topic), date, clock, note.Content,
 		})
 		// shortcut: the items ride in a continuation row of the content column; a note
 		// with a long list is easier to read in the data screen's drawer.
 		if len(note.Items) > 0 {
-			rows = append(rows, []string{"", "", "", "", itemLine(note.Items)})
+			rows = append(rows, []string{"", "", "", "", "", itemLine(note.Items)})
 		}
 	}
-	headers := []string{messages.Field("id"), messages.Field("type"), messages.Field("date"), messages.Field("time"), messages.Field("content")}
+	headers := []string{messages.Field("id"), messages.Field("type"), messages.Field("topic"), messages.Field("date"), messages.Field("time"), messages.Field("content")}
 	fmt.Fprint(r.out, r.style.table(messages.ListCount("notes", len(notes)), headers, rows, []string{"r"}))
 	return nil
 }
@@ -234,8 +234,12 @@ func (r *Runner) showTransactions(args []string) error {
 		if party == "" {
 			party = "—"
 		}
+		category := messages.Label(transaction.Category)
+		if category == "" {
+			category = "—"
+		}
 		rows = append(rows, []string{
-			fmt.Sprintf("%d", transaction.ID), ptbr.DateBR(&transaction.Date), transaction.Type,
+			fmt.Sprintf("%d", transaction.ID), ptbr.DateBR(&transaction.Date), transaction.Type, category,
 			ptbr.MoneyBRL(transaction.Amount), party,
 		})
 	}
@@ -245,8 +249,8 @@ func (r *Runner) showTransactions(args []string) error {
 	if total > 0 {
 		title += " · " + messages.ListTotal(ptbr.MoneyBRL(total))
 	}
-	headers := []string{messages.Field("id"), messages.Field("date"), messages.Field("type"), messages.Field("amount"), messages.Field("party")}
-	fmt.Fprint(r.out, r.style.table(title, headers, rows, []string{"r", "l", "l", "r", "l"}))
+	headers := []string{messages.Field("id"), messages.Field("date"), messages.Field("type"), messages.Field("category"), messages.Field("amount"), messages.Field("party")}
+	fmt.Fprint(r.out, r.style.table(title, headers, rows, []string{"r", "l", "l", "l", "r", "l"}))
 	return nil
 }
 

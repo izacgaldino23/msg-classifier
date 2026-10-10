@@ -92,6 +92,13 @@ func (s *DataService) UpdateTransaction(id uint, form models.DataForm) (*models.
 		return nil, fmt.Errorf("%w: unparseable date %q", ErrInvalidData, form.Date)
 	}
 	transaction.Type = form.Type
+	transaction.Category = ""
+	if form.Category != "" {
+		if !models.IsTransactionCategory(form.Category) {
+			return nil, fmt.Errorf("%w: transaction category %q", ErrInvalidData, form.Category)
+		}
+		transaction.Category = form.Category
+	}
 	transaction.Amount = amount
 	transaction.Date = date
 	transaction.Party = strings.TrimSpace(form.Party)
@@ -222,7 +229,7 @@ func (s *DataService) UpdateContact(id uint, name, phone, email string) (*models
 // on the screen, so it is never changed. Date and time are re-parsed from the
 // text the user typed, and the to-do list is rebuilt from the parallel
 // text/done arrays.
-func (s *DataService) UpdateNote(id uint, content, dateText, timeText string, itemTexts, itemDones []string) (*models.Note, error) {
+func (s *DataService) UpdateNote(id uint, content, topic, dateText, timeText string, itemTexts, itemDones []string) (*models.Note, error) {
 	note, err := s.GetNote(id)
 	if err != nil {
 		return nil, err
@@ -232,6 +239,8 @@ func (s *DataService) UpdateNote(id uint, content, dateText, timeText string, it
 		return nil, fmt.Errorf("%w: note content is required", ErrInvalidData)
 	}
 	note.Content = trimmed
+
+	note.Topic = validDataTopic(topic)
 
 	date, err := s.parseDate(dateText)
 	if err != nil {
@@ -271,6 +280,76 @@ func (s *DataService) DeleteNotes(ids []uint) error {
 		return fmt.Errorf("failed to delete notes: %w", err)
 	}
 	return nil
+}
+
+// ClassifyFn is the seam the "Classificar pendentes" action closes with the real
+// Jev path. DataService stays free of the Jev call layer: the web entrypoint
+// wires application.Classifier.Classify here, and a test supplies a fake.
+type ClassifyFn func(message string) (*models.Classification, error)
+
+// ClassifyPendingTransactions assigns a category to every transaction that still
+// has none, re-running the real classification path on the stored original
+// message. It returns how many rows were updated. A row whose category the model
+// does not recognize is skipped, not failed; an upstream failure stops the run
+// and leaves the already-classified rows as they are (idempotent).
+func (s *DataService) ClassifyPendingTransactions(classify ClassifyFn) (int, error) {
+	rows, err := s.transactions.ListUncategorized()
+	if err != nil {
+		return 0, fmt.Errorf("failed to load pending transactions: %w", err)
+	}
+	updated := 0
+	for _, row := range rows {
+		if strings.TrimSpace(row.Content) == "" {
+			continue
+		}
+		classification, err := classify(row.Content)
+		if err != nil {
+			return updated, fmt.Errorf("failed to classify pending transaction %d: %w", row.ID, err)
+		}
+		category := ""
+		if classification != nil {
+			category = classification.TransactionCategory.Choice
+		}
+		if !models.IsTransactionCategory(category) {
+			continue
+		}
+		if err := s.transactions.UpdateCategory(row.ID, category); err != nil {
+			return updated, fmt.Errorf("failed to save pending transaction %d: %w", row.ID, err)
+		}
+		updated++
+	}
+	return updated, nil
+}
+
+// ClassifyPendingNotes is the notes half of the same action: it assigns a topic
+// to every note that still has none. The item rows are never touched.
+func (s *DataService) ClassifyPendingNotes(classify ClassifyFn) (int, error) {
+	rows, err := s.notes.ListUntopiced()
+	if err != nil {
+		return 0, fmt.Errorf("failed to load pending notes: %w", err)
+	}
+	updated := 0
+	for _, row := range rows {
+		if strings.TrimSpace(row.Content) == "" {
+			continue
+		}
+		classification, err := classify(row.Content)
+		if err != nil {
+			return updated, fmt.Errorf("failed to classify pending note %d: %w", row.ID, err)
+		}
+		topic := ""
+		if classification != nil {
+			topic = classification.NoteTopic.Choice
+		}
+		if !models.IsNoteTopic(topic) {
+			continue
+		}
+		if err := s.notes.UpdateTopic(row.ID, topic); err != nil {
+			return updated, fmt.Errorf("failed to save pending note %d: %w", row.ID, err)
+		}
+		updated++
+	}
+	return updated, nil
 }
 
 // parseDate turns the typed date text into a stored UTC midnight; an empty field
@@ -322,4 +401,15 @@ func optionalString(value string) *string {
 		return nil
 	}
 	return &trimmed
+}
+
+// validDataTopic returns the edited topic when it is a known note topic, and
+// empty otherwise — the select renders a blank option, so an untouched field
+// must not be persisted as a made-up value.
+func validDataTopic(raw string) string {
+	topic := strings.TrimSpace(raw)
+	if models.IsNoteTopic(topic) {
+		return topic
+	}
+	return ""
 }

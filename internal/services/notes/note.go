@@ -43,7 +43,7 @@ func (s *NotesService) Add(request *models.ReceiveMessageRequest, classification
 		return noData(classification), nil
 	}
 
-	note := &models.Note{Type: strings.ToLower(strings.TrimSpace(noteType)), Content: content}
+	note := &models.Note{Type: strings.ToLower(strings.TrimSpace(noteType)), Content: content, Topic: validTopic(classification)}
 	items := make([]models.TodoItem, 0)
 
 	switch note.Type {
@@ -83,6 +83,9 @@ func (s *NotesService) Add(request *models.ReceiveMessageRequest, classification
 			if note.Time != nil && *note.Time != "" {
 				existing.Time = note.Time
 			}
+			if note.Topic != "" {
+				existing.Topic = note.Topic
+			}
 			if err := s.repo.Save(existing, items); err != nil {
 				return nil, fmt.Errorf("failed to persist note: %w", err)
 			}
@@ -112,4 +115,14 @@ func (s *NotesService) Add(request *models.ReceiveMessageRequest, classification
 // noData is the shared "nothing extractable" outcome of the add path.
 func noData(classification *models.Classification) *models.UseCaseOutcome {
 	return &models.UseCaseOutcome{Classification: classification, Action: models.ActionNoteNoData}
+}
+
+// validTopic returns the Jev-answered note topic when it is one of the known
+// criteria; otherwise empty, so a hallucinated topic is dropped.
+func validTopic(classification *models.Classification) string {
+	choice := classification.NoteTopic.Choice
+	if models.IsNoteTopic(choice) {
+		return choice
+	}
+	return ""
 }

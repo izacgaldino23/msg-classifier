@@ -1,6 +1,7 @@
 package services
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -161,9 +162,10 @@ func TestDataServiceUpdateNote(t *testing.T) {
 	service, db := newDataService(t)
 	seedDataNote(t, db, &models.Note{Type: models.NoteTypeReminder, Content: "pagar"}, nil)
 
-	note, err := service.UpdateNote(1, "  pagar a conta de luz  ", "10/05/2026", "14h30", nil, nil)
+	note, err := service.UpdateNote(1, "  pagar a conta de luz  ", models.NoteTopicFinancial, "10/05/2026", "14h30", nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "pagar a conta de luz", note.Content)
+	assert.Equal(t, models.NoteTopicFinancial, note.Topic)
 	require.NotNil(t, note.Date)
 	assert.Equal(t, "10/05/2026", note.Date.Format("02/01/2006"))
 	require.NotNil(t, note.Time)
@@ -173,6 +175,7 @@ func TestDataServiceUpdateNote(t *testing.T) {
 	require.NoError(t, db.First(&reloaded, 1).Error)
 	require.NotNil(t, reloaded.Time)
 	assert.Equal(t, "14:30", *reloaded.Time)
+	assert.Equal(t, models.NoteTopicFinancial, reloaded.Topic)
 }
 
 func TestDataServiceUpdateNoteClearsDateAndTime(t *testing.T) {
@@ -181,23 +184,24 @@ func TestDataServiceUpdateNoteClearsDateAndTime(t *testing.T) {
 	clock := "09:00"
 	seedDataNote(t, db, &models.Note{Type: models.NoteTypeReminder, Content: "pagar", Date: &date, Time: &clock}, nil)
 
-	note, err := service.UpdateNote(1, "pagar", "", "", nil, nil)
+	note, err := service.UpdateNote(1, "pagar", "", "", "", nil, nil)
 	require.NoError(t, err)
 	assert.Nil(t, note.Date, "an empty date field clears the date")
 	assert.Nil(t, note.Time, "an empty time field clears the time")
+	assert.Empty(t, note.Topic, "an untouched topic field stays empty")
 }
 
 func TestDataServiceUpdateNoteInvalidInput(t *testing.T) {
 	service, db := newDataService(t)
 	seedDataNote(t, db, &models.Note{Type: models.NoteTypeNote, Content: "x"}, nil)
 
-	_, err := service.UpdateNote(1, "   ", "", "", nil, nil)
+	_, err := service.UpdateNote(1, "   ", "", "", "", nil, nil)
 	assert.ErrorIs(t, err, ErrInvalidData, "empty content")
 
-	_, err = service.UpdateNote(1, "ok", "31/02/2026", "", nil, nil)
+	_, err = service.UpdateNote(1, "ok", "", "31/02/2026", "", nil, nil)
 	assert.ErrorIs(t, err, ErrInvalidData, "unparseable date")
 
-	_, err = service.UpdateNote(1, "ok", "", "99h", nil, nil)
+	_, err = service.UpdateNote(1, "ok", "", "", "99h", nil, nil)
 	assert.ErrorIs(t, err, ErrInvalidData, "unparseable time")
 }
 
@@ -205,7 +209,7 @@ func TestDataServiceUpdateNoteRebuildsItems(t *testing.T) {
 	service, db := newDataService(t)
 	seedDataNote(t, db, &models.Note{Type: models.NoteTypeTodo, Content: "lista"}, []models.TodoItem{{Text: "antigo", Position: 0}})
 
-	note, err := service.UpdateNote(1, "lista", "", "",
+	note, err := service.UpdateNote(1, "lista", "", "", "",
 		[]string{"comprar pão", "   ", "leite", "ovos"},
 		[]string{"1", "1", "0"})
 	require.NoError(t, err)
@@ -229,7 +233,7 @@ func TestDataServiceUpdateNoteRebuildsItems(t *testing.T) {
 func TestDataServiceUpdateNoteNotFound(t *testing.T) {
 	service, _ := newDataService(t)
 
-	_, err := service.UpdateNote(999, "x", "", "", nil, nil)
+	_, err := service.UpdateNote(999, "x", "", "", "", nil, nil)
 	assert.ErrorIs(t, err, repository.ErrNotFound)
 }
 
@@ -284,6 +288,7 @@ func TestDataServiceUpdateTransaction(t *testing.T) {
 	// never store a value the message flow would not have produced.
 	saved, err := service.UpdateTransaction(transaction.ID, models.DataForm{
 		Type: models.TransactionTypePayment, Amount: "1.234,56", Date: "12/07/2026", Party: "Farmácia",
+		Category: models.TransactionCategoryHealth,
 	})
 	require.NoError(t, err)
 
@@ -292,7 +297,25 @@ func TestDataServiceUpdateTransaction(t *testing.T) {
 	assert.Equal(t, models.TransactionTypePayment, updated.Type)
 	assert.InDelta(t, 1234.56, updated.Amount, 0.001)
 	assert.Equal(t, "Farmácia", updated.Party)
+	assert.Equal(t, models.TransactionCategoryHealth, updated.Category)
 	assert.Equal(t, time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC), updated.Date)
+}
+
+func TestDataServiceUpdateTransactionClearsCategory(t *testing.T) {
+	service, db := newDataService(t)
+	transaction := &models.Transaction{Type: models.TransactionTypePurchase, Amount: 50, Date: noteTestDate(), Category: models.TransactionCategoryMarket}
+	require.NoError(t, db.Create(transaction).Error)
+
+	saved, err := service.UpdateTransaction(transaction.ID, models.DataForm{
+		Type: models.TransactionTypePurchase, Amount: "50,00", Date: "12/07/2026",
+	})
+	require.NoError(t, err)
+	assert.Empty(t, saved.Category, "an untouched category field clears the category")
+
+	_, err = service.UpdateTransaction(transaction.ID, models.DataForm{
+		Type: models.TransactionTypePurchase, Amount: "50,00", Date: "12/07/2026", Category: "bogus",
+	})
+	assert.ErrorIs(t, err, ErrInvalidData, "an unknown category is invalid input")
 }
 
 func TestDataServiceUpdateTransactionInvalidInput(t *testing.T) {
@@ -364,4 +387,94 @@ func TestDataServiceDeleteEmptyIsANoOp(t *testing.T) {
 	var count int64
 	require.NoError(t, db.Model(&models.Contact{}).Count(&count).Error)
 	assert.Equal(t, int64(1), count)
+}
+
+func TestDataServiceClassifyPendingTransactions(t *testing.T) {
+	service, db := newDataService(t)
+	require.NoError(t, db.Create(&models.Transaction{
+		Type: models.TransactionTypePurchase, Amount: 50, Date: noteTestDate(),
+		Content: "gastei 50 no supermercado",
+	}).Error)
+	require.NoError(t, db.Create(&models.Transaction{
+		Type: models.TransactionTypePurchase, Amount: 20, Date: noteTestDate(),
+		Category: models.TransactionCategoryMarket, // already classified: skipped
+	}).Error)
+	require.NoError(t, db.Create(&models.Transaction{
+		Type: models.TransactionTypePayment, Amount: 10, Date: noteTestDate(),
+		Content: "", // no message to classify on: skipped
+	}).Error)
+
+	classify := func(message string) (*models.Classification, error) {
+		return &models.Classification{
+			TransactionCategory: models.SubtypeFinding{Choice: models.TransactionCategoryMarket},
+		}, nil
+	}
+
+	updated, err := service.ClassifyPendingTransactions(classify)
+	require.NoError(t, err)
+	assert.Equal(t, 1, updated)
+
+	var reloaded models.Transaction
+	require.NoError(t, db.First(&reloaded, 1).Error)
+	assert.Equal(t, models.TransactionCategoryMarket, reloaded.Category)
+}
+
+func TestDataServiceClassifyPendingSkipsUnknownCategory(t *testing.T) {
+	service, db := newDataService(t)
+	require.NoError(t, db.Create(&models.Transaction{
+		Type: models.TransactionTypePurchase, Amount: 50, Date: noteTestDate(), Content: "gastei 50",
+	}).Error)
+
+	classify := func(message string) (*models.Classification, error) {
+		return &models.Classification{
+			TransactionCategory: models.SubtypeFinding{Choice: "bogus"},
+		}, nil
+	}
+
+	updated, err := service.ClassifyPendingTransactions(classify)
+	require.NoError(t, err)
+	assert.Zero(t, updated, "an unknown category is skipped, not failed")
+
+	var reloaded models.Transaction
+	require.NoError(t, db.First(&reloaded, 1).Error)
+	assert.Empty(t, reloaded.Category)
+}
+
+func TestDataServiceClassifyPendingTransactionsPropagatesUpstreamError(t *testing.T) {
+	service, db := newDataService(t)
+	require.NoError(t, db.Create(&models.Transaction{
+		Type: models.TransactionTypePurchase, Amount: 50, Date: noteTestDate(), Content: "gastei 50",
+	}).Error)
+
+	classify := func(message string) (*models.Classification, error) {
+		return nil, errors.New("upstream")
+	}
+
+	_, err := service.ClassifyPendingTransactions(classify)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "upstream")
+}
+
+func TestDataServiceClassifyPendingNotes(t *testing.T) {
+	service, db := newDataService(t)
+	seedDataNote(t, db, &models.Note{
+		Type: models.NoteTypeNote, Content: "comprar presente do aniversário",
+	}, nil)
+	seedDataNote(t, db, &models.Note{
+		Type: models.NoteTypeNote, Content: "já classificada", Topic: models.NoteTopicPersonal,
+	}, nil)
+
+	classify := func(message string) (*models.Classification, error) {
+		return &models.Classification{
+			NoteTopic: models.SubtypeFinding{Choice: models.NoteTopicPersonal},
+		}, nil
+	}
+
+	updated, err := service.ClassifyPendingNotes(classify)
+	require.NoError(t, err)
+	assert.Equal(t, 1, updated)
+
+	var reloaded models.Note
+	require.NoError(t, db.First(&reloaded, 1).Error)
+	assert.Equal(t, models.NoteTopicPersonal, reloaded.Topic)
 }

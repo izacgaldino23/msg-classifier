@@ -28,6 +28,7 @@
 		{{ range .Notes }}
 		<p><strong>{{ if eq .Type "reminder" }}Lembrete salvo{{ else if eq .Type "todo" }}Lista de tarefas salva{{ else }}Nota salva{{ end }} · ID {{ .ID }}</strong></p>
 		<div class="note-row"><span class="row-label">Tipo</span><wa-badge variant="{{ badge .Type }}">{{ label .Type }}</wa-badge></div>
+		{{ if .Topic }}<div class="note-row"><span class="row-label">Tópico</span><wa-badge variant="neutral">{{ label .Topic }}</wa-badge></div>{{ end }}
 		<div class="note-row"><span class="row-label">Conteúdo</span><span>{{ .Content }}</span></div>
 		{{ if .Date }}<div class="note-row"><span class="row-label">Data</span><span>{{ dateBR .Date }}</span></div>{{ end }}
 		{{ if .Time }}<div class="note-row"><span class="row-label">Horário</span><span>{{ deref .Time }}</span></div>{{ end }}
@@ -73,6 +74,7 @@
 		{{ range .Transactions }}
 		<p><strong>Transação salva · ID {{ .ID }}</strong></p>
 		<div class="note-row"><span class="row-label">Tipo</span><wa-badge variant="{{ badge .Type }}">{{ label .Type }}</wa-badge></div>
+		{{ if .Category }}<div class="note-row"><span class="row-label">Categoria</span><wa-badge variant="neutral">{{ label .Category }}</wa-badge></div>{{ end }}
 		<div class="note-row"><span class="row-label">Valor</span><span>{{ money .Amount }}</span></div>
 		<div class="note-row"><span class="row-label">Data</span><span>{{ dateBR .Date }}</span></div>
 		{{ if .Party }}<div class="note-row"><span class="row-label">Estabelecimento</span><span>{{ .Party }}</span></div>{{ end }}

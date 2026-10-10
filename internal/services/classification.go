@@ -42,6 +42,8 @@ func (s *ClassificationService) Classify(request *models.ReceiveMessageRequest) 
 	subtype, _ := jevq.AnswerChoice(categoryResp, "category_subtype")
 	partySegmentsRaw, _ := jevq.AnswerNoulSegments(categoryResp)
 	intent, _ := jevq.AnswerChoice(categoryResp, "request_intent")
+	txCategory, _ := jevq.AnswerChoice(categoryResp, "transaction_category")
+	noteTopic, _ := jevq.AnswerChoice(categoryResp, "note_topic")
 
 	class := &models.Classification{
 		Category: models.CategoryFinding{
@@ -70,6 +72,18 @@ func (s *ClassificationService) Classify(request *models.ReceiveMessageRequest) 
 		class.RequestIntent = models.IntentFinding{
 			Choice:     intent.Choice,
 			Confidence: intent.Confidence,
+		}
+	}
+	if txCategory != nil {
+		class.TransactionCategory = models.SubtypeFinding{
+			Choice:     txCategory.Choice,
+			Confidence: txCategory.Confidence,
+		}
+	}
+	if noteTopic != nil {
+		class.NoteTopic = models.SubtypeFinding{
+			Choice:     noteTopic.Choice,
+			Confidence: noteTopic.Confidence,
 		}
 	}
 	return class, nil

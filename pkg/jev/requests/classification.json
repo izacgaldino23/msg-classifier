@@ -48,6 +48,32 @@
         "by_date": "Por data, pelo dia, esta semana",
         "last": "Último, mais recente, o último"
       }
+    },
+    "transaction_category": {
+      "type": "choice",
+      "instructions": "What category does the transaction belong to? Only relevant for finance messages.",
+      "criteria": {
+        "mercado": "Supermercado, padaria, feira, mercado, açougue",
+        "transporte": "Transporte, ônibus, metrô, táxi, uber, gasolina, passagem",
+        "moradia": "Moradia, aluguel, condomínio, água, luz, internet, iptu, reforma",
+        "saude": "Saúde, farmácia, médico, dentista, hospital, exame, plano de saúde",
+        "lazer": "Lazer, restaurante, cinema, bar, viagem, show, streaming",
+        "servico": "Serviço, assinatura, mensalidade, academia, conserto, mão de obra",
+        "salario": "Salário, renda, pagamento recebido do trabalho",
+        "outro": "Qualquer outra categoria"
+      }
+    },
+    "note_topic": {
+      "type": "choice",
+      "instructions": "What topic does the note belong to? Only relevant for notes messages.",
+      "criteria": {
+        "projeto": "Projeto, trabalho, estudo, curso, reunião",
+        "pessoal": "Pessoal, família, casa, hobby, ideia",
+        "saude": "Saúde, médico, remédio, exercício, dieta, consulta",
+        "compras": "Compras, supermercado, lista de compras",
+        "financeiro": "Financeiro, contas, pagamentos, dinheiro, orçamento",
+        "outro": "Qualquer outro tópico"
+      }
     }
   }
 }

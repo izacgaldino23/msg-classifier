@@ -85,6 +85,24 @@ func (r *TransactionRepository) FindByID(id uint) (*models.Transaction, error) {
 	return &transaction, nil
 }
 
+// ListUncategorized returns the transactions that still have no category, oldest
+// first — the rows the data screen's "Classificar pendentes" action works
+// through.
+func (r *TransactionRepository) ListUncategorized() ([]*models.Transaction, error) {
+	var transactions []*models.Transaction
+	err := r.db.Where("category IS NULL OR category = ''").Order("id").Find(&transactions).Error
+	if err != nil {
+		return nil, err
+	}
+	return transactions, nil
+}
+
+// UpdateCategory sets one transaction's category, leaving the other fields and
+// the original message untouched.
+func (r *TransactionRepository) UpdateCategory(id uint, category string) error {
+	return r.db.Model(&models.Transaction{}).Where("id = ?", id).Update("category", category).Error
+}
+
 // FindDuplicate returns the first transaction matching the exact key
 // (type + amount + date; party only when the key carries one — an empty pending
 // party ignores party, a non-empty one matches equal or empty stored parties),
@@ -132,7 +150,7 @@ func scopeTransactions(db *gorm.DB, filter TransactionFilter) *gorm.DB {
 	}
 	if filter.Term != "" {
 		like := likeValue(filter.Term)
-		db = db.Where("(LOWER(content) LIKE ? OR LOWER(party) LIKE ?)", like, like)
+		db = db.Where("(LOWER(content) LIKE ? OR LOWER(party) LIKE ? OR LOWER(category) LIKE ?)", like, like, like)
 	}
 	return db
 }

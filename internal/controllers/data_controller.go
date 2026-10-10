@@ -16,13 +16,16 @@ import (
 
 // DataController serves the data browsing screen: the page, its table and detail
 // partials, the edit endpoints and the bulk delete. It is HTTP-only — every
-// rule lives in DataService.
+// rule lives in DataService. classify closes the "Classificar pendentes" seam
+// with the real Jev classifier; the controller is the only place in this screen
+// that touches it.
 type DataController struct {
-	service *services.DataService
+	service  *services.DataService
+	classify services.ClassifyFn
 }
 
-func NewDataController(service *services.DataService) *DataController {
-	return &DataController{service: service}
+func NewDataController(service *services.DataService, classify services.ClassifyFn) *DataController {
+	return &DataController{service: service, classify: classify}
 }
 
 // Page handles GET /data.
@@ -67,7 +70,7 @@ func (ctrl *DataController) Update(c *gin.Context) {
 	case services.DataKindContact:
 		_, err = ctrl.service.UpdateContact(id, form.Name, form.Phone, form.Email)
 	case services.DataKindNotes:
-		_, err = ctrl.service.UpdateNote(id, form.Content, form.Date, form.Time, form.ItemText, form.ItemDone)
+		_, err = ctrl.service.UpdateNote(id, form.Content, form.Topic, form.Date, form.Time, form.ItemText, form.ItemDone)
 	case services.DataKindTransactions:
 		_, err = ctrl.service.UpdateTransaction(id, *form)
 	default:
@@ -101,6 +104,32 @@ func (ctrl *DataController) Delete(c *gin.Context) {
 		err = ctrl.service.DeleteNotes(form.IDs)
 	case services.DataKindTransactions:
 		err = ctrl.service.DeleteTransactions(form.IDs)
+	default:
+		views.RenderError(c, http.StatusBadRequest, messages.BadKind())
+		return
+	}
+	if err != nil {
+		renderDataError(c, err)
+		return
+	}
+	ctrl.renderTable(c, form.Kind, form.Filter, form.Search)
+}
+
+// ClassifyPending handles POST /data/classify-pending — runs the Jev backfill
+// for the records of one kind that still have no category/topic (kind comes from
+// the form the table partial posts) and re-renders the table the user was on.
+func (ctrl *DataController) ClassifyPending(c *gin.Context) {
+	form := &models.DataDeleteForm{}
+	if err := c.Bind(form); err != nil {
+		views.RenderError(c, http.StatusBadRequest, messages.BadRequest())
+		return
+	}
+	var err error
+	switch form.Kind {
+	case services.DataKindNotes:
+		_, err = ctrl.service.ClassifyPendingNotes(ctrl.classify)
+	case services.DataKindTransactions:
+		_, err = ctrl.service.ClassifyPendingTransactions(ctrl.classify)
 	default:
 		views.RenderError(c, http.StatusBadRequest, messages.BadKind())
 		return

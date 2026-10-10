@@ -25,6 +25,11 @@ if (o que o usuário fez?) then (Ver)
     (valor e data re-parseados: o mesmo parser da mensagem);
     :volta em mode=view;
   endif
+elseif (Classificar pendentes?) then (notas ou finanças)
+  :POST /data/classify-pending {kind, filter, search};
+  :re-classifica via Jev as linhas sem tópico/categoria
+  (a API real, uma chamada por linha);
+  :a tabela volta no mesmo filtro e na mesma busca;
 elseif (Adicionar item?) then (numa lista de tarefas)
   :GET /data/item-row → uma linha nova no editor;
 elseif (Apagar selecionados?) then

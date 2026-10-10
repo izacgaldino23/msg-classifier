@@ -29,12 +29,32 @@
                 <wa-option value="recebimento" {{ if eq .Transaction.Type "recebimento" }}selected{{ end }}>{{ label "recebimento" }}</wa-option>
                 <wa-option value="transferencia" {{ if eq .Transaction.Type "transferencia" }}selected{{ end }}>{{ label "transferencia" }}</wa-option>
             </wa-select>
+            <wa-select name="category" label="Categoria" value="{{ .Transaction.Category }}">
+                <wa-option value="">{{ label "no_category" }}</wa-option>
+                <wa-option value="mercado" {{ if eq .Transaction.Category "mercado" }}selected{{ end }}>{{ label "mercado" }}</wa-option>
+                <wa-option value="transporte" {{ if eq .Transaction.Category "transporte" }}selected{{ end }}>{{ label "transporte" }}</wa-option>
+                <wa-option value="moradia" {{ if eq .Transaction.Category "moradia" }}selected{{ end }}>{{ label "moradia" }}</wa-option>
+                <wa-option value="saude" {{ if eq .Transaction.Category "saude" }}selected{{ end }}>{{ label "saude" }}</wa-option>
+                <wa-option value="lazer" {{ if eq .Transaction.Category "lazer" }}selected{{ end }}>{{ label "lazer" }}</wa-option>
+                <wa-option value="servico" {{ if eq .Transaction.Category "servico" }}selected{{ end }}>{{ label "servico" }}</wa-option>
+                <wa-option value="salario" {{ if eq .Transaction.Category "salario" }}selected{{ end }}>{{ label "salario" }}</wa-option>
+                <wa-option value="outro" {{ if eq .Transaction.Category "outro" }}selected{{ end }}>{{ label "outro" }}</wa-option>
+            </wa-select>
             <wa-input name="amount" label="Valor" type="text" value="{{ money .Transaction.Amount }}" placeholder="50,00" required></wa-input>
             <wa-input name="date" label="Data" type="text" value="{{ dateBR .Transaction.Date }}" placeholder="dd/mm/aaaa" required></wa-input>
             <wa-input name="party" label="Estabelecimento ou pessoa" type="text" value="{{ .Transaction.Party }}"></wa-input>
             <wa-textarea name="content" label="Mensagem original">{{ .Transaction.Content }}</wa-textarea>
         {{ else }}
             <wa-textarea name="content" label="Conteúdo" required>{{ .Note.Content }}</wa-textarea>
+            <wa-select name="topic" label="Tópico" value="{{ .Note.Topic }}">
+                <wa-option value="">{{ label "no_topic" }}</wa-option>
+                <wa-option value="projeto" {{ if eq .Note.Topic "projeto" }}selected{{ end }}>{{ label "projeto" }}</wa-option>
+                <wa-option value="pessoal" {{ if eq .Note.Topic "pessoal" }}selected{{ end }}>{{ label "pessoal" }}</wa-option>
+                <wa-option value="saude" {{ if eq .Note.Topic "saude" }}selected{{ end }}>{{ label "saude" }}</wa-option>
+                <wa-option value="compras" {{ if eq .Note.Topic "compras" }}selected{{ end }}>{{ label "compras" }}</wa-option>
+                <wa-option value="financeiro" {{ if eq .Note.Topic "financeiro" }}selected{{ end }}>{{ label "financeiro" }}</wa-option>
+                <wa-option value="outro" {{ if eq .Note.Topic "outro" }}selected{{ end }}>{{ label "outro" }}</wa-option>
+            </wa-select>
             {{ if eq .Note.Type "reminder" }}
                 <wa-input name="date" label="Data" type="text" value="{{ dateBR .Note.Date }}" placeholder="dd/mm/aaaa"></wa-input>
                 <wa-input name="time" label="Horário" type="text" value="{{ deref .Note.Time }}" placeholder="14h30"></wa-input>

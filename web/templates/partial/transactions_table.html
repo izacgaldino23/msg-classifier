@@ -10,6 +10,7 @@
                     <th><input type="checkbox" onchange="document.querySelectorAll('.data-check').forEach(cb => cb.checked = this.checked)"></th>
                     <th>Data</th>
                     <th>Tipo</th>
+                    <th>Categoria</th>
                     <th>Valor</th>
                     <th>Estabelecimento</th>
                     <th>Descrição</th>
@@ -23,6 +24,7 @@
                         <td><input type="checkbox" class="data-check" name="ids" value="{{ .ID }}"></td>
                         <td>{{ dateBR .Date }}</td>
                         <td><wa-badge variant="{{ badge .Type }}">{{ label .Type }}</wa-badge></td>
+                        <td>{{ if .Category }}<wa-badge variant="neutral">{{ label .Category }}</wa-badge>{{ end }}</td>
                         <td>{{ money .Amount }}</td>
                         <td>{{ .Party }}</td>
                         <td>{{ .Content }}</td>
@@ -32,7 +34,7 @@
                     </tr>
                     {{ end }}
                 {{ else }}
-                    <tr><td colspan="7">Nenhuma transação registrada com este filtro.</td></tr>
+                    <tr><td colspan="8">Nenhuma transação registrada com este filtro.</td></tr>
                 {{ end }}
             </tbody>
         </table>
@@ -41,5 +43,7 @@
         Apagar selecionadas
     </wa-button>
     <wa-spinner id="delete-tx-spinner" class="htmx-indicator" aria-hidden="true"></wa-spinner>
+    <wa-button variant="neutral" hx-post="/data/classify-pending" hx-target="#data-table" hx-swap="innerHTML" hx-target-error="#data-table" hx-include="#data-table-form" hx-confirm="Classificar agora as transações sem categoria? (usa Jev)" hx-indicator="#classify-tx-spinner" hx-disabled-elt="this">Classificar pendentes</wa-button>
+    <wa-spinner id="classify-tx-spinner" class="htmx-indicator" aria-hidden="true"></wa-spinner>
 </form>
 {{ end }}

@@ -57,11 +57,12 @@ func (s *FinanceService) Add(request *models.ReceiveMessageRequest, classificati
 	}
 
 	transaction := &models.Transaction{
-		Type:    result.Type,
-		Amount:  amount,
-		Date:    date,
-		Party:   result.Party,
-		Content: content,
+		Type:     result.Type,
+		Category: validCategory(classification),
+		Amount:   amount,
+		Date:     date,
+		Party:    result.Party,
+		Content:  content,
 	}
 
 	var existing *models.Transaction
@@ -76,6 +77,9 @@ func (s *FinanceService) Add(request *models.ReceiveMessageRequest, classificati
 			existing.Content = transaction.Content
 			if transaction.Party != "" {
 				existing.Party = transaction.Party
+			}
+			if transaction.Category != "" {
+				existing.Category = transaction.Category
 			}
 			if err := s.repo.Save(existing); err != nil {
 				return nil, fmt.Errorf("failed to persist transaction: %w", err)
@@ -113,4 +117,14 @@ func financeNoData(classification *models.Classification, missing string) *model
 		Action:         models.ActionTransactionNoData,
 		Missing:        missing,
 	}
+}
+
+// validCategory returns the Jev-answered transaction category when it is one of
+// the known criteria; otherwise empty, so a hallucinated category is dropped.
+func validCategory(classification *models.Classification) string {
+	choice := classification.TransactionCategory.Choice
+	if models.IsTransactionCategory(choice) {
+		return choice
+	}
+	return ""
 }
